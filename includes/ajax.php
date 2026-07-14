@@ -1,0 +1,269 @@
+<?php
+
+if (!defined('ABSPATH')) exit;
+
+/*
+============================================
+پردازش چت هوش مصنوعی به‌صورت استریم (SSE)
+
+این هندلر به‌جای wp_send_json_success از فرمت Server-Sent Events
+استفاده می‌کند تا پاسخ هوش مصنوعی تکه به تکه به مرورگر کاربر
+ارسال شود. مرورگر با استفاده از fetch + ReadableStream این رویدادها
+را دریافت و به‌صورت زنده نمایش می‌دهد.
+
+فرمت رویدادهای ارسالی به مرورگر:
+    data: {"type":"chunk","content":"sa"}\n\n
+    data: {"type":"chunk","content":"lam"}\n\n
+    ...
+    data: {"type":"done","chat_id":123}\n\n
+
+در صورت خطا (timeout اولین پاسخ یا خطای ارتباطی):
+    data: {"type":"error","message":"ارتباط با سرور برقرار نشد."}\n\n
+============================================
+*/
+function ai_agent_chat() {
+//عدم بافر
+    @ini_set('output_buffering', 'off');
+    @ini_set('zlib.output_compression', '0');
+    @ini_set('implicit_flush', '1');
+    if (function_exists('apache_setenv')) {
+        @apache_setenv('no-gzip', '1');
+    }
+
+    if (!headers_sent()) {
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Connection: keep-alive');
+        // جلوگیری از بافر کردن توسط nginx
+        header('X-Accel-Buffering: no');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+    }
+
+    // ۲) غیرفعال کردن تمام سطح‌های output buffering وردپرس
+    //    تا هر chunk بلافاصله به مرورگر flush شود.
+    while (ob_get_level() > 0) {
+        ob_end_flush();
+    }
+
+    // ۳) حذف محدودیت زمان اجرای PHP برای استریم طولانی
+    @set_time_limit(0);
+
+// ۴) سanitize ورودی‌ها
+    $message    = isset($_POST['message'])    ? sanitize_text_field($_POST['message'])    : '';
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+
+    if (empty($message)) {
+        ai_agent_sse_send(array(
+            'type'    => 'error',
+            'message' => 'پیام خالی است.',
+        ));
+        @flush();
+        die();
+    }
+
+    // اگر session_id از سمت کلاینت ارسال نشد یا معتبر نبود، بدون session_id ادامه می‌دهیم
+    // API با عدم وجود session-id header، یک session جدید مۋ‌سازد و session_id را در پاسخ برمی‌گرداند.
+
+    // ۸) Callback برای هر چانک محتوای دریافتی از API بالادستی
+    $on_chunk = function($content, $raw_chunk) {
+        ai_agent_sse_send(array(
+            'type'    => 'chunk',
+            'content' => $content,
+        ));
+        @flush();
+    };
+
+    // ۹) Callback در صورت خطا (timeout اولین پاسخ، خطای شبکه، ...)
+    $on_error = function($message) {
+        ai_agent_sse_send(array(
+            'type'    => 'error',
+            'message' => $message,
+        ));
+        @flush();
+    };
+
+    // ۱۰) فراخوانی تابع استریم در api.php
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error);
+    //DEBUG
+    error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
+    // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done
+    if (isset($result['status']) && $result['status'] === 'success') {
+        // اگر API یک session_id جدید برگرداند، آن را در کوکی ذخیره و به JS ارسال مۋ‌کنیم
+        if (!empty($result['session_id'])) {
+            $session_id = $result['session_id'];
+            // ذخیره در کوکی مرورگر (عمر یک هفته)
+            if (!headers_sent()) {
+                setcookie(
+                    AI_AGENT_SESSION_COOKIE,
+                    $session_id,
+                    array(
+                        'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
+                        'path'     => '/',
+                        'httponly' => false,
+                        'samesite' => 'Lax',
+                    )
+                );
+            }
+            // ارسال session_id به JS عبر SSE تا در کوکی ذخیره شود
+            ai_agent_sse_send(array(
+                'type'       => 'session_init',
+                'session_id' => $session_id,
+            ));
+            @flush();
+        }
+
+        $full_content = isset($result['full_content']) ? $result['full_content'] : '';
+
+        // اگر به هر دلیلی محتوایی دریافت نشد، یک پیام خطا به کاربر می‌دهیم
+        if (trim($full_content) === '') {
+            ai_agent_sse_send(array(
+                'type'    => 'error',
+                'message' => 'پاسخی از سرور دریافت نشد. لطفاً مجدداً تلاش کنید.',
+            ));
+            @flush();
+            die();
+        }
+
+        // ذخیره‌ی چت در دیتابیس و گرفتن شناسه‌ی سطر ثبت شده
+        $chat_id = ai_agent_save_chat($session_id, $message, $full_content);
+
+        // ارسال رویداد done با chat_id برای فعال‌سازی سیستم فیدبک لایک/دیسلایک
+        ai_agent_sse_send(array(
+            'type'    => 'done',
+            'chat_id' => (int) $chat_id,
+        ));
+        @flush();
+    }
+
+    // پایان پاسخ
+    die();
+}
+add_action('wp_ajax_ai_agent_chat', 'ai_agent_chat');
+add_action('wp_ajax_nopriv_ai_agent_chat', 'ai_agent_chat');
+
+/*
+============================================
+ارسال یک رویداد SSE به مرورگر
+
+فرمت استاندارد SSE:
+    data: <payload>\n\n
+
+پارامتر: آرایه‌ای که به JSON تبدیل و در فیلد data قرار می‌گیرد.
+============================================
+*/
+function ai_agent_sse_send($data) {
+    echo 'data: ' . wp_json_encode($data) . "\n\n";
+}
+
+/*
+============================================
+ثبت فیدبک لایک یا دیسلایک کاربر
+============================================
+*/
+function ai_agent_submit_feedback() {
+    $chat_id  = intval($_POST['chat_id']);
+    $feedback = sanitize_text_field($_POST['feedback']);
+
+    $updated  = ai_agent_update_feedback($chat_id, $feedback);
+
+    if($updated) {
+        wp_send_json_success();
+    } else {
+        wp_send_json_error();
+    }
+}
+add_action('wp_ajax_ai_agent_feedback', 'ai_agent_submit_feedback');
+add_action('wp_ajax_nopriv_ai_agent_feedback', 'ai_agent_submit_feedback');
+
+/*
+============================================
+ثبت درخواست پشتیبانی یا انتقال به کارشناس
+============================================
+*/
+function ai_agent_submit_support() {
+    $session_id = sanitize_text_field($_POST['session_id']);
+    $chat_id    = !empty($_POST['chat_id']) ? intval($_POST['chat_id']) : null;
+    $message    = sanitize_textarea_field($_POST['message']);
+
+    $insert_id  = ai_agent_save_support_message($session_id, $chat_id, $message);
+
+    if($insert_id) {
+        wp_send_json_success();
+    } else {
+        wp_send_json_error();
+    }
+}
+add_action('wp_ajax_ai_agent_submit_support', 'ai_agent_submit_support');
+add_action('wp_ajax_nopriv_ai_agent_submit_support', 'ai_agent_submit_support');
+
+/*
+============================================
+بررسی دوره‌ای وجود پاسخ جدید از سمت ادمین (Polling)
+============================================
+*/
+function ai_agent_poll_support_replies() {
+    $session_id = sanitize_text_field($_POST['session_id']);
+    $replies    = ai_agent_check_support_reply($session_id);
+
+    wp_send_json_success($replies);
+}
+add_action('wp_ajax_ai_agent_poll_support', 'ai_agent_poll_support_replies');
+add_action('wp_ajax_nopriv_ai_agent_poll_support', 'ai_agent_poll_support_replies');
+
+/*
+============================================
+سرچ / لیست مدل‌های هوش مصنوعی برای پنل تنظیمات (فقط ادمین)
+============================================
+*/
+function ai_agent_search_models_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'ai_agent_models_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $q     = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
+    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 10;
+    $limit = $limit > 0 ? $limit : 10;
+
+    $models = ai_agent_fetch_models($q, $limit);
+
+    if ($models === false) {
+        wp_send_json_error(array('message' => 'خطا در دریافت لیست مدل‌ها از سرور.'));
+    }
+
+    wp_send_json_success(array('models' => $models));
+}
+add_action('wp_ajax_ai_agent_search_models', 'ai_agent_search_models_handler');
+
+
+/*
+============================================
+دریافت تاریخچه‌ی پیام‌های یک session از سرور
+برای نمایش تاریخچه‌ی چت هنگام باز شدن مجدد ویجت
+============================================
+*/
+function ai_agent_get_history_handler() {
+
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        wp_send_json_success(array('messages' => array()));
+    }
+
+    $messages = ai_agent_fetch_chat_history($session_id);
+
+    // در صورت خطا (مثلاً session جدید و بدون تاریخچه) به‌جای خطا، لیست خالی می‌فرستیم
+    // تا چت‌باکس همچنان پیام خوش‌آمدگویی پیش‌فرض را نشان دهد
+    if ($messages === false) {
+        wp_send_json_success(array('messages' => array()));
+    }
+
+    wp_send_json_success(array('messages' => $messages));
+}
+add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
+add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');

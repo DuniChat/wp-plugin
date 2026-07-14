@@ -1,0 +1,455 @@
+/* فونت و ریست‌های پایه چت‌روم */
+#ai-agent, #ai-agent * {
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* دکمه شناور دایره‌ای مدرن */
+#ai-agent-button {
+    position: fixed;
+    right: 30px;
+    bottom: 30px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #2563eb;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+    z-index: 999999;
+}
+
+#ai-agent-button:hover {
+    transform: scale(1.1) translateY(-3px);
+    box-shadow: 0 12px 30px rgba(37, 99, 235, 0.5);
+}
+
+#ai-agent-button img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+}
+
+/* پنجره هوشمند اصلی چت */
+#ai-agent-window {
+    position: fixed;
+    right: 30px;
+    bottom: 105px;
+    width: 380px;
+    height: 580px; /* ارتفاع ثابت پنجره */
+    max-height: calc(100vh - 120px); /* برای گوشی‌ها و صفحات کوچک */
+    background: #ffffff;
+    
+    /* تغییر مهم: نمایش همیشه رو حالت flex باقی می‌ماند تا ساختار نشکند */
+    display: flex; 
+    flex-direction: column; /* چیدمان ستونی برای تفکیک هدر، وسط و فوتر */
+    justify-content: space-between; /* هل دادن هدر به بالا و فوتر به پایین */
+    
+    border-radius: 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    z-index: 999999;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    direction: rtl; /* اطمینان از راست‌چین بودن اصولی المان‌های فارسی */
+
+    /* انیمیشن پاپ‌آپ و فید شدن بسیار نرم بدون آسیب به ساختار Flexbox */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(15px);
+    transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
+}
+
+#ai-agent-window.ai-agent-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* هدر شیک و مینیمال چت */
+#ai-agent-header {
+    flex-shrink: 0; /* جلوگیری از تغییر اندازه */
+    background: #2563eb;
+    color: #ffffff;
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.ai-agent-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* چراغ آنلاین بودن دستیار */
+.online-indicator {
+    width: 8px;
+    height: 8px;
+    background-color: #10b981;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.4);
+    animation: pulseGlow 2s infinite;
+}
+
+#ai-agent-close {
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    transition: 0.2s;
+}
+
+#ai-agent-close:hover {
+    background: #ef4444; /* رنگ قرمز در هنگام هاور برای دکمه بستن */
+    transform: rotate(90deg); /* چرخش انیمیشنی جالب هنگام بستن */
+}
+
+/* آیکون ماه/خورشید هدر: با کلیک، تم به‌صورت دستی بین دارک و لایت تغییر می‌کند */
+.ai-theme-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 6px;
+}
+
+.ai-theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.ai-theme-icon {
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-theme-icon svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+}
+
+/* پیش‌فرض: لایت‌مود -> خورشید نمایش داده می‌شود */
+#ai-agent[data-theme="light"] .ai-theme-icon-sun,
+#ai-agent:not([data-theme]) .ai-theme-icon-sun {
+    display: flex;
+    color: #fbbf24;
+}
+
+/* دارک‌مود -> ماه نمایش داده می‌شود */
+#ai-agent[data-theme="dark"] .ai-theme-icon-moon {
+    display: flex;
+    color: #e2e8f0;
+}
+
+/* باکس اصلی لوپ چت‌ها */
+#ai-agent-messages {
+    flex: 1 1 auto; /* پر کردن تمام فضای خالی بین هدر و فوتر */
+    overflow-y: auto; /* فعال کردن اسکرول برای کاربر */
+    min-height: 0; /* فوق‌العاده حیاتی: به مرورگر اجازه می‌دهد ارتفاع این بخش را محدود کرده و اسکرول را فعال کند */
+    padding: 20px;
+    /* یک لایه‌ی نیمه‌شفاف روی عکس بک‌گراند تا حباب‌های پیام خوانا بمانند */
+    background-image: linear-gradient(180deg, rgba(248, 250, 252, 0.88), rgba(248, 250, 252, 0.88)), var(--ai-agent-bg-light);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 14px;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-messages {
+    background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.6)), var(--ai-agent-bg-dark);
+}
+
+/* سفارشی‌سازی اسکرول‌بار فوق‌العاده ظریف مویرگی */
+#ai-agent-messages::-webkit-scrollbar {
+    width: 5px;
+}
+#ai-agent-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+#ai-agent-messages::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+#ai-agent-messages::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* استایل مشترک حباب پیام‌ها */
+.user-message, .ai-message, .admin-message {
+    padding: 12px 16px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    max-width: 85%;
+    word-break: break-word;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+/* حباب پیام کاربر */
+.user-message {
+    background: #2563eb;
+    color: #ffffff;
+    border-radius: 16px 16px 16px 4px;
+    align-self: flex-start;
+    text-align: right;
+}
+
+/* حباب پیام هوش مصنوعی */
+.ai-message {
+    background: #ffffff;
+    color: #1e293b;
+    border-radius: 16px 16px 4px 16px;
+    align-self: flex-end;
+    text-align: right;
+    border: 1px solid #f1f5f9;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+/* آواتار دایره‌ای فاویکون، کنار پیام‌های ربات - بالا و سمت چپ پیام */
+.ai-message::before {
+    content: "";
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border-radius: 50%;
+    background-image: var(--ai-agent-favicon);
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+    order: 2;
+}
+
+/* محتوای پیام (متن + دکمه‌های فیدبک) کنار آواتار */
+.ai-message-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    order: 1;
+}
+
+/* حباب پیام کارشناس واقعی سیستم */
+.admin-message {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-radius: 16px 16px 4px 16px;
+    align-self: flex-end;
+    text-align: right;
+    border-right: 4px solid #10b981;
+}
+
+/* فوتر ورودی پیام */
+#ai-agent-footer {
+    flex-shrink: 0; /* جلوگیری از فشرده شدن توسط پیام‌ها */
+    padding: 12px 16px;
+    background: #ffffff;
+    display: flex;
+    align-items: flex-end; /* دکمه ارسال هنگام رشد تکست‌باکس، پایین بماند */
+    gap: 10px;
+    border-top: 1px solid #f1f5f9;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-footer {
+    background: #111827;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* فیلد متن مدرن و بدون حاشیه زشت - ارتفاع کوچک با قابلیت رشد پویا تا سقف مشخص */
+#ai-agent-input {
+    flex: 1;
+    resize: none;
+    height: 38px; /* ارتفاع پیش‌فرض کوچک‌تر، مثل صفحات چت مرسوم - این مقدار توسط JS هنگام تایپ به‌صورت داینامیک تغییر می‌کند */
+    min-height: 38px !important; /* override قالب که min-height بزرگ‌تری (مثلاً 190px) روی همه‌ی textarea ها ست می‌کند */
+    max-height: 90px !important; /* سقف ارتفاع؛ بعد از این حد اسکرول داخلی فعال می‌شود */
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 9px 14px;
+    font-size: 13.5px;
+    line-height: 20px;
+    outline: none;
+    background: #f8fafc;
+    overflow-y: hidden;
+    /* مهم: height از ترنزیشن سراسری (#ai-agent *) مستثنی می‌شود تا JS بتواند بلافاصله
+       بعد از پاک کردن متن، ارتفاع واقعی محتوا را بدون تأخیر انیمیشن اندازه بگیرد؛
+       در غیر این‌صورت مقدار scrollHeight هنگام کوچک شدن به‌درستی محاسبه نمی‌شد. */
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-input {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-input::placeholder {
+    color: rgba(226, 232, 240, 0.5);
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-input:focus {
+    background: #1e293b;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+#ai-agent-input:focus {
+    background: #ffffff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* دکمه ارسال: فقط خود SVG بدون هیچ بک‌گراند/حاشیه/سایه‌ای
+   آیکون send.svg به‌عنوان خود دکمه عمل می‌کند. */
+#ai-agent-send {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 0 !important;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    align-self: center; /* برای هم‌محور شدن با فوتر که align-items: flex-end داره */
+}
+
+#ai-agent-send:hover,
+#ai-agent-send:active,
+#ai-agent-send:focus {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#ai-agent-send img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+
+#ai-agent-send:hover img {
+    transform: translateX(-3px) scale(1.12);   /* افکت حرکت به سمت چپ (جهت ارسال در RTL) */
+}
+
+#ai-agent-send:active img {
+    transform: scale(.95);
+}
+/* ساختار بخش فیدبک پیام‌ها */
+.ai-feedback-wrapper {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.ai-feedback-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.ai-feedback-btn {
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.6;
+}
+.ai-feedback-btn:hover {
+    opacity: 1;
+    transform: scale(1.2);
+}
+
+/* تکست باکس و دکمه پورتال اتصال به ادمین */
+.ai-support-gate .ai-support-msg {
+    width: 100%;
+    height: 52px;
+    margin-top: 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 12px;
+    resize: none;
+    outline: none;
+}
+.ai-support-gate .ai-support-msg:focus {
+    border-color: #2563eb;
+}
+.ai-support-gate .ai-submit-support-btn {
+    margin-top: 6px;
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+}
+
+/* ============================================
+   انیمیشن‌های مدرن CSS
+   ============================================ */
+
+/* انیمیشن لودینگ سه‌نقطه الاکلنگی متحرک چت */
+.typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 18px;
+    padding: 0 4px;
+}
+
+.typing-dots span {
+    width: 7px;
+    height: 7px;
+    background-color: #94a3b8;
+    border-radius: 50%;
+    display: inline-block;
+    animation: bounceDots 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounceDots {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    40% { transform: scale(1.1) translateY(-6px); opacity: 1; background-color: #475569; }
+}
+
+/* انیمیشن پاپ‌آپ ورود حباب‌های پیام از پایین به بالا */
+.fade-in-up {
+    animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* انیمیشن پالس چراغ وضعیت آنلاین هدر */
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}

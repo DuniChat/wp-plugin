@@ -1,0 +1,777 @@
+<?php
+
+if (!defined('ABSPATH')) exit;
+
+/*
+============================================
+ساخت جداول دیتابیس هنگام فعال‌سازی پلاگین
+============================================
+*/
+
+function ai_agent_install(){
+
+    global $wpdb;
+
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $table_chats    = $wpdb->prefix.'ai_agent_chats';
+    $table_support  = $wpdb->prefix.'ai_agent_support';
+    $table_synced   = $wpdb->prefix.'ai_agent_synced_items';
+
+    require_once ABSPATH.'wp-admin/includes/upgrade.php';
+
+    $sql1 = "CREATE TABLE {$table_chats} (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        session_id VARCHAR(64) NOT NULL,
+        question TEXT NOT NULL,
+        answer LONGTEXT NOT NULL,
+        feedback VARCHAR(10) DEFAULT NULL,
+        created_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        KEY session_id (session_id)
+    ) {$charset_collate};";
+
+    $sql2 = "CREATE TABLE {$table_support} (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        session_id VARCHAR(64) NOT NULL,
+        chat_id BIGINT UNSIGNED DEFAULT NULL,
+        user_message TEXT NOT NULL,
+        admin_reply TEXT DEFAULT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        seen TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL,
+        replied_at DATETIME DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY session_id (session_id),
+        KEY status (status)
+    ) {$charset_collate};";
+
+    // جدول ذخیره‌ی آی‌دی‌های سینک‌شده و تاریخ آخرین همگام‌سازی هر آیتم
+    // این جدول برای جلوگیری از ارسال مجدد محتوایی که قبلاً به سرور فرستاده شده
+    // استفاده می‌شود. در هر بار سینک، فقط محتوای جدید (آی‌دی‌های جدید) ارسال
+    // می‌شود و محتوای حذف‌شده از وردپرس، به اندپوینت delete کال زده می‌شود.
+    $sql3 = "CREATE TABLE {$table_synced} (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        source_id VARCHAR(64) NOT NULL,
+        content_type VARCHAR(32) NOT NULL,
+        synced_at DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY source_type (source_id, content_type),
+        KEY content_type (content_type)
+    ) {$charset_collate};";
+
+    dbDelta($sql1);
+    dbDelta($sql2);
+    dbDelta($sql3);
+
+
+}
+
+/*
+============================================
+شبکه ایمنی: اگر پلاگین قبلا فعال بوده و جداول
+وجود نداشته باشند، بدون نیاز به غیرفعال/فعال کردن
+دوباره پلاگین، جداول ساخته می‌شوند.
+============================================
+*/
+
+function ai_agent_maybe_install(){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_chats';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        ai_agent_install();
+    }
+
+    // بررسی وجود جدول آی‌دی‌های سینک‌شده؛ اگر نبود، آن را می‌سازیم
+    $table_synced = $wpdb->prefix.'ai_agent_synced_items';
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table_synced}'") !== $table_synced) {
+        ai_agent_install();
+    }
+
+
+}
+add_action('admin_init', 'ai_agent_maybe_install');
+
+/*
+============================================
+ذخیره یک رکورد چت (سوال + پاسخ)
+============================================
+*/
+
+function ai_agent_save_chat($session_id, $question, $answer){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_chats';
+
+    $wpdb->insert($table, array(
+        'session_id' => $session_id,
+        'question'   => $question,
+        'answer'     => $answer,
+        'created_at' => current_time('mysql'),
+    ));
+
+    return $wpdb->insert_id;
+
+}
+
+/*
+============================================
+ثبت بازخورد (لایک/دیسلایک) روی یک چت
+============================================
+*/
+
+function ai_agent_update_feedback($chat_id, $feedback){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_chats';
+
+    $allowed = array('like', 'dislike');
+
+    if (!in_array($feedback, $allowed, true)) return false;
+
+    return $wpdb->update(
+        $table,
+        array('feedback' => $feedback),
+        array('id' => intval($chat_id))
+    );
+
+}
+
+/*
+============================================
+ذخیره پیام کاربر برای ارتباط با کارشناس
+============================================
+*/
+
+function ai_agent_save_support_message($session_id, $chat_id, $message){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_support';
+
+    $wpdb->insert($table, array(
+        'session_id'   => $session_id,
+        'chat_id'      => $chat_id ? intval($chat_id) : null,
+        'user_message' => $message,
+        'status'       => 'pending',
+        'created_at'   => current_time('mysql'),
+    ));
+
+    return $wpdb->insert_id;
+
+}
+
+/*
+============================================
+ثبت پاسخ ادمین به یک درخواست پشتیبانی
+============================================
+*/
+
+function ai_agent_reply_support($id, $reply){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_support';
+
+    return $wpdb->update(
+        $table,
+        array(
+            'admin_reply' => $reply,
+            'status'      => 'answered',
+            'replied_at'  => current_time('mysql'),
+        ),
+        array('id' => intval($id))
+    );
+
+}
+
+/*
+============================================
+بررسی پاسخ‌های جدید ادمین برای یک session خاص
+(برای Polling سمت کاربر)
+============================================
+*/
+
+function ai_agent_check_support_reply($session_id){
+
+    global $wpdb;
+
+    $table = $wpdb->prefix.'ai_agent_support';
+
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, admin_reply FROM {$table} WHERE session_id=%s AND status='answered' AND seen=0",
+        $session_id
+    ));
+
+    if ($rows) {
+        $ids = wp_list_pluck($rows, 'id');
+        $ids_sql = implode(',', array_map('intval', $ids));
+        $wpdb->query("UPDATE {$table} SET seen=1 WHERE id IN ({$ids_sql})");
+    }
+
+    return $rows;
+
+}
+
+/*
+============================================
+رمزنگاری / رمزگشایی و ذخیره‌سازی امن API Key
+
+از openssl (روش AES-256-CBC) برای رمزنگاری استفاده می‌شود.
+کلید رمزنگاری از AUTH_KEY وردپرس (تعریف‌شده در wp-config.php)
+مشتق می‌شود، بنابراین منحصر به هر نصب وردپرس است و نیازی به
+ذخیره‌ی کلید رمزنگاری در جای دیگری نیست.
+
+مقدار رمزشده (base64) داخل جدول wp_options با کلید
+'ai_agent_api_key' نگهداری می‌شود.
+============================================
+*/
+
+// نام کلید در جدول wp_options
+if (!defined('AI_AGENT_API_KEY_OPTION')) {
+    define('AI_AGENT_API_KEY_OPTION', 'ai_agent_api_key');
+}
+
+// نام کوکی ذخیره‌ی session_id در مرورگر کاربر
+if (!defined('AI_AGENT_SESSION_COOKIE')) {
+    define('AI_AGENT_SESSION_COOKIE', 'ai_agent_session_id');
+}
+// طول عمر کوکی session_id (یک هفته)
+if (!defined('AI_AGENT_SESSION_COOKIE_EXPIRE')) {
+    define('AI_AGENT_SESSION_COOKIE_EXPIRE', defined('WEEK_IN_SECONDS') ? WEEK_IN_SECONDS : 7 * DAY_IN_SECONDS);
+}
+
+/*
+تولید یک کلید رمزنگاری ۳۲ بایتی (256 بیت) ثابت و مخصوص همین سایت
+با استفاده از AUTH_KEY / AUTH_SALT وردپرس. اگر این ثابت‌ها به هر
+دلیلی تعریف نشده باشند (حالت غیرمعمول)، یک fallback امن بر پایه
+پسوند سایت استفاده می‌شود تا کد خطا ندهد.
+*/
+function ai_agent_get_encryption_key(){
+
+    if (defined('AUTH_KEY') && AUTH_KEY !== '') {
+        $secret = AUTH_KEY;
+    } elseif (defined('AUTH_SALT') && AUTH_SALT !== '') {
+        $secret = AUTH_SALT;
+    } else {
+        // fallback؛ در عمل تقریبا همیشه AUTH_KEY تعریف شده است
+        $secret = 'ai-agent-fallback-secret-' . (defined('DB_NAME') ? DB_NAME : 'default');
+    }
+
+    // خروجی همیشه دقیقا ۳۲ بایت برای AES-256
+    return hash('sha256', $secret, true);
+
+}
+
+/*
+رمزنگاری یک رشته و بازگشت مقدار base64 شامل IV + متن رمزشده
+*/
+function ai_agent_encrypt($plain_text){
+
+    if ($plain_text === '' || $plain_text === null) {
+        return '';
+    }
+
+    $key = ai_agent_get_encryption_key();
+    $iv_length = openssl_cipher_iv_length('aes-256-cbc');
+    $iv = openssl_random_pseudo_bytes($iv_length);
+
+    $encrypted = openssl_encrypt($plain_text, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+
+    if ($encrypted === false) {
+        return '';
+    }
+
+    // IV به همراه متن رمزشده ذخیره می‌شود تا هنگام رمزگشایی در دسترس باشد
+    return base64_encode($iv . $encrypted);
+
+}
+
+/*
+رمزگشایی مقدار ذخیره‌شده (خروجی تابع ai_agent_encrypt)
+*/
+function ai_agent_decrypt($encrypted_text){
+
+    if (empty($encrypted_text)) {
+        return '';
+    }
+
+    $key = ai_agent_get_encryption_key();
+    $data = base64_decode($encrypted_text, true);
+
+    if ($data === false) {
+        return '';
+    }
+
+    $iv_length = openssl_cipher_iv_length('aes-256-cbc');
+
+    if (strlen($data) <= $iv_length) {
+        return '';
+    }
+
+    $iv = substr($data, 0, $iv_length);
+    $encrypted = substr($data, $iv_length);
+
+    $decrypted = openssl_decrypt($encrypted, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+
+    return $decrypted !== false ? $decrypted : '';
+
+}
+
+/*
+============================================
+ذخیره‌ی امن API Key در wp_options (به‌صورت رمزشده)
+این تابع باید هنگام کلیک روی دکمه‌ی «ذخیره تنظیمات» فراخوانی شود.
+
+ورودی: کلید API خام (متن ساده که کاربر وارد کرده)
+خروجی: true در صورت موفقیت، false در صورت خطا
+============================================
+*/
+function ai_agent_save_api_key($api_key){
+
+    $api_key = is_string($api_key) ? trim($api_key) : '';
+
+    // اگر فیلد خالی فرستاده شده، کلید قبلی دست‌نخورده باقی می‌ماند
+    // (برای جلوگیری از پاک شدن ناخواسته‌ی کلید هنگام ذخیره‌ی بقیه‌ی تنظیمات)
+    if ($api_key === '') {
+        return true;
+    }
+
+    $encrypted = ai_agent_encrypt($api_key);
+
+    if ($encrypted === '') {
+        return false;
+    }
+
+    return update_option(AI_AGENT_API_KEY_OPTION, $encrypted, false);
+
+}
+
+/*
+============================================
+دریافت API Key به‌صورت رمزگشایی‌شده (متن خام) جهت استفاده
+در فراخوانی‌های API (مثلا در api.php)
+============================================
+*/
+function ai_agent_get_api_key(){
+
+    $encrypted = get_option(AI_AGENT_API_KEY_OPTION, '');
+
+    if (empty($encrypted)) {
+        return '';
+    }
+
+    return ai_agent_decrypt($encrypted);
+
+}
+
+/*
+============================================
+حذف کامل API Key ذخیره‌شده (در صورت نیاز، مثلا دکمه‌ی
+"پاک کردن کلید" در پنل تنظیمات)
+============================================
+*/
+function ai_agent_delete_api_key(){
+    return delete_option(AI_AGENT_API_KEY_OPTION);
+}
+
+/*
+============================================
+تولید UUID نسخه ۴ (RFC 4122)
+
+از این تابع برای تولید session-id و visitor_id استفاده می‌شود.
+خروجی در قالب استاندارد UUID است، مانند:
+    550e8400-e29b-41d4-a716-446655440000
+============================================
+*/
+function ai_agent_generate_uuid() {
+
+    // ۱۶ بایت تصادفی امن
+    $data = function_exists('random_bytes')
+        ? random_bytes(16)
+        : (function_exists('openssl_random_pseudo_bytes') ? openssl_random_pseudo_bytes(16) : wp_generate_password(16, false));
+
+    // تنظیم بیت‌های version (4) و variant (10xx) طبق RFC 4122
+    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
+    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant 10
+
+    // قالب‌بندی در قالب 8-4-4-4-12
+    return vsprintf(
+        '%s%s-%s-%s-%s-%s%s%s',
+        str_split(bin2hex($data), 4)
+    );
+}
+
+/*
+============================================
+دریافت یا تولید visitor_id و ذخیره‌ی آن در کوکی مرورگر
+
+این تابع در هر بار بارگذاری صفحه فراخوانی می‌شود (از طریق enqueue.php).
+اگر کوکی از قبل وجود داشته باشد، مقدار آن برمی‌گردد؛ در غیر این صورت
+یک UUID جدید تولید شده و در کوکی مرورگر کاربر با طول عمر یک سال
+ذخیره می‌شود.
+
+نکته: کوکی به‌صورت HttpOnly=false تنظیم می‌شود تا JavaScript بتواند
+مقدار آن را بخواند و در بدنه‌ی درخواست AJAX به سرور بفرستد.
+
+خروجی: UUID معتبر visitor_id
+============================================
+*/
+/*
+============================================
+خواندن session_id از کوکی مرورگر
+
+این تابع فقط مقدار کوکی را می‌خواند و برمی‌گرداند.
+session_id از پاسخ API دریافت و توسط ajax.php در کوکی ذخیره می‌شود.
+============================================
+*/
+function ai_agent_get_or_set_session_id() {
+
+    /*
+    این تابع اکنون فقط مقدار کوکی را می‌خواند.
+    session_id از پاسخ API دریافت و توسط ajax.php در کوکی ذخیره می‌شود.
+    */
+
+    if (isset($_COOKIE[AI_AGENT_SESSION_COOKIE])) {
+        $session_id = sanitize_text_field($_COOKIE[AI_AGENT_SESSION_COOKIE]);
+        if (!empty($session_id) && ai_agent_is_valid_uuid($session_id)) {
+            return $session_id;
+        }
+    }
+
+    return '';
+}
+
+/*
+============================================
+اعتبارسنجی ساده‌ی قالب UUID v4
+============================================
+*/
+function ai_agent_is_valid_uuid($uuid) {
+
+    if (!is_string($uuid) || empty($uuid)) {
+        return false;
+    }
+    return (bool) preg_match(
+        '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+        $uuid
+    );
+}
+
+
+/* ============================================================
+   ============================================================
+   توابع مدیریت آی‌دی‌های سینک‌شده (Synced Items)
+   ============================================================
+   ============================================================
+
+   این توابع برای پیگیری‌ی محتواهایی که قبلاً به سرور همگام‌سازی
+   (https://mhtrxz.ir/api/v1/sync/content) ارسال شده‌اند استفاده می‌شوند.
+
+   - جدول wp_ai_agent_synced_items شامل سه ستون اصلی است:
+       source_id     : آی‌دی یکتای محتوا در وردپرس (post_id یا term_id)
+       content_type  : نوع محتوا (post, page, product, product_category)
+       synced_at     : تاریخ و ساعت آخرین باری که این آیتم سینک شده
+
+   - تاریخ آخرین سینک کلی (last sync time) در wp_options با کلید
+     'ai_agent_last_sync_time' ذخیره می‌شود.
+
+   - در هر بار سینک، آی‌دی‌های فعلی محتوا با آی‌دی‌های ذخیره‌شده در جدول
+     مقایسه می‌شوند:
+       * آی‌دی‌های جدید → به /sync/content ارسال می‌شوند
+       * آی‌دی‌های حذف‌شده (در جدول هستند اما در وردپرس نیستند) → به
+         /sync/delete ارسال می‌شوند
+       * آی‌دی‌های موجود → فقط تاریخ synced_at آن‌ها به‌روزرسانی می‌شود
+============================================================ */
+
+
+/*
+============================================
+دریافت نقشه‌ی آی‌دی‌های سینک‌شده به تفکیک نوع محتوا
+
+خروجی: آرایه‌ای با کلیدهای نوع محتوا و مقدار آرایه‌ای از source_id ها
+    مثال:
+    array(
+        'post'            => array('1', '5', '12'),
+        'page'            => array('2', '7'),
+        'product'         => array('45', '46'),
+        'product_category'=> array('10', '11'),
+    )
+
+ورودی $content_types (اختیاری): اگر ارسال شود، فقط این نوع‌ها برگردانده می‌شوند
+============================================
+*/
+function ai_agent_get_synced_items_map($content_types = array()) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    // اگر جدول وجود نداشت (مثلا قبل از نصب کامل پلاگین)، خالی برمی‌گردد
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return array();
+    }
+
+    $sql = "SELECT source_id, content_type FROM {$table}";
+    $args = array();
+
+    if (!empty($content_types) && is_array($content_types)) {
+        $placeholders = implode(',', array_fill(0, count($content_types), '%s'));
+        $sql .= " WHERE content_type IN ({$placeholders})";
+        $args = array_values($content_types);
+    }
+
+    $rows = $wpdb->get_results($wpdb->prepare($sql, $args));
+
+    $map = array();
+    if (is_array($rows)) {
+        foreach ($rows as $row) {
+            $ct = $row->content_type;
+            if (!isset($map[$ct])) {
+                $map[$ct] = array();
+            }
+            $map[$ct][] = (string) $row->source_id;
+        }
+    }
+
+    return $map;
+}
+
+/*
+============================================
+دریافت لیست تمام آی‌دی‌های سینک‌شده (بدون تفکیک نوع)
+
+خروجی: آرایه‌ای از source_id ها به‌صورت رشته
+============================================
+*/
+function ai_agent_get_all_synced_source_ids() {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return array();
+    }
+
+    $rows = $wpdb->get_col("SELECT source_id FROM {$table}");
+
+    return is_array($rows) ? array_map('strval', $rows) : array();
+}
+
+/*
+============================================
+ثبت یا به‌روزرسانی یک آیتم سینک‌شده در جدول
+
+اگر آیتم از قبل وجود داشته باشد، فقط تاریخ synced_at به‌روزرسانی می‌شود
+(REPLACE INTO با UNIQUE KEY باعث این رفتار می‌شود).
+
+ورودی:
+    $source_id    : آی‌دی محتوا در وردپرس (post_id یا term_id)
+    $content_type : نوع محتوا (post, page, product, product_category)
+============================================
+*/
+function ai_agent_mark_item_synced($source_id, $content_type) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return false;
+    }
+
+    return $wpdb->replace(
+        $table,
+        array(
+            'source_id'    => (string) $source_id,
+            'content_type' => (string) $content_type,
+            'synced_at'    => current_time('mysql'),
+        ),
+        array('%s', '%s', '%s')
+    );
+}
+
+/*
+============================================
+ثبت دسته‌جمعی چند آیتم به‌عنوان سینک‌شده
+
+ورودی: آرایه‌ای از آرایه‌های داخلی با کلیدهای source_id و content_type
+    مثال:
+    array(
+        array('source_id' => '1', 'content_type' => 'post'),
+        array('source_id' => '2', 'content_type' => 'page'),
+    )
+============================================
+*/
+function ai_agent_mark_items_synced_batch($items) {
+
+    if (!is_array($items) || empty($items)) {
+        return 0;
+    }
+
+    $count = 0;
+    foreach ($items as $item) {
+        if (!isset($item['source_id'], $item['content_type'])) {
+            continue;
+        }
+        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'])) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+/*
+============================================
+حذف یک آیتم سینک‌شده از جدول
+
+این تابع زمانی استفاده می‌شود که محتوایی در وردپرس حذف شده و دیگر
+وجود ندارد؛ آی‌دی آن از جدول سینک‌ها پاک می‌شود تا در سینک بعدی
+دوباره به‌عنوان «حذف‌شده» شناسایی نشود.
+
+ورودی:
+    $source_id    : آی‌دی محتوای حذف‌شده
+    $content_type : نوع محتوا
+============================================
+*/
+function ai_agent_unmark_item_synced($source_id, $content_type) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return false;
+    }
+
+    return $wpdb->delete(
+        $table,
+        array(
+            'source_id'    => (string) $source_id,
+            'content_type' => (string) $content_type,
+        ),
+        array('%s', '%s')
+    );
+}
+
+/*
+============================================
+حذف دسته‌جمعی چند آیتم از جدول سینک‌ها
+
+ورودی: آرایه‌ای از آرایه‌های داخلی با کلیدهای source_id و content_type
+============================================
+*/
+function ai_agent_unmark_items_synced_batch($items) {
+
+    if (!is_array($items) || empty($items)) {
+        return 0;
+    }
+
+    $count = 0;
+    foreach ($items as $item) {
+        if (!isset($item['source_id'], $item['content_type'])) {
+            continue;
+        }
+        if (ai_agent_unmark_item_synced($item['source_id'], $item['content_type'])) {
+            $count++;
+        }
+    }
+
+    return $count;
+}
+
+/*
+============================================
+پاک کردن کامل جدول آی‌دی‌های سینک‌شده
+
+این تابع برای دکمه‌ی «سینک تمامی محتوا» استفاده می‌شود؛ قبل از
+درج مجدد تمام آی‌دی‌ها، جدول خالی می‌شود تا حالت افزایشی به حالت
+کامل تبدیل شود.
+============================================
+*/
+function ai_agent_clear_all_synced_items() {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return false;
+    }
+
+    return $wpdb->query("TRUNCATE TABLE {$table}");
+}
+
+/*
+============================================
+دریافت تاریخ و زمان آخرین سینک موفق
+
+این مقدار در wp_options با کلید 'ai_agent_last_sync_time' ذخیره می‌شود
+و در صفحه‌ی تنظیمات به کاربر نمایش داده می‌شود.
+
+خروجی: رشته‌ی تاریخ/زمان (فرمت mysql) یا رشته‌ی خالی اگر هنوز
+سینکی انجام نشده باشد.
+============================================
+*/
+function ai_agent_get_last_sync_time() {
+
+    $value = get_option('ai_agent_last_sync_time', '');
+
+    return $value ? (string) $value : '';
+}
+
+/*
+============================================
+به‌روزرسانی تاریخ و زمان آخرین سینک موفق
+
+این تابع در پایان هر سینک موفق (افزایشی یا کامل) فراخوانی می‌شود.
+
+ورودی: رشته‌ی تاریخ/زمان (اختیاری؛ اگر خالی باشد، زمان فعلی استفاده می‌شود)
+============================================
+*/
+function ai_agent_update_last_sync_time($time = '') {
+
+    if ($time === '') {
+        $time = current_time('mysql');
+    }
+
+    update_option('ai_agent_last_sync_time', (string) $time, false);
+
+    return $time;
+}
+
+/*
+============================================
+دریافت تاریخ و زمان آخرین سینک کامل (Sync All)
+
+این مقدار جداگانه از سینک افزایشی در wp_options با کلید
+'ai_agent_last_sync_all_time' ذخیره می‌شود تا کاربر ببیند کی آخرین بار
+«سینک تمامی محتوا» را زده است.
+============================================
+*/
+function ai_agent_get_last_sync_all_time() {
+
+    $value = get_option('ai_agent_last_sync_all_time', '');
+
+    return $value ? (string) $value : '';
+}
+
+/*
+============================================
+به‌روزرسانی تاریخ و زمان آخرین سینک کامل
+============================================
+*/
+function ai_agent_update_last_sync_all_time($time = '') {
+
+    if ($time === '') {
+        $time = current_time('mysql');
+    }
+
+    update_option('ai_agent_last_sync_all_time', (string) $time, false);
+
+    return $time;
+}
+
+

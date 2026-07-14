@@ -1,0 +1,491 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/*
+================================================================
+سیستم همگام‌سازی محتوا با سرور اختصاصی (https://mhtrxz.ir)
+
+دو اندپوینت اصلی:
+  ۱) POST /api/v1/sync/content
+     ارسال محتوای جدید (Posts / Pages / Products / Product Categories)
+     با هدر X-API-Key و بدنه‌ی:
+       { "items": [ { source_id, content_type, title, content, url, status } ] }
+
+  ۲) POST /api/v1/sync/delete
+     اطلاع‌دادن به سرور درباره‌ی محتوای حذف‌شده از وردپرس
+     با هدر X-API-Key و بدنه‌ی:
+       { "items": [ { source_id, content_type } ] }
+
+دو نوع سینک:
+  الف) سینک افزایشی (دکمه‌ی «همگام‌سازی اطلاعات (Sync Now)»):
+      فقط محتوای جدید (آی‌دی‌هایی که قبلاً سینک نشده‌اند) به /sync/content
+      ارسال می‌شود و محتوای حذف‌شده به /sync/delete کال زده می‌شود.
+
+  ب) سینک کامل (دکمه‌ی «سینک تمامی محتوا»):
+      بدون توجه به آی‌دی‌های قدیمی، تمام محتوای تیک‌خورده به /sync/content
+      ارسال می‌شود و جدول آی‌دی‌های سینک‌شده از نو پر می‌شود.
+
+جدول wp_ai_agent_synced_items برای پیگیری آی‌دی‌های سینک‌شده استفاده
+می‌شود (تعریف شده در db.php). تاریخ آخرین سینک در wp_options با کلید
+'ai_agent_last_sync_time' ذخیره و در پنل تنظیمات نمایش داده می‌شود.
+================================================================
+*/
+
+
+/*
+================================================================
+ثبت اکشن‌های AJAX
+================================================================
+*/
+
+// سینک افزایشی: فقط محتوای جدید ارسال و محتوای حذف‌شده گزارش می‌شود
+add_action('wp_ajax_ai_agent_sync_data', 'ai_agent_sync_data_handler');
+
+// سینک کامل: تمام محتوا از ابتدا ارسال می‌شود (بدون توجه به سینک قبلی)
+add_action('wp_ajax_ai_agent_sync_all_data', 'ai_agent_sync_all_data_handler');
+
+
+/*
+================================================================
+هندلر اصلی: سینک افزایشی (Sync Now)
+
+مراحل:
+  ۱) بررسی دسترسی کاربر و nonce
+  ۲) بررسی تنظیمات (sync_types) و API Key
+  ۳) جمع‌آوری تمام محتوای فعلی وردپرس (طبق تیک‌های کاربر)
+  ۴) دریافت نقشه‌ی آی‌دی‌های سینک‌شده از جدول synced_items
+  ۵) مقایسه‌ی محتوای فعلی با سینک‌شده‌ها:
+       * جدیدها → به /sync/content ارسال می‌شوند
+       * حذف‌شده‌ها → به /sync/delete ارسال می‌شوند
+       * موجودها → فقط تاریخ synced_at به‌روزرسانی می‌شود
+  ۶) به‌روزرسانی جدول synced_items و تاریخ آخرین سینک
+  ۷) بازگرداندن نتیجه‌ی دقیق به فرانت‌اند (تعداد جدید/حذف‌شده)
+================================================================
+*/
+function ai_agent_sync_data_handler() {
+
+    // ۱. بررسی دسترسی
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    // ۲. بررسی nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    // ۳. بررسی API Key
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        wp_send_json_error(array(
+            'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
+        ));
+    }
+
+    // ۴. بررسی انتخاب نوع‌های محتوا توسط کاربر
+    $settings = ai_agent_get_settings();
+    $sync_types = isset($settings['sync_types']) ? $settings['sync_types'] : array();
+
+    if (empty($sync_types)) {
+        wp_send_json_error(array(
+            'message' => 'لطفاً ابتدا حداقل یک منبع داده را تیک زده و ذخیره کنید.'
+        ));
+    }
+
+    // ۵. جمع‌آوری تمام محتوای فعلی مطابق با تیک‌های کاربر
+    $current_items = ai_agent_collect_sync_items($sync_types);
+
+    if (empty($current_items)) {
+        wp_send_json_error(array(
+            'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
+        ));
+    }
+
+    // ۶. دریافت نقشه‌ی آی‌دی‌های سینک‌شده از دیتابیس
+    $synced_map = ai_agent_get_synced_items_map();
+
+    // ۷. تفکیک محتوا به سه گروه: جدید، موجود، حذف‌شده
+    $new_items      = array();  // در وردپرس هست، اما در جدول سینک نیست
+    $existing_items = array();  // در هر دو هست (فقط تاریخ به‌روزرسانی می‌شود)
+    $deleted_items  = array();  // در جدول سینک هست، اما در وردپرس حذف شده
+
+    foreach ($current_items as $item) {
+        $sid = (string) $item['source_id'];
+        $ct  = (string) $item['content_type'];
+
+        if (isset($synced_map[$ct]) && in_array($sid, $synced_map[$ct], true)) {
+            $existing_items[] = $item;
+        } else {
+            $new_items[] = $item;
+        }
+    }
+
+    // یافتن آیتم‌های حذف‌شده: در synced_map هستند اما در current_items نیستند
+    $current_lookup = array();
+    foreach ($current_items as $item) {
+        $key = $item['content_type'] . '::' . $item['source_id'];
+        $current_lookup[$key] = true;
+    }
+
+    foreach ($synced_map as $ct => $sids) {
+        foreach ($sids as $sid) {
+            $key = $ct . '::' . $sid;
+            if (!isset($current_lookup[$key])) {
+                $deleted_items[] = array(
+                    'source_id'    => $sid,
+                    'content_type' => $ct,
+                );
+            }
+        }
+    }
+
+    // ۸. ارسال محتوای جدید به /sync/content
+    $new_sent_count = 0;
+    $content_error = '';
+
+    if (!empty($new_items)) {
+        $content_result = ai_agent_push_sync_content($new_items);
+
+        if ($content_result['status'] === 'success') {
+            // تمام آیتم‌ها با موفقیت ارسال شدند → همه را در جدول ثبت می‌کنیم
+            $new_sent_count = intval($content_result['sent_count']);
+            ai_agent_mark_items_synced_batch($new_items);
+        } elseif ($content_result['status'] === 'partial') {
+            // برخی دسته‌ها موفق بودند، برخی خطا داشتند
+            // برای اطمینان از ارسال مجدد آیتم‌های ناموفق در سینک بعدی،
+            // در این حالت هیچ آیتمی را در جدول ثبت نمی‌کنیم (محتاطانه).
+            // در سینک بعدی، آیتم‌های موفق نیز دوباره ارسال می‌شوند که
+            // جای نگرانی ندارد چون سرور آن‌ها را idempotent پردازش می‌کند.
+            $new_sent_count = intval($content_result['sent_count']);
+            $content_error = $content_result['message'];
+        } else {
+            $content_error = $content_result['message'];
+        }
+    }
+
+    // ۹. ارسال درخواست حذف برای محتوای حذف‌شده به /sync/delete
+    $deleted_sent_count = 0;
+    $delete_error = '';
+
+    if (!empty($deleted_items)) {
+        $delete_result = ai_agent_push_sync_delete($deleted_items);
+
+        if ($delete_result['status'] === 'success') {
+            // تمام درخواست‌های حذف موفق بودند → همه را از جدول پاک می‌کنیم
+            $deleted_sent_count = intval($delete_result['deleted_count']);
+            ai_agent_unmark_items_synced_batch($deleted_items);
+        } elseif ($delete_result['status'] === 'partial') {
+            // برخی دسته‌های حذف موفق بودند، برخی خطا داشتند
+            // برای اطمینان از ارسال مجدد درخواست‌های ناموفق در سینک بعدی،
+            // در این حالت هیچ آیتمی را از جدول پاک نمی‌کنیم (محتاطانه).
+            $deleted_sent_count = intval($delete_result['deleted_count']);
+            $delete_error = $delete_result['message'];
+        } else {
+            $delete_error = $delete_result['message'];
+        }
+    }
+
+    // ۱۰. به‌روزرسانی تاریخ synced_at برای آیتم‌های موجود (تغییری در سرور ندهیم)
+    foreach ($existing_items as $item) {
+        ai_agent_mark_item_synced($item['source_id'], $item['content_type']);
+    }
+
+    // ۱۱. به‌روزرسانی تاریخ آخرین سینک
+    $sync_time = ai_agent_update_last_sync_time();
+
+    // ۱۲. ساخت پیام خلاصه برای نمایش به کاربر
+    $summary_parts = array();
+
+    if ($new_sent_count > 0) {
+        $summary_parts[] = $new_sent_count . ' مورد جدید اضافه شد';
+    }
+
+    if ($deleted_sent_count > 0) {
+        $summary_parts[] = $deleted_sent_count . ' مورد حذف شد';
+    }
+
+    $total_current = count($current_items);
+
+    if (empty($summary_parts)) {
+        if ($content_error !== '' || $delete_error !== '') {
+            $errors = array_filter(array($content_error, $delete_error));
+            wp_send_json_error(array(
+                'message'         => implode(' | ', $errors),
+                'new_count'       => 0,
+                'deleted_count'   => 0,
+                'total_count'     => $total_current,
+                'last_sync_time'  => $sync_time,
+            ));
+        }
+
+        $message = 'هیچ محتوای جدیدی برای ارسال یافت نشد. تمام ' . $total_current . ' مورد فعلی قبلاً سینک شده‌اند و تاریخ آن‌ها به‌روزرسانی شد.';
+    } else {
+        $message = implode(' و ', $summary_parts) . '. (مجموع محتوای فعلی: ' . $total_current . ' مورد)';
+
+        if ($content_error !== '' || $delete_error !== '') {
+            $errors = array_filter(array($content_error, $delete_error));
+            $message .= ' — توجه: ' . implode(' | ', $errors);
+        }
+    }
+
+    wp_send_json_success(array(
+        'message'        => $message,
+        'new_count'      => $new_sent_count,
+        'deleted_count'  => $deleted_sent_count,
+        'total_count'    => $total_current,
+        'last_sync_time' => $sync_time,
+        'sync_type'      => 'incremental',
+    ));
+}
+
+
+/*
+================================================================
+هندلر سینک کامل (Sync All)
+
+این هندلر بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا
+به /sync/content ارسال می‌کند. جدول synced_items پاک شده و دوباره با
+تمام آی‌دی‌های فعلی پر می‌شود.
+
+نکته: این حالت برای زمانی است که کاربر می‌خواهد مطمئن شود تمام محتوا
+دوباره در سرور همگام‌سازی ثبت شده است (مثلاً بعد از تغییر ساختار
+محتوا یا مشکلات قبلی).
+================================================================
+*/
+function ai_agent_sync_all_data_handler() {
+
+    // ۱. بررسی دسترسی
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    // ۲. بررسی nonce (از یک اکشن مجزا استفاده می‌کنیم تا جدا از سینک معمولی باشد)
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_all_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    // ۳. بررسی API Key
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        wp_send_json_error(array(
+            'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
+        ));
+    }
+
+    // ۴. بررسی انتخاب نوع‌های محتوا
+    $settings = ai_agent_get_settings();
+    $sync_types = isset($settings['sync_types']) ? $settings['sync_types'] : array();
+
+    if (empty($sync_types)) {
+        wp_send_json_error(array(
+            'message' => 'لطفاً ابتدا حداقل یک منبع داده را تیک زده و ذخیره کنید.'
+        ));
+    }
+
+    // ۵. جمع‌آوری تمام محتوای فعلی
+    $current_items = ai_agent_collect_sync_items($sync_types);
+
+    if (empty($current_items)) {
+        wp_send_json_error(array(
+            'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
+        ));
+    }
+
+    // ۶. ارسال تمام محتوا به /sync/content (بدون مقایسه با سینک قبلی)
+    $content_result = ai_agent_push_sync_content($current_items);
+
+    if ($content_result['status'] === 'error') {
+        wp_send_json_error(array(
+            'message'        => $content_result['message'],
+            'new_count'      => 0,
+            'deleted_count'  => 0,
+            'total_count'    => count($current_items),
+            'last_sync_time' => ai_agent_get_last_sync_all_time(),
+        ));
+    }
+
+    $sent_count = intval($content_result['sent_count']);
+
+    // ۷. پاک کردن جدول synced_items و پر کردن مجدد با تمام آیتم‌های فعلی
+    //    فقط در صورت موفقیت کامل؛ در حالت partial، جدول دست‌نخورده می‌ماند
+    //    تا کاربر در سینک بعدی افزایشی، آیتم‌های ناموفق را دوباره ارسال کند.
+    if ($content_result['status'] === 'success') {
+        ai_agent_clear_all_synced_items();
+        ai_agent_mark_items_synced_batch($current_items);
+    }
+    // در حالت partial، جدول را پاک نمی‌کنیم تا آیتم‌های قبلی حفظ شوند
+    // و در سینک بعدی افزایشی، فقط آیتم‌های جدید ارسال شوند.
+
+    // ۸. به‌روزرسانی تاریخ آخرین سینک کامل
+    $sync_time = ai_agent_update_last_sync_all_time();
+    ai_agent_update_last_sync_time($sync_time); // سینک کلی را هم به‌روز می‌کنیم
+
+    // ۹. ساخت پیام خلاصه
+    $total = count($current_items);
+
+    if ($content_result['status'] === 'partial') {
+        $message = $sent_count . ' از ' . $total . ' مورد با موفقیت ارسال شد. (' . $content_result['message'] . ')';
+    } else {
+        $message = 'سینک کامل با موفقیت انجام شد. مجموع ' . $sent_count . ' مورد به سرور ارسال شد.';
+    }
+
+    wp_send_json_success(array(
+        'message'        => $message,
+        'new_count'      => $sent_count,
+        'deleted_count'  => 0,
+        'total_count'    => $total,
+        'last_sync_time' => $sync_time,
+        'sync_type'      => 'full',
+    ));
+}
+
+
+/*
+================================================================
+جمع‌آوری تمام محتوای فعلی وردپرس مطابق با تیک‌های کاربر
+
+این تابع مرکزی است که هم در سینک افزایشی و هم در سینک کامل استفاده
+می‌شود. خروجی آن آرایه‌ای از آیتم‌ها با ساختار دقیقاً مطابق بدنه‌ی
+درخواست /sync/content است:
+    array(
+        array(
+            'source_id'    => '123',
+            'content_type' => 'post',            // post | page | product | product_category
+            'title'        => 'عنوان محتوا',
+            'content'      => 'متن کامل محتوا',
+            'url'          => 'https://example.com/...',
+            'status'       => 'publish',         // وضعیت انتشار
+        ),
+        ...
+    )
+
+ورودی $sync_types: آرایه‌ای از کلیدهای داخلی افزونه
+    (posts, pages, products, product_cats)
+================================================================
+*/
+function ai_agent_collect_sync_items($sync_types) {
+
+    if (!is_array($sync_types) || empty($sync_types)) {
+        return array();
+    }
+
+    $items = array();
+    $post_types_to_fetch = array();
+
+    // نگاشت post_type وردپرس به content_type مورد انتظار API
+    $post_type_to_content_type = array(
+        'post'    => 'post',
+        'page'    => 'page',
+        'product' => 'product',
+    );
+
+    // ۱. تعیین post_type هایی که باید کوئری زده شوند
+    if (in_array('posts', $sync_types, true)) {
+        $post_types_to_fetch[] = 'post';
+    }
+    if (in_array('pages', $sync_types, true)) {
+        $post_types_to_fetch[] = 'page';
+    }
+    if (in_array('products', $sync_types, true) && class_exists('WooCommerce')) {
+        $post_types_to_fetch[] = 'product';
+    }
+
+    // ۲. کوئری و استخراج پست‌ها
+    if (!empty($post_types_to_fetch)) {
+
+        $args = array(
+            'post_type'      => $post_types_to_fetch,
+            'post_status'    => 'publish', // فقط محتوای منتشرشده (سرور فقط این وضعیت را می‌پذیرد)
+            'posts_per_page' => -1,    // استخراج تمام آیتم‌ها
+            'fields'         => 'ids', // فقط آی‌دی می‌خواهیم تا حافظه کمتر مصرف شود
+        );
+
+        $post_ids = get_posts($args);
+
+        if (!empty($post_ids)) {
+            foreach ($post_ids as $post_id) {
+
+                $post = get_post($post_id);
+                if (!$post) {
+                    continue;
+                }
+
+                $post_type = $post->post_type;
+                $content_type = isset($post_type_to_content_type[$post_type])
+                    ? $post_type_to_content_type[$post_type]
+                    : $post_type;
+
+                // محتوا را بدون تگ‌های HTML می‌گیریم تا تمیزتر برای سرور باشد
+                $content = wp_strip_all_tags($post->post_content);
+                $content = trim($content);
+
+                $title = get_the_title($post);
+                $title = $title !== '' ? trim($title) : '';
+                $permalink = get_permalink($post);
+                $permalink = is_string($permalink) ? trim($permalink) : '';
+
+                // رد کردن آیتم‌هایی که source_id یا title یا content خالی دارند
+                // تا کل بچ خطای 422 نخورد
+                if (empty($post->ID) || $title === '' || $content === '') {
+                    continue;
+                }
+
+                $items[] = array(
+                    'source_id'    => (string) $post->ID,
+                    'content_type' => (string) $content_type,
+                    'title'        => $title,
+                    'content'      => $content,
+                    'url'          => $permalink !== '' ? $permalink : home_url('/'),
+                    'status'       => (string) $post->post_status,
+                );
+            }
+        }
+    }
+
+    // ۳. استخراج دسته‌بندی محصولات (Product Categories)
+    if (in_array('product_cats', $sync_types, true) && class_exists('WooCommerce')) {
+
+        $terms = get_terms(array(
+            'taxonomy'   => 'product_cat',
+            'hide_empty' => false,
+        ));
+
+        if (!is_wp_error($terms) && !empty($terms)) {
+            foreach ($terms as $term) {
+
+                $description = $term->description ? $term->description : 'بدون توضیح';
+                $term_link   = get_term_link($term);
+                $term_link_str = (is_string($term_link) && !is_wp_error($term_link)) ? trim($term_link) : '';
+
+                $term_name = $term->name ? trim($term->name) : '';
+                $desc_trim = trim($description);
+
+                // رد کردن دسته‌هایی بدون نام یا آی‌دی (تا 422 نخوریم)
+                if (empty($term->term_id) || $term_name === '') {
+                    continue;
+                }
+
+                $items[] = array(
+                    'source_id'    => (string) $term->term_id,
+                    'content_type' => 'product_category',
+                    'title'        => $term_name,
+                    'content'      => $desc_trim !== '' ? $desc_trim : 'بدون محتوا',
+                    'url'          => $term_link_str !== '' ? $term_link_str : home_url('/'),
+                    'status'       => 'publish',
+                );
+            }
+        }
+    }
+
+    return $items;
+}
