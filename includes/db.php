@@ -50,7 +50,7 @@ function ai_agent_install(){
     ) {$charset_collate};";
 
     dbDelta($sql1);
-    dbDelta($sql2);
+    dbDelta($sql3);
 
 
 }
