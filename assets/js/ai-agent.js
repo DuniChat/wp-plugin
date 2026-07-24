@@ -598,6 +598,15 @@ jQuery(function ($) {
         } else {
             // پیام‌های تاریخچه فاقد chat_id محلی هستند، پس دکمه‌ی فیدبک نمایش داده نمی‌شود
             addMessage('ai', escapeHtml(msg.content));
+
+            // اگر پیام دارای references بود، دقیقاً مثل حالت چت زنده
+            // باکس رفرنس‌ها را زیر همان حباب پیام اضافه می‌کنیم
+            if (Array.isArray(msg.references) && msg.references.length > 0) {
+                const $refBox = buildReferencesBox(msg.references);
+                if ($refBox) {
+                    messages.children().last().find('.ai-message-body').append($refBox);
+                }
+            }
         }
     }
 
