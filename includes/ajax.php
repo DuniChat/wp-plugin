@@ -248,11 +248,11 @@ function ai_agent_get_chat_sessions_handler() {
         wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
     }
 
-    $page      = isset($_GET['page']) ? intval($_GET['page']) : 1;
-    $page_size = isset($_GET['page_size']) ? intval($_GET['page_size']) : 10;
-    // status_filter هرگز ارسال نمی‌شود (طبق درخواست کاربر)
+    $page          = isset($_GET['page']) ? intval($_GET['page']) : 1;
+    $page_size     = isset($_GET['page_size']) ? intval($_GET['page_size']) : 10;
+    $status_filter = isset($_GET['status_filter']) ? sanitize_text_field($_GET['status_filter']) : '';
 
-    $result = ai_agent_fetch_chat_sessions($page, $page_size);
+    $result = ai_agent_fetch_chat_sessions($page, $page_size, $status_filter);
 
     if ($result['status'] === 'success') {
         wp_send_json_success($result);

@@ -402,6 +402,7 @@
             total: 0,
             hasNext: false,
             loading: false,
+            statusFilter: '',      // فیلتر وضعیت فعلی ('' یعنی همه)
             openSessionId: null,   // شناسه‌ی جلسه‌ای که آکاردئونش باز است
             msgPage: 1,
             msgPageSize: 10,
@@ -457,6 +458,19 @@
                     }
                 });
 
+                // دکمه‌های شناور فیلتر وضعیت
+                $('#ai-agent-status-filters').on('click', '.ai-agent-filter-btn', function() {
+                    var $btn = $(this);
+                    if ($btn.hasClass('is-active')) return;
+
+                    $('#ai-agent-status-filters .ai-agent-filter-btn').removeClass('is-active');
+                    $btn.addClass('is-active');
+
+                    self.statusFilter = $btn.data('status') || '';
+                    self.currentPage = 1;
+                    self.loadSessions();
+                });
+
                 // بارگذاری اولیه
                 self.loadSessions();
             },
@@ -502,7 +516,8 @@
                         action: 'ai_agent_get_chat_sessions',
                         nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
                         page: self.currentPage,
-                        page_size: self.pageSize
+                        page_size: self.pageSize,
+                        status_filter: self.statusFilter
                     },
                     success: function(response) {
                         self.loading = false;

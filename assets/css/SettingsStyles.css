@@ -152,6 +152,57 @@
    آکاردئون تاریخچه جلسات چت
    ===================================================================== */
 
+/* ----- دکمه‌های شناور فیلتر وضعیت جلسات چت ----- */
+.ai-agent-status-filters {
+    display: flex;
+    flex-direction: row-reverse;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    margin-bottom: 16px;
+    background: #1f2430;
+    border-radius: 999px;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.ai-agent-filter-btn {
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+    background: transparent;
+    color: #cbd5e1;
+    white-space: nowrap;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.ai-agent-filter-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.ai-agent-filter-btn.is-active {
+    background: #F4865B;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(244, 134, 91, 0.4);
+}
+
+@media (max-width: 782px) {
+    .ai-agent-status-filters {
+        width: 100%;
+        border-radius: 14px;
+        justify-content: flex-start;
+    }
+    .ai-agent-filter-btn {
+        padding: 7px 12px;
+        font-size: 12px;
+    }
+}
+
 /* ----- لیست جلسات ----- */
 .ai-agent-sessions-list {
     border: 1px solid #dcdcde;

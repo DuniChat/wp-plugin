@@ -534,6 +534,15 @@ function ai_agent_settings_page(){
             <h3>تاریخچه جلسات چت</h3>
             <p class="description" style="margin-bottom:12px;">لیست تمام جلسات چت ثبت‌شده در سرور. روی هر شناسه کلیک کنید تا پیام‌های آن جلسه نمایش داده شود.</p>
 
+            <!-- دکمه‌های شناور فیلتر وضعیت جلسات -->
+            <div class="ai-agent-status-filters" id="ai-agent-status-filters">
+                <button type="button" class="ai-agent-filter-btn is-active" data-status="">همه</button>
+                <button type="button" class="ai-agent-filter-btn" data-status="closed">مکالمات بسته‌شده</button>
+                <button type="button" class="ai-agent-filter-btn" data-status="human">پشتیبان</button>
+                <button type="button" class="ai-agent-filter-btn" data-status="pending_human">در انتظار پشتیبان</button>
+                <button type="button" class="ai-agent-filter-btn" data-status="bot">ربات</button>
+            </div>
+
             <!-- نوار ابزار: صفحه‌بندی و تعداد نمایش -->
             <div class="ai-agent-sessions-toolbar" style="margin-bottom:14px;">
                 <div class="ai-agent-sessions-page-size" style="display:inline-block;vertical-align:middle;">
