@@ -1,0 +1,192 @@
+/*
+============================================
+استایل پنل تنظیمات افزونه هم‌گفتار (AI Agent)
+این فایل شامل تمام استایل‌هایی است که قبلاً به‌صورت inline (style="...")
+مستقیم داخل HTML صفحه‌ی تنظیمات (settings.php) نوشته شده بودند و بدون
+هیچ تغییری در ظاهر یا عملکرد، فقط به این فایل مجزا منتقل شده‌اند تا
+با ساختار استاندارد پلاگین‌های وردپرس هماهنگ باشند.
+============================================
+*/
+
+/* ----- نوتیفیکیشن‌های نتیجه‌ی همگام‌سازی (بالای تب تنظیمات) ----- */
+.ai-agent-notice-mb {
+    margin: 10px 0;
+}
+
+/* ----- فاصله‌ی زیر تب‌های ناوبری ----- */
+.ai-agent-tabs-wrap {
+    margin-bottom: 20px;
+}
+
+/* ----- دکمه‌ی نمایش/مخفی کردن API Key ----- */
+.ai-agent-toggle-key-btn {
+    margin-right: 6px;
+}
+
+/* ----- جستجوی مدل هوش مصنوعی ----- */
+.ai-agent-model-search-wrap {
+    position: relative;
+    max-width: 360px;
+}
+
+.ai-agent-models-list {
+    border: 1px solid #dcdcde;
+    max-width: 360px;
+    margin-top: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    display: none;
+}
+
+/* ----- کلاس عمومی مخفی‌سازی (state اولیه، با JS toggle می‌شود) ----- */
+.ai-agent-hidden {
+    display: none;
+}
+
+/* ----- فاصله‌ی بالای عمومی ۶ پیکسل ----- */
+.ai-agent-mt6 {
+    margin-top: 6px;
+}
+
+/* ----- فاصله‌ی بالای عمومی ۴ پیکسل ----- */
+.ai-agent-mt4 {
+    margin-top: 4px;
+}
+
+/* ----- فاصله‌ی بالای عمومی ۵ پیکسل ----- */
+.ai-agent-mt5 {
+    margin-top: 5px;
+}
+
+/* ----- خط جداکننده‌ی بالای سطر «منابع داده جهت همگام‌سازی» ----- */
+.ai-agent-section-divider {
+    border-top: 1px solid #ccc;
+}
+
+/* ----- لیبل چک‌باکس‌های منابع سینک ----- */
+.ai-agent-checkbox-label {
+    display: block;
+    margin-bottom: 6px;
+}
+
+/* ----- لیست وضعیت‌های مجاز دریافتی از سرور ----- */
+.ai-agent-status-list {
+    margin-top: 4px;
+    padding-right: 20px;
+}
+
+/* ----- یادداشت فیلدهای فقط‌خواندنی (از سرور) ----- */
+.ai-agent-readonly-note {
+    margin-top: 6px;
+    color: #666;
+}
+
+/* ----- دکمه‌های عملیاتی رنگی (بارگذاری/استعلام/سینک) ----- */
+.ai-agent-action-btn {
+    font-weight: bold;
+}
+.ai-agent-action-btn.is-green {
+    border-color: #16a34a;
+    color: #16a34a;
+}
+.ai-agent-action-btn.is-purple {
+    border-color: #7c3aed;
+    color: #7c3aed;
+}
+.ai-agent-action-btn.is-blue {
+    border-color: #2563eb;
+    color: #2563eb;
+}
+.ai-agent-action-btn.is-red {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+/* ----- متن وضعیت کنار دکمه‌های عملیاتی ----- */
+.ai-agent-status-text {
+    margin-right: 12px;
+    font-weight: bold;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* ----- یادداشت تاریخ آخرین سینک ----- */
+.ai-agent-sync-time-note {
+    font-size: 13px;
+    margin-top: 0;
+}
+.ai-agent-sync-time-note-sm {
+    font-size: 13px;
+}
+
+/* ----- محفظه‌ی نمودار وضعیت ارسال‌ها ----- */
+.ai-agent-chart-wrap {
+    max-width: 420px;
+    margin-top: 14px;
+}
+
+/* ----- فاصله‌ی پایین عمومی ۱۰ پیکسل ----- */
+.ai-agent-mb10 {
+    margin-bottom: 10px;
+}
+
+/* ----- بلوک «سینک تمامی محتوا» ----- */
+.ai-agent-sync-all-wrap {
+    margin-bottom: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #dcdcde;
+}
+
+/* ----- عرض ستون‌های جداول تاریخچه و پشتیبانی ----- */
+.ai-agent-col-8  { width: 8%; }
+.ai-agent-col-10 { width: 10%; }
+.ai-agent-col-17 { width: 17%; }
+.ai-agent-col-25 { width: 25%; }
+.ai-agent-col-35 { width: 35%; }
+.ai-agent-col-40 { width: 40%; }
+
+/* ----- نمایش بازخورد لایک/دیسلایک در تب تاریخچه ----- */
+.ai-agent-feedback-like {
+    color: green;
+    font-weight: bold;
+}
+.ai-agent-feedback-dislike {
+    color: red;
+    font-weight: bold;
+}
+
+/* ----- متن خاکستری برای موارد «ثبت نشده» / «هنوز سینکی انجام نشده» ----- */
+.ai-agent-muted-placeholder {
+    color: #888;
+}
+
+/* ----- متن کم‌رنگ (سشن/تاریخ در تب پشتیبانی) ----- */
+.ai-agent-muted-small {
+    color: #666;
+}
+
+/* ----- متن «بدون پاسخ» در تب پشتیبانی ----- */
+.ai-agent-no-reply {
+    color: #cc0000;
+}
+
+/* ----- textarea پاسخ سریع ادمین ----- */
+.ai-agent-reply-textarea {
+    width: 100%;
+    height: 60px;
+}
+
+/* ----- بج‌های وضعیت تیکت پشتیبانی ----- */
+.ai-agent-badge-pending {
+    background: #ffcccb;
+    padding: 3px 8px;
+    border-radius: 4px;
+    color: #cc0000;
+}
+.ai-agent-badge-answered {
+    background: #d4edda;
+    padding: 3px 8px;
+    border-radius: 4px;
+    color: #155724;
+}
