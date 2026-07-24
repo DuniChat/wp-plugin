@@ -583,7 +583,7 @@
                             case 'bot':
                                 $statusBadge.css({background:'#dbeafe', color:'#1e40af'});
                                 break;
-                            case 'support':
+                            case 'human':
                                 $statusBadge.css({background:'#d4edda', color:'#155724'});
                                 break;
                             case 'closed':
@@ -615,7 +615,7 @@
                                 $arrow.html('&#9660;');
                                 $item.addClass('ai-agent-session-open');
                                 self.openSessionId = item.id;
-                                self.loadMessages(item.id, $body);
+                                self.loadMessages(item.id, $body, item.status);
                             }
                         });
 
@@ -625,7 +625,7 @@
                 }
             },
 
-            loadMessages: function(sessionId, $container) {
+            loadMessages: function(sessionId, $container, sessionStatus) {
                 var self = this;
                 if (self.msgLoading) return;
                 self.msgLoading = true;
@@ -649,7 +649,7 @@
                             var d = response.data;
                             self.msgTotal = d.total || 0;
                             self.msgHasNext = d.has_next || false;
-                            self.renderMessages($container, d.items || [], sessionId);
+                            self.renderMessages($container, d.items || [], sessionId, sessionStatus);
                         } else {
                             var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت پیام‌ها.';
                             $container.html('<div style="padding:12px;color:#b91c1c;">' + msg + '</div>');
@@ -662,12 +662,15 @@
                 });
             },
 
-            renderMessages: function($container, messages, sessionId) {
+            renderMessages: function($container, messages, sessionId, sessionStatus) {
                 var self = this;
                 $container.empty();
 
                 if (!messages || messages.length === 0) {
                     $container.html('<div style="padding:12px;text-align:center;color:#888;">پیامی یافت نشد.</div>');
+                    if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
+                        $container.append(self.buildReplyBox(sessionId));
+                    }
                     return;
                 }
 
@@ -730,6 +733,153 @@
                 var $totalInfo = $('<div class="ai-agent-msg-total" style="margin-top:6px;text-align:center;"></div>');
                 $totalInfo.text(self.msgTotal + ' پیام');
                 $container.append($totalInfo);
+
+                // باکس پاسخ پشتیبان + دکمه‌ی پایان چت
+                // فقط برای جلسات «در انتظار پشتیبان» یا «پشتیبان» نمایش داده می‌شود
+                if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
+                    $container.append(self.buildReplyBox(sessionId));
+                }
+            },
+
+            /*
+            ============================================
+            ساخت باکس پاسخ پشتیبان: یک تکست‌باکس + دکمه‌ی «ارسال پاسخ»
+            + دکمه‌ی «پایان چت». این باکس در انتهای پیام‌های هر جلسه‌ی
+            «در انتظار پشتیبان» یا «پشتیبان» نمایش داده می‌شود.
+
+            ارسال پاسخ:
+                POST /api/v1/chat/sessions/{session_id}/reply
+                هدر: X-API-Key, session-id
+                بدنه: { "message": "..." }
+
+            پایان چت:
+                POST /api/v1/chat/sessions/{session_id}/close
+                هدر: X-API-Key, session-id
+                بدون بدنه
+            ============================================
+            */
+            buildReplyBox: function(sessionId) {
+                var self = this;
+                var nonce = $('#ai_agent_chat_sessions_nonce_field').val();
+
+                var $wrap = $('<div class="ai-agent-session-reply-box"></div>');
+                var $textarea = $('<textarea class="ai-agent-session-reply-input" placeholder="پاسخ خود را برای کاربر بنویسید..."></textarea>');
+                var $actionsRow = $('<div class="ai-agent-session-reply-actions"></div>');
+                var $sendBtn = $('<button type="button" class="button button-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
+                var $closeBtn = $('<button type="button" class="button button-secondary ai-agent-session-close-btn">پایان چت</button>');
+                var $statusSpan = $('<span class="ai-agent-session-reply-status"></span>');
+
+                $actionsRow.append($sendBtn).append($closeBtn).append($statusSpan);
+                $wrap.append($textarea).append($actionsRow);
+
+                function sendReply() {
+                    var text = $textarea.val().trim();
+                    if (!text) {
+                        $textarea.trigger('focus');
+                        return;
+                    }
+
+                    $sendBtn.prop('disabled', true).text('در حال ارسال...');
+                    $statusSpan.css('color', '#666').text('');
+
+                    $.ajax({
+                        url: ajaxurl,
+                        method: 'POST',
+                        data: {
+                            action: 'ai_agent_session_reply',
+                            nonce: nonce,
+                            session_id: sessionId,
+                            message: text
+                        },
+                        success: function(response) {
+                            $sendBtn.prop('disabled', false).text('ارسال پاسخ');
+                            if (response.success) {
+                                // افزودن پیام پشتیبان به انتهای همان لیست پیام‌ها، بدون نیاز به رفرش
+                                var $chatArea = $wrap.closest('.ai-agent-session-body').find('.ai-agent-chat-messages');
+                                var now = new Date();
+                                var timeStr = String(now.getHours()).padStart(2, '0') + ':' +
+                                              String(now.getMinutes()).padStart(2, '0') + ':' +
+                                              String(now.getSeconds()).padStart(2, '0');
+
+                                var $bubble = $('<div class="ai-agent-msg-bubble ai-agent-msg-support"></div>');
+                                var $header = $('<div class="ai-agent-msg-header"></div>');
+                                $header.append($('<span class="ai-agent-msg-role"></span>').text('پشتیبان'));
+                                $header.append($('<span class="ai-agent-msg-time"></span>').text(timeStr));
+                                var $content = $('<div class="ai-agent-msg-content"></div>').text(text);
+                                $bubble.append($header).append($content);
+
+                                if ($chatArea.length) {
+                                    $chatArea.append($bubble);
+                                    $chatArea.scrollTop($chatArea[0].scrollHeight);
+                                }
+
+                                $textarea.val('');
+                                $statusSpan.css('color', 'green').text('پاسخ با موفقیت ارسال شد.');
+                            } else {
+                                var msg = (response.data && response.data.message) ? response.data.message : 'خطا در ارسال پاسخ.';
+                                $statusSpan.css('color', '#b91c1c').text(msg);
+                            }
+                        },
+                        error: function() {
+                            $sendBtn.prop('disabled', false).text('ارسال پاسخ');
+                            $statusSpan.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با سرور.');
+                        }
+                    });
+                }
+
+                $sendBtn.on('click', sendReply);
+
+                // ارسال با کلید Enter (بدون Shift) — مشابه ویجت چت اصلی
+                $textarea.on('keydown', function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendReply();
+                    }
+                });
+
+                $closeBtn.on('click', function() {
+                    if (!confirm('آیا از پایان دادن به این چت مطمئن هستید؟ این عملیات قابل بازگشت نیست.')) {
+                        return;
+                    }
+
+                    $closeBtn.prop('disabled', true).text('در حال بستن...');
+                    $sendBtn.prop('disabled', true);
+                    $statusSpan.css('color', '#666').text('');
+
+                    $.ajax({
+                        url: ajaxurl,
+                        method: 'POST',
+                        data: {
+                            action: 'ai_agent_session_close',
+                            nonce: nonce,
+                            session_id: sessionId
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                $statusSpan.css('color', 'green').text('چت با موفقیت بسته شد.');
+                                $textarea.prop('disabled', true);
+                                $closeBtn.text('چت بسته شد');
+                                $sendBtn.prop('disabled', true);
+
+                                // به‌روزرسانی بج وضعیت در هدر آکاردئون بدون نیاز به رفرش کل لیست
+                                var $badge = $wrap.closest('.ai-agent-session-item').find('.ai-agent-session-status-badge');
+                                $badge.text(self.getStatusLabel('closed')).css({background:'#f3f4f6', color:'#6b7280'});
+                            } else {
+                                $closeBtn.prop('disabled', false).text('پایان چت');
+                                $sendBtn.prop('disabled', false);
+                                var msg = (response.data && response.data.message) ? response.data.message : 'خطا در بستن چت.';
+                                $statusSpan.css('color', '#b91c1c').text(msg);
+                            }
+                        },
+                        error: function() {
+                            $closeBtn.prop('disabled', false).text('پایان چت');
+                            $sendBtn.prop('disabled', false);
+                            $statusSpan.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با سرور.');
+                        }
+                    });
+                });
+
+                return $wrap;
             },
 
             loadMoreMessages: function(sessionId, $container) {
@@ -826,7 +976,7 @@
                     case 'pending_human': return 'در انتظار پشتیبان';
                     case 'bot': return 'ربات';
                     case 'closed': return 'بسته‌شده';
-                    case 'support': return 'پشتیبانی';
+                    case 'human': return 'پشتیبان';
                     default: return status || 'نامشخص';
                 }
             },

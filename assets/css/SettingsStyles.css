@@ -422,6 +422,67 @@
     text-align: center;
 }
 
+/* =====================================================================
+   باکس پاسخ پشتیبان (تکست‌باکس + دکمه‌ی ارسال + دکمه‌ی پایان چت)
+   فقط برای جلسات «در انتظار پشتیبان» و «پشتیبان» نمایش داده می‌شود
+   ===================================================================== */
+.ai-agent-session-reply-box {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed #dcdcde;
+}
+
+.ai-agent-session-reply-input {
+    width: 100%;
+    min-height: 70px;
+    max-height: 160px;
+    resize: vertical;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    direction: rtl;
+    text-align: right;
+    outline: none;
+}
+
+.ai-agent-session-reply-input:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.ai-agent-session-reply-input:disabled {
+    background: #f0f0f1;
+    color: #888;
+}
+
+.ai-agent-session-reply-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.ai-agent-session-send-btn {
+    font-weight: 600;
+}
+
+.ai-agent-session-close-btn {
+    border-color: #dc2626 !important;
+    color: #dc2626 !important;
+}
+
+.ai-agent-session-close-btn:hover {
+    background: #fef2f2 !important;
+}
+
+.ai-agent-session-reply-status {
+    font-size: 12px;
+    font-weight: 600;
+}
+
 /* ----- ریسپانسیو ----- */
 @media (max-width: 782px) {
     .ai-agent-session-header {

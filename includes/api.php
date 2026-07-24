@@ -1442,3 +1442,146 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
         'has_next' => false,
     );
 }
+
+/*
+============================================
+ارسال پاسخ دستی پشتیبان انسانی به یک جلسه‌ی چت
+اندپوینت: POST https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/reply
+
+این تابع زمانی استفاده می‌شود که پشتیبان از داخل پیشخوان وردپرس
+(تب تاریخچه چت‌ها → آکاردئون جلسه) برای یک جلسه‌ی «در انتظار
+پشتیبان» یا «پشتیبان» پیام می‌نویسد. شناسه‌ی جلسه هم در مسیر URL
+و هم در هدر session-id ارسال می‌شود.
+
+پارامترها:
+    $session_id : شناسه‌ی جلسه (UUID)
+    $message    : متن پیام پشتیبان
+
+خروجی: آرایه‌ای با کلیدهای:
+    status  => success | error
+    message : پیام (فقط در حالت خطا)
+    data    : پاسخ خام سرور (در حالت موفقیت، در صورت وجود)
+============================================
+*/
+function ai_agent_send_session_reply($session_id, $message) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array('status' => 'error', 'message' => 'API Key تنظیم نشده است.');
+    }
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return array('status' => 'error', 'message' => 'شناسه‌ی جلسه نامعتبر است.');
+    }
+
+    $message = trim((string) $message);
+    if ($message === '') {
+        return array('status' => 'error', 'message' => 'متن پیام نمی‌تواند خالی باشد.');
+    }
+
+    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/reply';
+
+    $response = wp_remote_post($url, array(
+        'timeout'     => 20,
+        'redirection' => 0,
+        'httpversion' => '1.1',
+        'headers'     => array(
+            'X-API-Key'    => $api_key,
+            'session-id'   => $session_id,
+            'Accept'       => 'application/json',
+            'Content-Type' => 'application/json; charset=utf-8',
+        ),
+        'body' => wp_json_encode(array('message' => $message), JSON_UNESCAPED_UNICODE),
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+        );
+    }
+
+    $code      = wp_remote_retrieve_response_code($response);
+    $resp_body = wp_remote_retrieve_body($response);
+    $resp_data = json_decode($resp_body, true);
+
+    if ($code < 200 || $code >= 300) {
+        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+        );
+    }
+
+    return array(
+        'status'  => 'success',
+        'message' => '',
+        'data'    => is_array($resp_data) ? $resp_data : null,
+    );
+}
+
+/*
+============================================
+پایان دادن به یک جلسه‌ی چت توسط پشتیبان انسانی
+اندپوینت: POST https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/close
+
+بدون بدنه؛ فقط هدرهای X-API-Key و session-id ارسال می‌شوند.
+این تابع فقط برای جلسات «در انتظار پشتیبان» یا «پشتیبان» از پنل
+تاریخچه چت‌ها فراخوانی می‌شود.
+
+پارامتر: $session_id (UUID)
+
+خروجی: آرایه‌ای با کلیدهای status و message
+============================================
+*/
+function ai_agent_close_session($session_id) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array('status' => 'error', 'message' => 'API Key تنظیم نشده است.');
+    }
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return array('status' => 'error', 'message' => 'شناسه‌ی جلسه نامعتبر است.');
+    }
+
+    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/close';
+
+    $response = wp_remote_post($url, array(
+        'timeout'     => 20,
+        'redirection' => 0,
+        'httpversion' => '1.1',
+        'headers'     => array(
+            'X-API-Key'  => $api_key,
+            'session-id' => $session_id,
+            'Accept'     => 'application/json',
+        ),
+        'body' => '',
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+        );
+    }
+
+    $code      = wp_remote_retrieve_response_code($response);
+    $resp_body = wp_remote_retrieve_body($response);
+    $resp_data = json_decode($resp_body, true);
+
+    if ($code < 200 || $code >= 300) {
+        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+        );
+    }
+
+    return array(
+        'status'  => 'success',
+        'message' => 'چت با موفقیت بسته شد.',
+    );
+}

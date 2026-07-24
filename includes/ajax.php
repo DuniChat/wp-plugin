@@ -295,3 +295,71 @@ function ai_agent_get_session_messages_handler() {
     }
 }
 add_action('wp_ajax_ai_agent_get_session_messages', 'ai_agent_get_session_messages_handler');
+
+/*
+============================================
+هندلر AJAX: ارسال پاسخ دستی پشتیبان انسانی به یک جلسه‌ی چت
+(فقط ادمین — برای جلسات «در انتظار پشتیبان» یا «پشتیبان»)
+============================================
+*/
+function ai_agent_session_reply_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+    $message    = isset($_POST['message']) ? sanitize_textarea_field(wp_unslash($_POST['message'])) : '';
+
+    if (empty($session_id)) {
+        wp_send_json_error(array('message' => 'شناسه‌ی جلسه ارسال نشده است.'));
+    }
+    if (trim($message) === '') {
+        wp_send_json_error(array('message' => 'متن پیام نمی‌تواند خالی باشد.'));
+    }
+
+    $result = ai_agent_send_session_reply($session_id, $message);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_session_reply', 'ai_agent_session_reply_handler');
+
+/*
+============================================
+هندلر AJAX: پایان دادن به یک جلسه‌ی چت توسط پشتیبان انسانی
+(فقط ادمین — برای جلسات «در انتظار پشتیبان» یا «پشتیبان»)
+============================================
+*/
+function ai_agent_session_close_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+
+    if (empty($session_id)) {
+        wp_send_json_error(array('message' => 'شناسه‌ی جلسه ارسال نشده است.'));
+    }
+
+    $result = ai_agent_close_session($session_id);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_session_close', 'ai_agent_session_close_handler');
