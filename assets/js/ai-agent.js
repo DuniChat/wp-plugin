@@ -88,6 +88,13 @@ jQuery(function ($) {
         document.cookie = cookieName + '=' + id + '; expires=' + expires + '; path=/; SameSite=Lax';
     }
 
+    // پاک کردن کوکی session_id (برای شروع چت جدید)
+    function clearSessionId() {
+        sessionId = null;
+        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
+        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+    }
+
     let sessionId = getSessionId();
 
 
@@ -119,6 +126,29 @@ jQuery(function ($) {
 
     close.on("click", function () {
         windowChat.removeClass("ai-agent-open");
+    });
+
+    /*
+    ============================================
+    شروع چت جدید: پاک کردن کوکی session_id و
+    بارگذاری مجدد ویجت از ابتدا (پاک شدن تاریخچه‌ی نمایشی)
+    ============================================
+    */
+    const newChatBtn = $("#ai-agent-new-chat");
+
+    newChatBtn.on("click", function () {
+        clearSessionId();
+
+        // پاک کردن پیام‌های فعلی و بازگرداندن پیام خوش‌آمدگویی پیش‌فرض
+        messages.empty();
+        messages.append(
+            '<div class="ai-message"><div class="ai-message-body">سلام 👋 چطور می‌تونم کمکتون کنم؟</div></div>'
+        );
+
+        // خالی کردن باکس ورودی و بازگرداندن ارتفاع آن به حالت اولیه
+        input.val('');
+        autoResizeInput();
+        input.focus();
     });
 
     /*

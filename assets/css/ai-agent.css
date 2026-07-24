@@ -99,6 +99,13 @@
     animation: pulseGlow 2s infinite;
 }
 
+/* ظرف دکمه‌های سمت راست هدر (چت جدید + بستن) */
+.ai-agent-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 #ai-agent-close {
     cursor: pointer;
     font-size: 20px;
@@ -116,6 +123,31 @@
 #ai-agent-close:hover {
     background: #ef4444; /* رنگ قرمز در هنگام هاور برای دکمه بستن */
     transform: rotate(90deg); /* چرخش انیمیشنی جالب هنگام بستن */
+}
+
+/* دکمه‌ی «+» شروع چت جدید در هدر */
+#ai-agent-new-chat {
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    transition: 0.2s;
+}
+
+#ai-agent-new-chat svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+#ai-agent-new-chat:hover {
+    background: rgba(255, 255, 255, 0.22);
+    transform: rotate(90deg); /* چرخش نرم مشابه دکمه بستن برای هماهنگی بصری */
 }
 
 /* آیکون ماه/خورشید هدر: با کلیک، تم به‌صورت دستی بین دارک و لایت تغییر می‌کند */
@@ -243,6 +275,24 @@
     flex: 1 1 auto;
     min-width: 0;
     order: 1;
+}
+
+/* دارک‌مود: پس‌زمینه‌ی سفید حباب پیام ربات جایگزین با یک تیره‌ی هماهنگ با تم می‌شود */
+#ai-agent[data-theme="dark"] .ai-message {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+#ai-agent[data-theme="dark"] .ai-message .ai-feedback-wrapper {
+    border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+/* دارک‌مود: پیام کارشناس پشتیبانی نیز هماهنگ با تم تیره می‌شود */
+#ai-agent[data-theme="dark"] .admin-message {
+    background: #24344d;
+    color: #e2e8f0;
+    border-right-color: #10b981;
 }
 
 /* پیام سیستمی «انتقال به پشتیبان انسانی» — از پیام‌های ai/user/admin جداست
