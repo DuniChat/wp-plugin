@@ -504,6 +504,19 @@ function ai_agent_settings_page(){
                             <p class="description" style="margin-top: 4px;">این تاریخ‌ها پس از هر همگام‌سازی موفق، به‌صورت خودکار به‌روزرسانی می‌شوند.</p>
                         </td>
                     </tr>
+                    
+                    <tr>
+                        <th scope="row">استعلام وضعیت ارسال‌ها (Job Status)</th>
+                        <td>
+                            <button type="button" id="ai-agent-check-status-btn" class="button button-secondary" style="font-weight: bold; border-color: #7c3aed; color: #7c3aed;">استعلام وضعیت</button>
+                            <span id="ai-agent-check-status-status" style="margin-right: 12px; font-weight: bold; display: inline-block; vertical-align: middle;"></span>
+                            <?php wp_nonce_field('ai_agent_sync_status_nonce_action', 'ai_agent_sync_status_nonce_field'); ?>
+                            <p class="description" style="margin-top: 6px;">وضعیت پردازش تمام آیتم‌های سینک‌شده در سرور (در صف، در حال پردازش، تکمیل‌شده، ناموفق، یافت‌نشده) را بررسی می‌کند. این استعلام هربار که این صفحه باز شود، به‌صورت خودکار هم انجام می‌شود.</p>
+                            <div style="max-width:420px; margin-top:14px;">
+                                <canvas id="ai-agent-status-chart" height="220"></canvas>
+                            </div>
+                        </td>
+                    </tr>
 
                     <tr>
                         <th scope="row">عملیات همگام‌سازی نهایی داده‌ها</th>
@@ -614,6 +627,7 @@ function ai_agent_admin_enqueue($hook){
     if ($hook !== 'toplevel_page_ai-agent-settings') return;
     wp_enqueue_style('wp-color-picker');
     wp_enqueue_script('wp-color-picker');
+    wp_enqueue_script('ai-agent-chartjs', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', array(), '4.4.0', true);
 
     // کدهای جاوااسکریپت کنترل دکمه همگام‌سازی و دکمه نمایش/مخفی API Key
     $inline_js = "
@@ -891,6 +905,109 @@ function ai_agent_admin_enqueue($hook){
                 }
             });
         });
+
+        // ----- نمودار وضعیت ارسال‌ها (Job Status) -----
+        var aiAgentStatusChart = null;
+
+        function aiAgentRenderStatusChart(summary) {
+            if (typeof Chart === 'undefined' || !summary) return;
+
+            var labels = ['در صف', 'در حال پردازش', 'تکمیل‌شده', 'ناموفق', 'یافت‌نشده'];
+            var dataVals = [
+                summary.queued || 0,
+                summary.processing || 0,
+                summary.completed || 0,
+                summary.failed || 0,
+                summary.not_found || 0
+            ];
+            var colors = ['#f59e0b', '#3b82f6', '#16a34a', '#dc2626', '#6b7280'];
+
+            var ctx = document.getElementById('ai-agent-status-chart');
+            if (!ctx) return;
+
+            if (aiAgentStatusChart) {
+                aiAgentStatusChart.data.datasets[0].data = dataVals;
+                aiAgentStatusChart.options.plugins.title.text = 'وضعیت ارسال‌های سینک‌شده (مجموع: ' + (summary.total || 0) + ')';
+                aiAgentStatusChart.update();
+                return;
+            }
+
+            aiAgentStatusChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataVals,
+                        backgroundColor: colors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            rtl: true,
+                            labels: { font: { family: 'Tahoma', size: 12 } }
+                        },
+                        title: {
+                            display: true,
+                            text: 'وضعیت ارسال‌های سینک‌شده (مجموع: ' + (summary.total || 0) + ')',
+                            font: { family: 'Tahoma', size: 13 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function aiAgentCheckSyncStatus(showLoadingUI) {
+            var \$statusEl = $('#ai-agent-check-status-status');
+            var \$btn = $('#ai-agent-check-status-btn');
+            var token = $('#ai_agent_sync_status_nonce_field').val();
+
+            if (!token) return; // یعنی دکمه/فیلد در صفحه وجود ندارد
+
+            if (showLoadingUI) {
+                \$btn.prop('disabled', true).text('در حال استعلام...');
+            }
+            \$statusEl.css('color', '#7c3aed').text('در حال دریافت وضعیت از سرور...');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'ai_agent_check_sync_status',
+                    nonce: token
+                },
+                success: function(response) {
+                    \$btn.prop('disabled', false).text('استعلام وضعیت');
+                    if (response.success) {
+                        var d = response.data;
+                        \$statusEl.css('color', 'green').text('وضعیت با موفقیت به‌روزرسانی شد.');
+                        if (d.summary) {
+                            aiAgentRenderStatusChart(d.summary);
+                        }
+                    } else {
+                        var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت وضعیت.';
+                        \$statusEl.css('color', '#b91c1c').text(msg);
+                    }
+                },
+                error: function() {
+                    \$btn.prop('disabled', false).text('استعلام وضعیت');
+                    \$statusEl.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                }
+            });
+        }
+
+        $('#ai-agent-check-status-btn').on('click', function(e) {
+            e.preventDefault();
+            aiAgentCheckSyncStatus(true);
+        });
+
+        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات (اگر دکمه در صفحه موجود باشد)
+        if ($('#ai-agent-check-status-btn').length) {
+            aiAgentCheckSyncStatus(false);
+        }
     });";
 
     wp_add_inline_script('wp-color-picker', $inline_js);

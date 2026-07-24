@@ -47,6 +47,68 @@ add_action('wp_ajax_ai_agent_sync_data', 'ai_agent_sync_data_handler');
 add_action('wp_ajax_ai_agent_sync_all_data', 'ai_agent_sync_all_data_handler');
 
 
+// استعلام وضعیت دسته‌ای job_id های ذخیره‌شده در دیتابیس
+add_action('wp_ajax_ai_agent_check_sync_status', 'ai_agent_check_sync_status_handler');
+
+/*
+================================================================
+هندلر AJAX دکمه‌ی «استعلام وضعیت»
+
+تمام job_id های ذخیره‌شده در جدول wp_ai_agent_synced_items را
+می‌خواند و به اندپوینت /sync/content/status/batch ارسال می‌کند
+تا وضعیت پردازش هر آیتم (queued, processing, completed, failed,
+not_found) از سرور دریافت شود. خروجی برای رسم نمودار در پیشخوان
+به فرانت‌اند برگردانده می‌شود.
+================================================================
+*/
+function ai_agent_check_sync_status_handler() {
+
+    // ۱. بررسی دسترسی
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    // ۲. بررسی nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_status_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    // ۳. بررسی API Key
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        wp_send_json_error(array(
+            'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
+        ));
+    }
+
+    // ۴. خواندن تمام job_id های ذخیره‌شده
+    $job_ids = ai_agent_get_all_synced_job_ids();
+
+    if (empty($job_ids)) {
+        wp_send_json_error(array(
+            'message' => 'هیچ job_id ای در دیتابیس یافت نشد. ابتدا از دکمه‌ی «همگام‌سازی اطلاعات» استفاده کنید.'
+        ));
+    }
+
+    // ۵. استعلام وضعیت از سرور
+    $result = ai_agent_fetch_sync_status_batch($job_ids);
+
+    if ($result['status'] !== 'success') {
+        wp_send_json_error(array(
+            'message' => $result['message']
+        ));
+    }
+
+    wp_send_json_success(array(
+        'results' => $result['results'],
+        'summary' => $result['summary'],
+    ));
+}
+
 /*
 ================================================================
 هندلر اصلی: سینک افزایشی (Sync Now)
@@ -149,25 +211,40 @@ function ai_agent_sync_data_handler() {
     $new_sent_count = 0;
     $content_error = '';
 
-    if (!empty($new_items)) {
-        $content_result = ai_agent_push_sync_content($new_items);
+if (!empty($new_items)) {
+    $content_result = ai_agent_push_sync_content($new_items);
 
-        if ($content_result['status'] === 'success') {
-            // تمام آیتم‌ها با موفقیت ارسال شدند → همه را در جدول ثبت می‌کنیم
-            $new_sent_count = intval($content_result['sent_count']);
-            ai_agent_mark_items_synced_batch($new_items);
-        } elseif ($content_result['status'] === 'partial') {
-            // برخی دسته‌ها موفق بودند، برخی خطا داشتند
-            // برای اطمینان از ارسال مجدد آیتم‌های ناموفق در سینک بعدی،
-            // در این حالت هیچ آیتمی را در جدول ثبت نمی‌کنیم (محتاطانه).
-            // در سینک بعدی، آیتم‌های موفق نیز دوباره ارسال می‌شوند که
-            // جای نگرانی ندارد چون سرور آن‌ها را idempotent پردازش می‌کند.
-            $new_sent_count = intval($content_result['sent_count']);
-            $content_error = $content_result['message'];
-        } else {
+    if ($content_result['status'] === 'success' || $content_result['status'] === 'partial') {
+        $new_sent_count = intval($content_result['sent_count']);
+
+        // ساخت نقشه‌ی source_id::content_type => job_id از پاسخ سرور
+        $results_map = array();
+        foreach ($content_result['results'] as $r) {
+            $key = $r['content_type'] . '::' . $r['source_id'];
+            $results_map[$key] = $r['job_id'];
+        }
+
+        // فقط آیتم‌هایی که واقعاً در پاسخ سرور بودند را synced علامت بزن
+        $synced_batch = array();
+        foreach ($new_items as $item) {
+            $key = $item['content_type'] . '::' . $item['source_id'];
+            if (isset($results_map[$key])) {
+                $synced_batch[] = array(
+                    'source_id'    => $item['source_id'],
+                    'content_type' => $item['content_type'],
+                    'job_id'       => $results_map[$key],
+                );
+            }
+        }
+        ai_agent_mark_items_synced_batch($synced_batch);
+
+        if ($content_result['status'] === 'partial') {
             $content_error = $content_result['message'];
         }
+    } else {
+        $content_error = $content_result['message'];
     }
+}
 
     // ۹. ارسال درخواست حذف برای محتوای حذف‌شده به /sync/delete
     $deleted_sent_count = 0;
@@ -316,13 +393,29 @@ function ai_agent_sync_all_data_handler() {
 
     $sent_count = intval($content_result['sent_count']);
 
-    // ۷. پاک کردن جدول synced_items و پر کردن مجدد با تمام آیتم‌های فعلی
-    //    فقط در صورت موفقیت کامل؛ در حالت partial، جدول دست‌نخورده می‌ماند
-    //    تا کاربر در سینک بعدی افزایشی، آیتم‌های ناموفق را دوباره ارسال کند.
-    if ($content_result['status'] === 'success') {
-        ai_agent_clear_all_synced_items();
-        ai_agent_mark_items_synced_batch($current_items);
-    }
+    if ($content_result['status'] === 'success' || $content_result['status'] === 'partial') {
+        $results_map = array();
+        foreach ($content_result['results'] as $r) {
+            $key = $r['content_type'] . '::' . $r['source_id'];
+            $results_map[$key] = $r['job_id'];
+        }
+
+        if ($content_result['status'] === 'success') {
+            // فقط در موفقیت کامل، جدول را پاک و از نو با job_id ها پر می‌کنیم
+            ai_agent_clear_all_synced_items();
+            $synced_batch = array();
+            foreach ($current_items as $item) {
+                $key = $item['content_type'] . '::' . $item['source_id'];
+                if (isset($results_map[$key])) {
+                    $synced_batch[] = array(
+                        'source_id'    => $item['source_id'],
+                        'content_type' => $item['content_type'],
+                        'job_id'       => $results_map[$key],
+                    );
+                }
+            }
+            ai_agent_mark_items_synced_batch($synced_batch);
+        }
     // در حالت partial، جدول را پاک نمی‌کنیم تا آیتم‌های قبلی حفظ شوند
     // و در سینک بعدی افزایشی، فقط آیتم‌های جدید ارسال شوند.
 
@@ -348,7 +441,7 @@ function ai_agent_sync_all_data_handler() {
         'sync_type'      => 'full',
     ));
 }
-
+}
 
 /*
 ================================================================

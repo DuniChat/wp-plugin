@@ -584,7 +584,7 @@ function ai_agent_push_sync_content($items) {
             'status'     => 'error',
             'message'    => 'API Key not set.',
             'sent_count' => 0,
-            'responses'  => array(),
+            'results'    => array(),
         );
     }
 
@@ -594,14 +594,11 @@ function ai_agent_push_sync_content($items) {
             'status'     => 'success',
             'message'    => 'No items to send.',
             'sent_count' => 0,
-            'responses'  => array(),
+            'results'    => array(),
         );
     }
 
-    // 2.b Clean every item: cast source_id to string, skip items with
-    //     missing source_id or unsupported content_type, and substitute
-    //     safe defaults for empty title/content/url so the server doesn't
-    //     reject the batch with HTTP 422.
+    // 2.b پاکسازی هر آیتم (همون منطق قبلی)
     $allowed_content_types = array('post', 'page', 'product', 'product_category');
     $allowed_statuses      = array('publish', 'draft', 'pending', 'private', 'future');
     $clean_items = array();
@@ -650,134 +647,115 @@ function ai_agent_push_sync_content($items) {
             'status'     => 'error',
             'message'    => 'No valid items to send. ' . $skipped_count . ' items skipped.',
             'sent_count' => 0,
-            'responses'  => array(),
+            'results'    => array(),
         );
     }
 
     $url = 'https://mhtrxz.ir/api/v1/sync/content';
+    // چون محدودیت nginx برداشته شده، همه آیتم‌ها یکجا و بدون تقسیم‌بندی ارسال می‌شوند
+    $body = wp_json_encode(array('items' => $clean_items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    // 3. Batch: 20 items per request (down from 100) to avoid
-    //    cURL error 56 "Recv failure: Connection was reset" which is
-    //    usually caused by nginx client_max_body_size or upstream body limits
-    //    when the payload is too large.
-    $batches = array_chunk($clean_items, 20);
-    $total_sent = 0;
-    $all_responses = array();
-    $first_error = '';
-
-    foreach ($batches as $batch_index => $batch) {
-
-        $body = wp_json_encode(array('items' => $batch), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . ' size=' . strlen($body) . ' bytes, items=' . count($batch));
-        }
-
-        $response = wp_remote_post($url, array(
-            'timeout'     => 60,
-            'redirection' => 0,
-            'httpversion' => '1.1',
-            'headers'     => array(
-                'X-API-Key'    => $api_key,
-                'Accept'       => 'application/json',
-                'Content-Type' => 'application/json; charset=utf-8',
-                // Empty Expect header prevents cURL from sending "Expect: 100-continue"
-                // which some upstreams reject by resetting the connection (cURL 56).
-                'Expect'       => '',
-            ),
-            'body'        => $body,
-        ));
-
-        // One-shot retry for transient connection errors like cURL 56
-        if (is_wp_error($response)) {
-            $err_msg = $response->get_error_message();
-            if (false !== strpos($err_msg, 'Connection was reset')
-                || false !== strpos($err_msg, 'Recv failure')
-                || false !== strpos($err_msg, 'Could not resolve host')) {
-                sleep(1);
-                $response = wp_remote_post($url, array(
-                    'timeout'     => 60,
-                    'redirection' => 0,
-                    'httpversion' => '1.1',
-                    'headers'     => array(
-                        'X-API-Key'    => $api_key,
-                        'Accept'       => 'application/json',
-                        'Content-Type' => 'application/json; charset=utf-8',
-                        'Expect'       => '',
-                    ),
-                    'body'        => $body,
-                ));
-            }
-        }
-
-        if (is_wp_error($response)) {
-            if ($first_error === '') {
-                $first_error = 'خطای ارتباطی با سرور همگام‌سازی: ' . $response->get_error_message();
-            }
-            $all_responses[] = array(
-                'batch'  => $batch_index + 1,
-                'status' => 'error',
-                'error'  => $response->get_error_message(),
-            );
-            continue;
-        }
-
-        $code = wp_remote_retrieve_response_code($response);
-        $resp_body = wp_remote_retrieve_body($response);
-        $resp_data = json_decode($resp_body, true);
-
-        if ($code < 200 || $code >= 300) {
-            $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
-            if ($first_error === '') {
-                $first_error = 'سرور همگام‌سازی با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : '');
-            }
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . ' HTTP ' . intval($code) . ' body=' . $resp_body);
-            }
-            $all_responses[] = array(
-                'batch'     => $batch_index + 1,
-                'status'    => 'error',
-                'http_code' => intval($code),
-                'body'      => $resp_data,
-                'raw'       => $resp_body,
-            );
-            continue;
-        }
-
-        $total_sent += count($batch);
-        $all_responses[] = array(
-            'batch'     => $batch_index + 1,
-            'status'    => 'success',
-            'http_code' => intval($code),
-            'body'      => $resp_data,
-        );
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('AI_AGENT_SYNC content single request size=' . strlen($body) . ' bytes, items=' . count($clean_items));
     }
 
-    $skipped_note = ($skipped_count > 0) ? ' (' . $skipped_count . ' آیتم نامعتبر حذف شدند) ' : '';
+    $request_args = array(
+        'timeout'     => 120, // حجم بیشتر → timeout بالاتر
+        'redirection' => 0,
+        'httpversion' => '1.1',
+        'headers'     => array(
+            'X-API-Key'    => $api_key,
+            'Accept'       => 'application/json',
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Expect'       => '',
+        ),
+        'body' => $body,
+    );
 
-    if ($total_sent === 0) {
+    $response = wp_remote_post($url, $request_args);
+
+    // یک بار retry برای خطاهای اتصال گذرا
+    if (is_wp_error($response)) {
+        $err_msg = $response->get_error_message();
+        if (false !== strpos($err_msg, 'Connection was reset')
+            || false !== strpos($err_msg, 'Recv failure')
+            || false !== strpos($err_msg, 'Could not resolve host')) {
+            sleep(1);
+            $response = wp_remote_post($url, $request_args);
+        }
+    }
+
+    if (is_wp_error($response)) {
         return array(
             'status'     => 'error',
-            'message'    => $first_error !== '' ? $first_error . $skipped_note : 'هیچ آیتمی ارسال نشد.' . $skipped_note,
+            'message'    => 'خطای ارتباطی با سرور همگام‌سازی: ' . $response->get_error_message(),
             'sent_count' => 0,
-            'responses'  => $all_responses,
+            'results'    => array(),
         );
     }
 
-    if ($total_sent < count($clean_items)) {
+    $code      = wp_remote_retrieve_response_code($response);
+    $resp_body = wp_remote_retrieve_body($response);
+    $resp_data = json_decode($resp_body, true);
+
+    if ($code < 200 || $code >= 300) {
+        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('AI_AGENT_SYNC content HTTP ' . intval($code) . ' body=' . $resp_body);
+        }
+        return array(
+            'status'     => 'error',
+            'message'    => 'سرور همگام‌سازی با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'sent_count' => 0,
+            'results'    => array(),
+        );
+    }
+
+    // پارس آرایه‌ی results پاسخ سرور:
+    // {"results":[{"source_id":"78","content_type":"page","action":"queued","job_id":"..."}]}
+    $results = array();
+    if (is_array($resp_data) && isset($resp_data['results']) && is_array($resp_data['results'])) {
+        foreach ($resp_data['results'] as $r) {
+            if (!is_array($r) || !isset($r['source_id'], $r['content_type'])) {
+                continue;
+            }
+            $results[] = array(
+                'source_id'    => (string) $r['source_id'],
+                'content_type' => (string) $r['content_type'],
+                'action'       => isset($r['action']) ? (string) $r['action'] : '',
+                'job_id'       => isset($r['job_id']) ? (string) $r['job_id'] : '',
+            );
+        }
+    }
+
+    $sent_count  = count($results);
+    $skipped_note = ($skipped_count > 0) ? ' (' . $skipped_count . ' آیتم نامعتبر حذف شدند) ' : '';
+
+    // اگر تعداد آیتم‌های موجود در results کمتر از تعداد ارسالی باشد، یعنی برخی
+    // آیتم‌ها توسط سرور رد شده‌اند؛ آن‌ها را synced علامت نمی‌زنیم تا در سینک بعدی دوباره ارسال شوند
+    if ($sent_count === 0) {
+        return array(
+            'status'     => 'error',
+            'message'    => 'سرور هیچ آیتمی را در پاسخ results برنگرداند.' . $skipped_note,
+            'sent_count' => 0,
+            'results'    => array(),
+        );
+    }
+
+    if ($sent_count < count($clean_items)) {
         return array(
             'status'     => 'partial',
-            'message'    => $total_sent . ' از ' . count($clean_items) . ' آیتم با موفقیت ارسال شد. (' . $first_error . ')' . $skipped_note,
-            'sent_count' => $total_sent,
-            'responses'  => $all_responses,
+            'message'    => $sent_count . ' از ' . count($clean_items) . ' آیتم توسط سرور پذیرفته شد.' . $skipped_note,
+            'sent_count' => $sent_count,
+            'results'    => $results,
         );
     }
 
     return array(
         'status'     => 'success',
         'message'    => 'تمام آیتم‌ها با موفقیت به سرور همگام‌سازی ارسال شدند.' . $skipped_note,
-        'sent_count' => $total_sent,
-        'responses'  => $all_responses,
+        'sent_count' => $sent_count,
+        'results'    => $results,
     );
 }
 
@@ -875,6 +853,7 @@ function ai_agent_parse_sync_error_detail($resp_data, $resp_body = '') {
     }
     return $json;
 }
+
 
 /*
 ============================================
@@ -1067,5 +1046,117 @@ function ai_agent_push_sync_delete($items) {
         'message'       => 'تمام درخواست‌های حذف با موفقیت به سرور ارسال شدند.',
         'deleted_count' => $total_deleted,
         'responses'     => $all_responses,
+    );
+}
+/*
+============================================
+استعلام وضعیت دسته‌ای job_id های ارسال‌شده به سرور
+اندپوینت: POST https://mhtrxz.ir/api/v1/sync/content/status/batch
+هدر X-API-Key: کلید API کاربر (رمزگشایی‌شده از دیتابیس)
+
+بدنه‌ی درخواست (JSON):
+{
+    "job_ids": ["string", ...]
+}
+
+پارامتر $job_ids: آرایه‌ای از رشته‌های job_id (از جدول wp_ai_agent_synced_items)
+
+خروجی: آرایه‌ای با کلیدهای:
+    status  => success | error
+    message : پیام (در حالت خطا)
+    results : آرایه‌ی results خام سرور
+    summary : آرایه‌ی summary خام سرور (total, queued, processing, completed, failed, not_found)
+============================================
+*/
+function ai_agent_fetch_sync_status_batch($job_ids) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'API Key تنظیم نشده است.',
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    if (!is_array($job_ids) || empty($job_ids)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'هیچ job_id ای برای استعلام یافت نشد.',
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    // پاکسازی و حذف مقادیر خالی/تکراری
+    $job_ids = array_values(array_unique(array_filter(
+        array_map('strval', $job_ids),
+        function($v) { return $v !== ''; }
+    )));
+
+    if (empty($job_ids)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'هیچ job_id معتبری برای استعلام یافت نشد.',
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    $url = 'https://mhtrxz.ir/api/v1/sync/content/status/batch';
+
+    $body = wp_json_encode(array('job_ids' => $job_ids));
+
+    $response = wp_remote_post($url, array(
+        'timeout'     => 30,
+        'redirection' => 0,
+        'httpversion' => '1.1',
+        'headers'     => array(
+            'X-API-Key'    => $api_key,
+            'Accept'       => 'application/json',
+            'Content-Type' => 'application/json; charset=utf-8',
+        ),
+        'body' => $body,
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور استعلام وضعیت: ' . $response->get_error_message(),
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    $code      = wp_remote_retrieve_response_code($response);
+    $resp_body = wp_remote_retrieve_body($response);
+    $resp_data = json_decode($resp_body, true);
+
+    if ($code < 200 || $code >= 300) {
+        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور استعلام وضعیت با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    if (!is_array($resp_data) || !isset($resp_data['results']) || !is_array($resp_data['results'])) {
+        return array(
+            'status'  => 'error',
+            'message' => 'پاسخ سرور استعلام وضعیت ساختار مورد انتظار را نداشت.',
+            'results' => array(),
+            'summary' => null,
+        );
+    }
+
+    return array(
+        'status'  => 'success',
+        'message' => '',
+        'results' => $resp_data['results'],
+        'summary' => (isset($resp_data['summary']) && is_array($resp_data['summary'])) ? $resp_data['summary'] : null,
     );
 }

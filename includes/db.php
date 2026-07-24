@@ -51,13 +51,14 @@ function ai_agent_install(){
     // استفاده می‌شود. در هر بار سینک، فقط محتوای جدید (آی‌دی‌های جدید) ارسال
     // می‌شود و محتوای حذف‌شده از وردپرس، به اندپوینت delete کال زده می‌شود.
     $sql3 = "CREATE TABLE {$table_synced} (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        source_id VARCHAR(64) NOT NULL,
-        content_type VARCHAR(32) NOT NULL,
-        synced_at DATETIME NOT NULL,
-        PRIMARY KEY (id),
-        UNIQUE KEY source_type (source_id, content_type),
-        KEY content_type (content_type)
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    source_id VARCHAR(64) NOT NULL,
+    content_type VARCHAR(32) NOT NULL,
+    job_id VARCHAR(64) DEFAULT NULL,
+    synced_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY source_type (source_id, content_type),
+    KEY content_type (content_type)
     ) {$charset_collate};";
 
     dbDelta($sql1);
@@ -90,7 +91,12 @@ function ai_agent_maybe_install(){
     if ($wpdb->get_var("SHOW TABLES LIKE '{$table_synced}'") !== $table_synced) {
         ai_agent_install();
     }
-
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table_synced}'") === $table_synced) {
+    $column_exists = $wpdb->get_var("SHOW COLUMNS FROM {$table_synced} LIKE 'job_id'");
+    if (empty($column_exists)) {
+        ai_agent_install();
+    }
+}
 
 }
 add_action('admin_init', 'ai_agent_maybe_install');
@@ -564,6 +570,28 @@ function ai_agent_get_all_synced_source_ids() {
 
 /*
 ============================================
+دریافت لیست تمام job_id های ذخیره‌شده در جدول synced_items
+(برای استعلام وضعیت دسته‌ای از سرور)
+
+خروجی: آرایه‌ای از job_id ها (فقط مقادیر غیرخالی)
+============================================
+*/
+function ai_agent_get_all_synced_job_ids() {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return array();
+    }
+
+    $rows = $wpdb->get_col("SELECT job_id FROM {$table} WHERE job_id IS NOT NULL AND job_id != ''");
+
+    return is_array($rows) ? array_map('strval', $rows) : array();
+}
+
+/*
+============================================
 ثبت یا به‌روزرسانی یک آیتم سینک‌شده در جدول
 
 اگر آیتم از قبل وجود داشته باشد، فقط تاریخ synced_at به‌روزرسانی می‌شود
@@ -574,7 +602,7 @@ function ai_agent_get_all_synced_source_ids() {
     $content_type : نوع محتوا (post, page, product, product_category)
 ============================================
 */
-function ai_agent_mark_item_synced($source_id, $content_type) {
+function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null) {
 
     global $wpdb;
     $table = $wpdb->prefix.'ai_agent_synced_items';
@@ -583,14 +611,26 @@ function ai_agent_mark_item_synced($source_id, $content_type) {
         return false;
     }
 
+    // اگر job_id ارسال نشده (مثلا فقط داریم synced_at را رفرش می‌کنیم)،
+    // مقدار قبلی را از دیتابیس می‌خوانیم تا با REPLACE INTO پاک نشود
+    if ($job_id === null) {
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT job_id FROM {$table} WHERE source_id=%s AND content_type=%s",
+            (string) $source_id,
+            (string) $content_type
+        ));
+        $job_id = $existing !== null ? $existing : '';
+    }
+
     return $wpdb->replace(
         $table,
         array(
             'source_id'    => (string) $source_id,
             'content_type' => (string) $content_type,
+            'job_id'       => (string) $job_id,
             'synced_at'    => current_time('mysql'),
         ),
-        array('%s', '%s', '%s')
+        array('%s', '%s', '%s', '%s')
     );
 }
 
@@ -617,7 +657,8 @@ function ai_agent_mark_items_synced_batch($items) {
         if (!isset($item['source_id'], $item['content_type'])) {
             continue;
         }
-        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'])) {
+        $job_id = isset($item['job_id']) ? $item['job_id'] : null;
+        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'], $job_id)) {
             $count++;
         }
     }
