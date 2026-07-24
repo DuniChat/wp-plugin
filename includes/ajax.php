@@ -177,41 +177,6 @@ function ai_agent_sse_send($data) {
 
 /*
 ============================================
-ثبت درخواست پشتیبانی یا انتقال به کارشناس
-============================================
-*/
-function ai_agent_submit_support() {
-    $session_id = sanitize_text_field($_POST['session_id']);
-    $chat_id    = !empty($_POST['chat_id']) ? intval($_POST['chat_id']) : null;
-    $message    = sanitize_textarea_field($_POST['message']);
-
-    $insert_id  = ai_agent_save_support_message($session_id, $chat_id, $message);
-
-    if($insert_id) {
-        wp_send_json_success();
-    } else {
-        wp_send_json_error();
-    }
-}
-add_action('wp_ajax_ai_agent_submit_support', 'ai_agent_submit_support');
-add_action('wp_ajax_nopriv_ai_agent_submit_support', 'ai_agent_submit_support');
-
-/*
-============================================
-بررسی دوره‌ای وجود پاسخ جدید از سمت ادمین (Polling)
-============================================
-*/
-function ai_agent_poll_support_replies() {
-    $session_id = sanitize_text_field($_POST['session_id']);
-    $replies    = ai_agent_check_support_reply($session_id);
-
-    wp_send_json_success($replies);
-}
-add_action('wp_ajax_ai_agent_poll_support', 'ai_agent_poll_support_replies');
-add_action('wp_ajax_nopriv_ai_agent_poll_support', 'ai_agent_poll_support_replies');
-
-/*
-============================================
 سرچ / لیست مدل‌های هوش مصنوعی برای پنل تنظیمات (فقط ادمین)
 ============================================
 */

@@ -14,25 +14,9 @@ function ai_agent_install(){
 
     $charset_collate = $wpdb->get_charset_collate();
 
-    $table_support  = $wpdb->prefix.'ai_agent_support';
     $table_synced   = $wpdb->prefix.'ai_agent_synced_items';
 
     require_once ABSPATH.'wp-admin/includes/upgrade.php';
-
-    $sql1 = "CREATE TABLE {$table_support} (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        session_id VARCHAR(64) NOT NULL,
-        chat_id BIGINT UNSIGNED DEFAULT NULL,
-        user_message TEXT NOT NULL,
-        admin_reply TEXT DEFAULT NULL,
-        status VARCHAR(20) NOT NULL DEFAULT 'pending',
-        seen TINYINT(1) NOT NULL DEFAULT 0,
-        created_at DATETIME NOT NULL,
-        replied_at DATETIME DEFAULT NULL,
-        PRIMARY KEY (id),
-        KEY session_id (session_id),
-        KEY status (status)
-    ) {$charset_collate};";
 
     // جدول ذخیره‌ی آی‌دی‌های سینک‌شده و تاریخ آخرین همگام‌سازی هر آیتم
     // این جدول برای جلوگیری از ارسال مجدد محتوایی که قبلاً به سرور فرستاده شده
@@ -49,7 +33,6 @@ function ai_agent_install(){
     KEY content_type (content_type)
     ) {$charset_collate};";
 
-    dbDelta($sql1);
     dbDelta($sql3);
 
 
@@ -81,82 +64,6 @@ function ai_agent_maybe_install(){
 
 }
 add_action('admin_init', 'ai_agent_maybe_install');
-
-/*
-============================================
-ذخیره پیام کاربر برای ارتباط با کارشناس
-============================================
-*/
-
-function ai_agent_save_support_message($session_id, $chat_id, $message){
-
-    global $wpdb;
-
-    $table = $wpdb->prefix.'ai_agent_support';
-
-    $wpdb->insert($table, array(
-        'session_id'   => $session_id,
-        'chat_id'      => $chat_id ? intval($chat_id) : null,
-        'user_message' => $message,
-        'status'       => 'pending',
-        'created_at'   => current_time('mysql'),
-    ));
-
-    return $wpdb->insert_id;
-
-}
-
-/*
-============================================
-ثبت پاسخ ادمین به یک درخواست پشتیبانی
-============================================
-*/
-
-function ai_agent_reply_support($id, $reply){
-
-    global $wpdb;
-
-    $table = $wpdb->prefix.'ai_agent_support';
-
-    return $wpdb->update(
-        $table,
-        array(
-            'admin_reply' => $reply,
-            'status'      => 'answered',
-            'replied_at'  => current_time('mysql'),
-        ),
-        array('id' => intval($id))
-    );
-
-}
-
-/*
-============================================
-بررسی پاسخ‌های جدید ادمین برای یک session خاص
-(برای Polling سمت کاربر)
-============================================
-*/
-
-function ai_agent_check_support_reply($session_id){
-
-    global $wpdb;
-
-    $table = $wpdb->prefix.'ai_agent_support';
-
-    $rows = $wpdb->get_results($wpdb->prepare(
-        "SELECT id, admin_reply FROM {$table} WHERE session_id=%s AND status='answered' AND seen=0",
-        $session_id
-    ));
-
-    if ($rows) {
-        $ids = wp_list_pluck($rows, 'id');
-        $ids_sql = implode(',', array_map('intval', $ids));
-        $wpdb->query("UPDATE {$table} SET seen=1 WHERE id IN ({$ids_sql})");
-    }
-
-    return $rows;
-
-}
 
 /*
 ============================================
@@ -320,32 +227,7 @@ function ai_agent_delete_api_key(){
     return delete_option(AI_AGENT_API_KEY_OPTION);
 }
 
-/*
-============================================
-تولید UUID نسخه ۴ (RFC 4122)
 
-از این تابع برای تولید session-id و visitor_id استفاده می‌شود.
-خروجی در قالب استاندارد UUID است، مانند:
-    550e8400-e29b-41d4-a716-446655440000
-============================================
-*/
-function ai_agent_generate_uuid() {
-
-    // ۱۶ بایت تصادفی امن
-    $data = function_exists('random_bytes')
-        ? random_bytes(16)
-        : (function_exists('openssl_random_pseudo_bytes') ? openssl_random_pseudo_bytes(16) : wp_generate_password(16, false));
-
-    // تنظیم بیت‌های version (4) و variant (10xx) طبق RFC 4122
-    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
-    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant 10
-
-    // قالب‌بندی در قالب 8-4-4-4-12
-    return vsprintf(
-        '%s%s-%s-%s-%s-%s%s%s',
-        str_split(bin2hex($data), 4)
-    );
-}
 
 /*
 ============================================

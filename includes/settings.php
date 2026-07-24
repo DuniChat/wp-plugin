@@ -304,18 +304,8 @@ add_action('admin_menu', 'ai_agent_add_menu');
 function ai_agent_settings_page(){
     if (!current_user_can('manage_options')) return;
 
-    global $wpdb;
     $settings = ai_agent_get_settings();
     $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
-
-    if (isset($_POST['ai_agent_admin_reply_nonce']) && wp_verify_nonce($_POST['ai_agent_admin_reply_nonce'], 'ai_agent_reply_action')) {
-        $ticket_id = intval($_POST['ticket_id']);
-        $reply_text = sanitize_textarea_field($_POST['admin_reply']);
-        if (!empty($reply_text)) {
-            ai_agent_reply_support($ticket_id, $reply_text);
-            echo '<div class="updated"><p>پاسخ شما با موفقیت برای کاربر ارسال شد.</p></div>';
-        }
-    }
 
     /*
     ============================================
@@ -368,7 +358,6 @@ function ai_agent_settings_page(){
         <h2 class="nav-tab-wrapper ai-agent-tabs-wrap">
             <a href="?page=ai-agent-settings&tab=general" class="nav-tab <?php echo $current_tab === 'general' ? 'nav-tab-active' : ''; ?>">تنظیمات افزونه</a>
             <a href="?page=ai-agent-settings&tab=history" class="nav-tab <?php echo $current_tab === 'history' ? 'nav-tab-active' : ''; ?>">تاریخچه چت‌ها</a>
-            <a href="?page=ai-agent-settings&tab=support" class="nav-tab <?php echo $current_tab === 'support' ? 'nav-tab-active' : ''; ?>">پیام‌های پشتیبانی کارشناسان</a>
         </h2>
 
         <?php if ($current_tab === 'general') :
@@ -592,48 +581,6 @@ function ai_agent_settings_page(){
                 </div>
             </div>
 
-        <?php elseif ($current_tab === 'support') :
-            $table_support = $wpdb->prefix . 'ai_agent_support';
-            $tickets = $wpdb->get_results("SELECT * FROM {$table_support} ORDER BY status ASC, id DESC LIMIT 50");
-            ?>
-            <h3>پیام‌های ارجاع شده به کارشناسان پشتیبانی</h3>
-            <table class="wp-list-table widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th class="ai-agent-col-25">متن پیام کاربر</th>
-                        <th class="ai-agent-col-25">پاسخ شما (ادمین)</th>
-                        <th class="ai-agent-col-10">وضعیت</th>
-                        <th class="ai-agent-col-40">فرم پاسخگویی سریع</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if(!empty($tickets)): foreach($tickets as $ticket): ?>
-                        <tr>
-                            <td>
-                                <strong>پیام:</strong> <?php echo esc_html($ticket->user_message); ?><br>
-                                <small class="ai-agent-muted-small">سشن: <?php echo esc_html($ticket->session_id); ?> | تاریخ: <?php echo esc_html($ticket->created_at); ?></small>
-                            </td>
-                            <td>
-                                <?php echo $ticket->admin_reply ? nl2br(esc_html($ticket->admin_reply)) : '<em class="ai-agent-no-reply">بدون پاسخ</em>'; ?>
-                                <?php if($ticket->replied_at): ?><br><small class="ai-agent-muted-small">زمان پاسخ: <?php echo esc_html($ticket->replied_at); ?></small><?php endif; ?>
-                            </td>
-                            <td>
-                                <?php echo $ticket->status === 'pending' ? '<span class="ai-agent-badge-pending">در انتظار</span>' : '<span class="ai-agent-badge-answered">پاسخ داده شده</span>'; ?>
-                            </td>
-                            <td>
-                                <form method="post" action="">
-                                    <?php wp_nonce_field('ai_agent_reply_action', 'ai_agent_admin_reply_nonce'); ?>
-                                    <input type="hidden" name="ticket_id" value="<?php echo intval($ticket->id); ?>">
-                                    <textarea name="admin_reply" class="ai-agent-reply-textarea" placeholder="متن پاسخ خود را بنویسید..." required></textarea>
-                                    <input type="submit" name="submit_admin_reply" class="button button-primary button-small ai-agent-mt5" value="ارسال پاسخ به کاربر">
-                                </form>
-                            </td>
-                        </tr>
-                    <?php endforeach; else: ?>
-                        <tr><td colspan="4">در حال حاضر هیچ پیام پشتیبانی ثبت نشده است.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
         <?php endif; ?>
     </div>
     <?php

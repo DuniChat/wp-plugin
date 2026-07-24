@@ -502,14 +502,7 @@ jQuery(function ($) {
         let feedbackType = $btn.data('type');
 
         if (feedbackType === 'dislike') {
-            $wrapper.html(`
-                <div class="ai-support-gate fade-in-up">
-                    <p style="margin:0 0 8px 0; font-size:12px; color:#64748b; line-height:1.5;">پاسخ مناسب نبود؟ مایلید این موضوع به کارشناسان ما ارجاع داده شود؟</p>
-                    <textarea class="ai-support-msg" placeholder="توضیح کوتاه یا شماره تماس (اختیاری)..."></textarea>
-                    <button class="ai-submit-support-btn" style="background:${ai_agent.color || '#2563eb'}">انتقال به پشتیبان</button>
-                </div>
-            `);
-
+            $wrapper.html('<p style="margin:4px 0 0 0; font-size:12px; color:#64748b; font-weight:500;">ممنون از بازخوردتون، سعی می‌کنیم بهتر بشیم.</p>');
             $.ajax({
                 url: ai_agent.ajax_url,
                 method: "POST",
@@ -525,64 +518,6 @@ jQuery(function ($) {
         }
     });
 
-    /*
-    ============================================
-    ثبت نهایی فرم گیت کارشناسان پشتیبانی
-    ============================================
-    */
-    $(document).on("click", ".ai-submit-support-btn", function () {
-        let $btn = $(this);
-        let $gate = $btn.closest('.ai-support-gate');
-        let $wrapper = $btn.closest('.ai-feedback-wrapper');
-        let chatId = $wrapper.data('chat-id');
-        let userMsg = $gate.find('.ai-support-msg').val();
-
-        $btn.prop('disabled', true).text('در حال ثبت...');
-
-        $.ajax({
-            url: ai_agent.ajax_url,
-            method: "POST",
-            data: {
-                action: "ai_agent_submit_support",
-                session_id: sessionId,
-                chat_id: chatId,
-                message: userMsg
-            },
-            success: function (res) {
-                if (res.success) {
-                    $gate.html('<p style="margin:5px 0 0 0; font-size:12px; color:#10b981; font-weight:500;">درخواست شما به کارشناسان ارجاع داده شد. پاسخ ادمین همین‌جا برای شما ظاهر می‌شود.</p>');
-                } else {
-                    $btn.prop('disabled', false).text('خطا در ارسال مجدد');
-                }
-            }
-        });
-    });
-
-    /*
-    ============================================
-    سیستم زمان‌بندی Polling برای واکشی پاسخ ادمین
-    ============================================
-    */
-    setInterval(function () {
-        if (windowChat.hasClass("ai-agent-open")) {
-            $.ajax({
-                url: ai_agent.ajax_url,
-                method: "POST",
-                data: {
-                    action: "ai_agent_poll_support",
-                    session_id: sessionId
-                },
-                success: function (response) {
-                    if (response.success && response.data && response.data.length > 0) {
-                        response.data.forEach(function (ticket) {
-                            addMessage("admin", ticket.admin_reply);
-                        });
-                    }
-                }
-            });
-        }
-    }, 5000);
-    
 /*
     ============================================
     بارگذاری تاریخچه‌ی چت هنگام باز شدن مجدد سایت

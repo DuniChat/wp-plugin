@@ -148,31 +148,6 @@
     color: #666;
 }
 
-/* ----- متن «بدون پاسخ» در تب پشتیبانی ----- */
-.ai-agent-no-reply {
-    color: #cc0000;
-}
-
-/* ----- textarea پاسخ سریع ادمین ----- */
-.ai-agent-reply-textarea {
-    width: 100%;
-    height: 60px;
-}
-
-/* ----- بج‌های وضعیت تیکت پشتیبانی ----- */
-.ai-agent-badge-pending {
-    background: #ffcccb;
-    padding: 3px 8px;
-    border-radius: 4px;
-    color: #cc0000;
-}
-.ai-agent-badge-answered {
-    background: #d4edda;
-    padding: 3px 8px;
-    border-radius: 4px;
-    color: #155724;
-}
-
 /* =====================================================================
    آکاردئون تاریخچه جلسات چت
    ===================================================================== */
