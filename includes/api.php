@@ -429,17 +429,22 @@ function ai_agent_unmap_content_types($internal_types) {
         return array();
     }
 
-    $mapping = array(
-        'posts'        => 'Posts',
-        'pages'        => 'Pages',
-        'products'     => 'WooCommerce Products',
-        'product_cats' => 'Product Categories',
+    $allowed = array(
+        'post',
+        'page',
+        'product',
+        'list',
     );
 
     $result = array();
+
     foreach ($internal_types as $type) {
-        if (is_string($type) && isset($mapping[$type])) {
-            $result[] = $mapping[$type];
+        if (is_string($type)) {
+            $type = trim($type);
+
+            if (in_array($type, $allowed, true)) {
+                $result[] = $type;
+            }
         }
     }
 
@@ -468,34 +473,26 @@ function ai_agent_map_content_types($api_types) {
         return array();
     }
 
-    // نگاشت برچسب‌های متنی API به کلیدهای داخلی افزونه
-    $mapping = array(
-        'Posts'                => 'posts',
-        'Pages'                => 'pages',
-        'WooCommerce Products' => 'products',
-        'Product Categories'   => 'product_cats',
+    $allowed = array(
+        'post',
+        'page',
+        'product',
+        'list',
     );
 
-    $internal_keys = array('posts', 'pages', 'products', 'product_cats');
-
     $result = array();
-    foreach ($api_types as $type) {
-        if (!is_string($type)) {
-            continue;
-        }
-        $type = trim($type);
 
-        // حالت ۱: برچسب متنی API (مثل "Posts")
-        if (isset($mapping[$type])) {
-            $result[] = $mapping[$type];
-        }
-        // حالت ۲: کلید داخلی مستقیم (مثل "posts")
-        elseif (in_array($type, $internal_keys, true)) {
-            $result[] = $type;
+    foreach ($api_types as $type) {
+        if (is_string($type)) {
+            $type = trim($type);
+
+            if (in_array($type, $allowed, true)) {
+                $result[] = $type;
+            }
         }
     }
 
-    return array_unique($result);
+    return array_values(array_unique($result));
 }
 /*
 ============================================
