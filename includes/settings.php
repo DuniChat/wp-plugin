@@ -540,41 +540,57 @@ function ai_agent_settings_page(){
                 <?php submit_button('ذخیره تنظیمات افزونه'); ?>
             </form>
 
-        <?php elseif ($current_tab === 'history') :
-            $table_chats = $wpdb->prefix . 'ai_agent_chats';
-            $chats = $wpdb->get_results("SELECT * FROM {$table_chats} ORDER BY id DESC LIMIT 100");
-            ?>
-            <h3>سابقه آخرین چت‌های انجام شده کاربران با مدل هوش مصنوعی</h3>
-            <table class="wp-list-table widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th class="ai-agent-col-8">ID سشن</th>
-                        <th class="ai-agent-col-35">سوال کاربر</th>
-                        <th class="ai-agent-col-40">پاسخ مدل هوش مصنوعی</th>
-                        <th class="ai-agent-col-10">بازخورد (Feedback)</th>
-                        <th class="ai-agent-col-17">تاریخ ثبت</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if(!empty($chats)): foreach($chats as $chat): ?>
-                        <tr>
-                            <td><code><?php echo esc_html($chat->session_id); ?></code></td>
-                            <td><?php echo esc_html($chat->question); ?></td>
-                            <td><?php echo nl2br(esc_html($chat->answer)); ?></td>
-                            <td>
-                                <?php
-                                    if($chat->feedback === 'like') echo '<span class="ai-agent-feedback-like">👍 پسندید</span>';
-                                    elseif($chat->feedback === 'dislike') echo '<span class="ai-agent-feedback-dislike">👎 نپسندید</span>';
-                                    else echo '<span class="ai-agent-muted-placeholder">ثبت نشده</span>';
-                                ?>
-                            </td>
-                            <td><?php echo esc_html($chat->created_at); ?></td>
-                        </tr>
-                    <?php endforeach; else: ?>
-                        <tr><td colspan="5">هنوز هیچ گفت‌وگویی ثبت نشده است.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+        <?php elseif ($current_tab === 'history') : ?>
+            <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
+            <h3>تاریخچه جلسات چت</h3>
+            <p class="description" style="margin-bottom:12px;">لیست تمام جلسات چت ثبت‌شده در سرور. روی هر شناسه کلیک کنید تا پیام‌های آن جلسه نمایش داده شود.</p>
+
+            <!-- نوار ابزار: صفحه‌بندی و تعداد نمایش -->
+            <div class="ai-agent-sessions-toolbar" style="margin-bottom:14px;">
+                <div class="ai-agent-sessions-page-size" style="display:inline-block;vertical-align:middle;">
+                    <label for="ai-agent-sessions-per-page" style="margin-left:6px;">تعداد در هر صفحه:</label>
+                    <select id="ai-agent-sessions-per-page" style="width:auto;">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div class="ai-agent-sessions-page-nav" style="display:inline-block;vertical-align:middle;margin-right:16px;">
+                    <span id="ai-agent-sessions-page-info" class="ai-agent-muted-small"></span>
+                    <button type="button" id="ai-agent-sessions-prev-btn" class="button button-secondary button-small" disabled>صفحه قبلی</button>
+                    <button type="button" id="ai-agent-sessions-next-btn" class="button button-secondary button-small" disabled>صفحه بعدی</button>
+                </div>
+                <div style="display:inline-block;vertical-align:middle;margin-right:16px;">
+                    <span id="ai-agent-sessions-total-info" class="ai-agent-muted-small"></span>
+                </div>
+            </div>
+
+            <!-- وضعیت بارگذاری -->
+            <div id="ai-agent-sessions-loading" class="ai-agent-sessions-loading" style="display:none;">در حال بارگذاری...</div>
+            <div id="ai-agent-sessions-error" class="ai-agent-sessions-error" style="display:none;"></div>
+
+            <!-- لیست آکاردئونی جلسات -->
+            <div id="ai-agent-sessions-list" class="ai-agent-sessions-list"></div>
+
+            <!-- نوار صفحه‌بندی پایین -->
+            <div class="ai-agent-sessions-toolbar" style="margin-top:14px;">
+                <div class="ai-agent-sessions-page-size" style="display:inline-block;vertical-align:middle;">
+                    <label for="ai-agent-sessions-per-page-bottom" style="margin-left:6px;">تعداد در هر صفحه:</label>
+                    <select id="ai-agent-sessions-per-page-bottom" style="width:auto;">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div class="ai-agent-sessions-page-nav" style="display:inline-block;vertical-align:middle;margin-right:16px;">
+                    <button type="button" id="ai-agent-sessions-prev-btn-bottom" class="button button-secondary button-small" disabled>صفحه قبلی</button>
+                    <button type="button" id="ai-agent-sessions-next-btn-bottom" class="button button-secondary button-small" disabled>صفحه بعدی</button>
+                </div>
+            </div>
 
         <?php elseif ($current_tab === 'support') :
             $table_support = $wpdb->prefix . 'ai_agent_support';

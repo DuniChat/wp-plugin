@@ -14,24 +14,12 @@ function ai_agent_install(){
 
     $charset_collate = $wpdb->get_charset_collate();
 
-    $table_chats    = $wpdb->prefix.'ai_agent_chats';
     $table_support  = $wpdb->prefix.'ai_agent_support';
     $table_synced   = $wpdb->prefix.'ai_agent_synced_items';
 
     require_once ABSPATH.'wp-admin/includes/upgrade.php';
 
-    $sql1 = "CREATE TABLE {$table_chats} (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        session_id VARCHAR(64) NOT NULL,
-        question TEXT NOT NULL,
-        answer LONGTEXT NOT NULL,
-        feedback VARCHAR(10) DEFAULT NULL,
-        created_at DATETIME NOT NULL,
-        PRIMARY KEY (id),
-        KEY session_id (session_id)
-    ) {$charset_collate};";
-
-    $sql2 = "CREATE TABLE {$table_support} (
+    $sql1 = "CREATE TABLE {$table_support} (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         session_id VARCHAR(64) NOT NULL,
         chat_id BIGINT UNSIGNED DEFAULT NULL,
@@ -63,7 +51,6 @@ function ai_agent_install(){
 
     dbDelta($sql1);
     dbDelta($sql2);
-    dbDelta($sql3);
 
 
 }
@@ -80,12 +67,6 @@ function ai_agent_maybe_install(){
 
     global $wpdb;
 
-    $table = $wpdb->prefix.'ai_agent_chats';
-
-    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
-        ai_agent_install();
-    }
-
     // بررسی وجود جدول آی‌دی‌های سینک‌شده؛ اگر نبود، آن را می‌سازیم
     $table_synced = $wpdb->prefix.'ai_agent_synced_items';
     if ($wpdb->get_var("SHOW TABLES LIKE '{$table_synced}'") !== $table_synced) {
@@ -100,53 +81,6 @@ function ai_agent_maybe_install(){
 
 }
 add_action('admin_init', 'ai_agent_maybe_install');
-
-/*
-============================================
-ذخیره یک رکورد چت (سوال + پاسخ)
-============================================
-*/
-
-function ai_agent_save_chat($session_id, $question, $answer){
-
-    global $wpdb;
-
-    $table = $wpdb->prefix.'ai_agent_chats';
-
-    $wpdb->insert($table, array(
-        'session_id' => $session_id,
-        'question'   => $question,
-        'answer'     => $answer,
-        'created_at' => current_time('mysql'),
-    ));
-
-    return $wpdb->insert_id;
-
-}
-
-/*
-============================================
-ثبت بازخورد (لایک/دیسلایک) روی یک چت
-============================================
-*/
-
-function ai_agent_update_feedback($chat_id, $feedback){
-
-    global $wpdb;
-
-    $table = $wpdb->prefix.'ai_agent_chats';
-
-    $allowed = array('like', 'dislike');
-
-    if (!in_array($feedback, $allowed, true)) return false;
-
-    return $wpdb->update(
-        $table,
-        array('feedback' => $feedback),
-        array('id' => intval($chat_id))
-    );
-
-}
 
 /*
 ============================================

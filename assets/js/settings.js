@@ -392,4 +392,454 @@
         if ($('#ai-agent-check-status-btn').length) {
             aiAgentCheckSyncStatus(false);
         }
+
+        // =====================================================================
+        // تاریخچه چت‌ها — لیست آکاردئونی جلسات با صفحه‌بندی
+        // =====================================================================
+        var aiAgentSessions = {
+            currentPage: 1,
+            pageSize: 10,
+            total: 0,
+            hasNext: false,
+            loading: false,
+            openSessionId: null,   // شناسه‌ی جلسه‌ای که آکاردئونش باز است
+            msgPage: 1,
+            msgPageSize: 10,
+            msgTotal: 0,
+            msgHasNext: false,
+            msgLoading: false,
+
+            init: function() {
+                var self = this;
+                // فقط اگر تب history فعال باشد
+                if (!$('#ai-agent-sessions-list').length) return;
+
+                // تعداد در هر صفحه — بالا
+                $('#ai-agent-sessions-per-page').on('change', function() {
+                    self.pageSize = parseInt($(this).val(), 10) || 10;
+                    $('#ai-agent-sessions-per-page-bottom').val(self.pageSize);
+                    self.currentPage = 1;
+                    self.loadSessions();
+                });
+                // تعداد در هر صفحه — پایین
+                $('#ai-agent-sessions-per-page-bottom').on('change', function() {
+                    self.pageSize = parseInt($(this).val(), 10) || 10;
+                    $('#ai-agent-sessions-per-page').val(self.pageSize);
+                    self.currentPage = 1;
+                    self.loadSessions();
+                });
+
+                // صفحه‌بندی — بالا
+                $('#ai-agent-sessions-prev-btn').on('click', function() {
+                    if (self.currentPage > 1) {
+                        self.currentPage--;
+                        self.loadSessions();
+                    }
+                });
+                $('#ai-agent-sessions-next-btn').on('click', function() {
+                    if (self.hasNext) {
+                        self.currentPage++;
+                        self.loadSessions();
+                    }
+                });
+
+                // صفحه‌بندی — پایین
+                $('#ai-agent-sessions-prev-btn-bottom').on('click', function() {
+                    if (self.currentPage > 1) {
+                        self.currentPage--;
+                        self.loadSessions();
+                    }
+                });
+                $('#ai-agent-sessions-next-btn-bottom').on('click', function() {
+                    if (self.hasNext) {
+                        self.currentPage++;
+                        self.loadSessions();
+                    }
+                });
+
+                // بارگذاری اولیه
+                self.loadSessions();
+            },
+
+            syncPageUI: function() {
+                // اطلاعات صفحه
+                $('#ai-agent-sessions-page-info').text(
+                    this.total > 0
+                        ? 'صفحه ' + this.currentPage + ' از ' + Math.ceil(this.total / this.pageSize)
+                        : ''
+                );
+                $('#ai-agent-sessions-total-info').text(
+                    this.total > 0 ? 'مجموع: ' + this.total + ' جلسه' : ''
+                );
+
+                // دکمه‌های بالا
+                $('#ai-agent-sessions-prev-btn').prop('disabled', this.currentPage <= 1);
+                $('#ai-agent-sessions-next-btn').prop('disabled', !this.hasNext);
+
+                // دکمه‌های پایین
+                $('#ai-agent-sessions-prev-btn-bottom').prop('disabled', this.currentPage <= 1);
+                $('#ai-agent-sessions-next-btn-bottom').prop('disabled', !this.hasNext);
+            },
+
+            loadSessions: function() {
+                var self = this;
+                if (self.loading) return;
+                self.loading = true;
+
+                var $list = $('#ai-agent-sessions-list');
+                var $loading = $('#ai-agent-sessions-loading');
+                var $error = $('#ai-agent-sessions-error');
+
+                $list.empty();
+                $loading.show();
+                $error.hide();
+                self.syncPageUI();
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'GET',
+                    data: {
+                        action: 'ai_agent_get_chat_sessions',
+                        nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
+                        page: self.currentPage,
+                        page_size: self.pageSize
+                    },
+                    success: function(response) {
+                        self.loading = false;
+                        $loading.hide();
+
+                        if (response.success) {
+                            var d = response.data;
+                            self.total = d.total || 0;
+                            self.hasNext = d.has_next || false;
+                            self.currentPage = d.page || 1;
+                            self.syncPageUI();
+                            self.renderSessions(d.items || []);
+                        } else {
+                            var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت لیست جلسات.';
+                            $error.text(msg).css('color', '#b91c1c').show();
+                        }
+                    },
+                    error: function() {
+                        self.loading = false;
+                        $loading.hide();
+                        $error.text('خطای غیرمنتظره در ارتباط با سرور.').css('color', '#b91c1c').show();
+                    }
+                });
+            },
+
+            renderSessions: function(items) {
+                var self = this;
+                var $list = $('#ai-agent-sessions-list');
+
+                if (!items || items.length === 0) {
+                    $list.html('<div class="ai-agent-sessions-empty" style="padding:20px;text-align:center;color:#888;">هیچ جلسه‌ای یافت نشد.</div>');
+                    return;
+                }
+
+                for (var i = 0; i < items.length; i++) {
+                    (function(item) {
+                        var created = item.created_at || '';
+                        // تبدیل تاریخ به فرمت قابل نمایش
+                        if (created) {
+                            var dt = new Date(created);
+                            if (!isNaN(dt.getTime())) {
+                                var jalali = self.toJalali(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+                                created = jalali + ' ' +
+                                    String(dt.getHours()).padStart(2, '0') + ':' +
+                                    String(dt.getMinutes()).padStart(2, '0');
+                            }
+                        }
+
+                        var statusLabel = self.getStatusLabel(item.status);
+
+                        var $item = $('<div class="ai-agent-session-item"></div>');
+                        var $header = $('<div class="ai-agent-session-header" style="cursor:pointer;"></div>');
+                        var $arrow = $('<span class="ai-agent-session-arrow">&#9654;</span>');
+                        var $idSpan = $('<code class="ai-agent-session-id"></code>').text(item.id);
+                        var $dateSpan = $('<span class="ai-agent-session-date"></span>').text(created);
+                        var $statusBadge = $('<span class="ai-agent-session-status-badge"></span>').text(statusLabel);
+
+                        // رنگ بج وضعیت — inline
+                        switch (item.status) {
+                            case 'pending_human':
+                                $statusBadge.css({background:'#fff3cd', color:'#856404'});
+                                break;
+                            case 'bot':
+                                $statusBadge.css({background:'#dbeafe', color:'#1e40af'});
+                                break;
+                            case 'support':
+                                $statusBadge.css({background:'#d4edda', color:'#155724'});
+                                break;
+                            case 'closed':
+                                $statusBadge.css({background:'#f3f4f6', color:'#6b7280'});
+                                break;
+                            default:
+                                $statusBadge.css({background:'#f3f4f6', color:'#6b7280'});
+                        }
+
+                        $header.append($arrow).append(' ').append($idSpan).append(' ').append($dateSpan).append(' ').append($statusBadge);
+
+                        var $body = $('<div class="ai-agent-session-body" style="display:none;"></div>');
+
+                        $header.on('click', function() {
+                            if ($body.is(':visible')) {
+                                // بستن آکاردئون
+                                $body.slideUp(250);
+                                $arrow.html('&#9654;');
+                                $item.removeClass('ai-agent-session-open');
+                                self.openSessionId = null;
+                            } else {
+                                // بستن تمام آکاردئون‌های باز
+                                $list.find('.ai-agent-session-body:visible').slideUp(250);
+                                $list.find('.ai-agent-session-arrow').html('&#9654;');
+                                $list.find('.ai-agent-session-item').removeClass('ai-agent-session-open');
+
+                                // باز کردن این مورد
+                                $body.slideDown(250);
+                                $arrow.html('&#9660;');
+                                $item.addClass('ai-agent-session-open');
+                                self.openSessionId = item.id;
+                                self.loadMessages(item.id, $body);
+                            }
+                        });
+
+                        $item.append($header).append($body);
+                        $list.append($item);
+                    })(items[i]);
+                }
+            },
+
+            loadMessages: function(sessionId, $container) {
+                var self = this;
+                if (self.msgLoading) return;
+                self.msgLoading = true;
+                self.msgPage = 1;
+
+                $container.html('<div class="ai-agent-msg-loading" style="padding:12px;text-align:center;color:#666;">در حال بارگذاری پیام‌ها...</div>');
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'GET',
+                    data: {
+                        action: 'ai_agent_get_session_messages',
+                        nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
+                        session_id: sessionId,
+                        page: self.msgPage,
+                        page_size: self.msgPageSize
+                    },
+                    success: function(response) {
+                        self.msgLoading = false;
+                        if (response.success) {
+                            var d = response.data;
+                            self.msgTotal = d.total || 0;
+                            self.msgHasNext = d.has_next || false;
+                            self.renderMessages($container, d.items || [], sessionId);
+                        } else {
+                            var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت پیام‌ها.';
+                            $container.html('<div style="padding:12px;color:#b91c1c;">' + msg + '</div>');
+                        }
+                    },
+                    error: function() {
+                        self.msgLoading = false;
+                        $container.html('<div style="padding:12px;color:#b91c1c;">خطای غیرمنتظره در ارتباط با سرور.</div>');
+                    }
+                });
+            },
+
+            renderMessages: function($container, messages, sessionId) {
+                var self = this;
+                $container.empty();
+
+                if (!messages || messages.length === 0) {
+                    $container.html('<div style="padding:12px;text-align:center;color:#888;">پیامی یافت نشد.</div>');
+                    return;
+                }
+
+                var $chatArea = $('<div class="ai-agent-chat-messages"></div>');
+
+                for (var i = 0; i < messages.length; i++) {
+                    var msg = messages[i];
+                    var role = (msg.role || 'user').toLowerCase();
+                    var content = msg.content || '';
+                    var created = msg.created_at || '';
+
+                    // فرمت‌بندی تاریخ پیام
+                    var timeStr = '';
+                    if (created) {
+                        var dt = new Date(created);
+                        if (!isNaN(dt.getTime())) {
+                            timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
+                                      String(dt.getMinutes()).padStart(2, '0') + ':' +
+                                      String(dt.getSeconds()).padStart(2, '0');
+                        }
+                    }
+
+                    // نگاشت role به کلاس و لیبل
+                    var roleClass = 'ai-agent-msg-' + role;
+                    var roleLabel = '';
+                    switch (role) {
+                        case 'user': roleLabel = 'کاربر'; break;
+                        case 'assistant': roleLabel = 'دستیار'; break;
+                        case 'support': roleLabel = 'پشتیبان'; break;
+                        case 'system': roleLabel = 'سیستم'; break;
+                        default: roleLabel = role;
+                    }
+
+                    var $msgBubble = $('<div class="ai-agent-msg-bubble ' + roleClass + '"></div>');
+                    var $msgHeader = $('<div class="ai-agent-msg-header"></div>');
+                    var $roleSpan = $('<span class="ai-agent-msg-role"></span>').text(roleLabel);
+                    var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
+                    $msgHeader.append($roleSpan).append($timeSpan);
+
+                    var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
+
+                    $msgBubble.append($msgHeader).append($msgContent);
+                    $chatArea.append($msgBubble);
+                }
+
+                $container.append($chatArea);
+
+                // صفحه‌بندی پیام‌ها
+                if (self.msgHasNext) {
+                    var $msgNav = $('<div class="ai-agent-msg-nav" style="margin-top:10px;text-align:center;"></div>');
+                    var $nextBtn = $('<button type="button" class="button button-secondary button-small"></button>').text('مشاهده پیام‌های قدیمی‌تر');
+                    $nextBtn.on('click', function() {
+                        self.msgPage++;
+                        self.loadMoreMessages(sessionId, $container);
+                    });
+                    $msgNav.append($nextBtn);
+                    $container.append($msgNav);
+                }
+
+                var $totalInfo = $('<div class="ai-agent-msg-total" style="margin-top:6px;text-align:center;"></div>');
+                $totalInfo.text(self.msgTotal + ' پیام');
+                $container.append($totalInfo);
+            },
+
+            loadMoreMessages: function(sessionId, $container) {
+                var self = this;
+                if (self.msgLoading) return;
+                self.msgLoading = true;
+
+                // حذف دکمه‌ی صفحه‌بندی قبلی
+                $container.find('.ai-agent-msg-nav').remove();
+
+                // indicator
+                var $indicator = $('<div class="ai-agent-msg-loading" style="padding:8px;text-align:center;color:#666;">در حال بارگذاری...</div>');
+                $container.find('.ai-agent-msg-total').before($indicator);
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'GET',
+                    data: {
+                        action: 'ai_agent_get_session_messages',
+                        nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
+                        session_id: sessionId,
+                        page: self.msgPage,
+                        page_size: self.msgPageSize
+                    },
+                    success: function(response) {
+                        self.msgLoading = false;
+                        $indicator.remove();
+                        if (response.success) {
+                            var d = response.data;
+                            self.msgHasNext = d.has_next || false;
+                            var newMessages = d.items || [];
+                            var $chatArea = $container.find('.ai-agent-chat-messages');
+
+                            // اضافه کردن پیام‌های جدید به ابتدا (پیام‌های قدیمی‌تر)
+                            for (var i = newMessages.length - 1; i >= 0; i--) {
+                                var msg = newMessages[i];
+                                var role = (msg.role || 'user').toLowerCase();
+                                var content = msg.content || '';
+                                var created = msg.created_at || '';
+
+                                var timeStr = '';
+                                if (created) {
+                                    var dt = new Date(created);
+                                    if (!isNaN(dt.getTime())) {
+                                        timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
+                                                  String(dt.getMinutes()).padStart(2, '0') + ':' +
+                                                  String(dt.getSeconds()).padStart(2, '0');
+                                    }
+                                }
+
+                                var roleClass = 'ai-agent-msg-' + role;
+                                var roleLabel = '';
+                                switch (role) {
+                                    case 'user': roleLabel = 'کاربر'; break;
+                                    case 'assistant': roleLabel = 'دستیار'; break;
+                                    case 'support': roleLabel = 'پشتیبان'; break;
+                                    case 'system': roleLabel = 'سیستم'; break;
+                                    default: roleLabel = role;
+                                }
+
+                                var $msgBubble = $('<div class="ai-agent-msg-bubble ' + roleClass + '"></div>');
+                                var $msgHeader = $('<div class="ai-agent-msg-header"></div>');
+                                var $roleSpan = $('<span class="ai-agent-msg-role"></span>').text(roleLabel);
+                                var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
+                                $msgHeader.append($roleSpan).append($timeSpan);
+
+                                var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
+                                $msgBubble.append($msgHeader).append($msgContent);
+                                $chatArea.prepend($msgBubble);
+                            }
+
+                            // صفحه‌بندی جدید اگر.hasNext
+                            if (self.msgHasNext) {
+                                var $msgNav = $('<div class="ai-agent-msg-nav" style="margin-top:10px;text-align:center;"></div>');
+                                var $nextBtn = $('<button type="button" class="button button-secondary button-small"></button>').text('مشاهده پیام‌های قدیمی‌تر');
+                                $nextBtn.on('click', function() {
+                                    self.msgPage++;
+                                    self.loadMoreMessages(sessionId, $container);
+                                });
+                                $msgNav.append($nextBtn);
+                                $container.find('.ai-agent-msg-total').before($msgNav);
+                            }
+                        }
+                    },
+                    error: function() {
+                        self.msgLoading = false;
+                        $indicator.html('<span style="color:#b91c1c;">خطا در بارگذاری.</span>');
+                    }
+                });
+            },
+
+            getStatusLabel: function(status) {
+                switch (status) {
+                    case 'pending_human': return 'در انتظار پشتیبان';
+                    case 'bot': return 'ربات';
+                    case 'closed': return 'بسته‌شده';
+                    case 'support': return 'پشتیبانی';
+                    default: return status || 'نامشخص';
+                }
+            },
+
+            // تبدیل میلادی به شمسی ساده (بدون نیاز به کتابخانه‌ی خارجی)
+            toJalali: function(gy, gm, gd) {
+                var g_d_m, jy, jm, jd, gy2, days;
+                gy2 = (gm > 2) ? (gy + 1) : gy;
+                days = 355666 + (365 * gy) + (Math.floor((gy2 + 3) / 4)) - (Math.floor((gy2 + 99) / 100)) + (Math.floor((gy2 + 399) / 400)) + gd + ((gm < 3) ? (gm - 1) * 31 : ((gm - 2) * 30 + ((gm > 6) ? 6 : 0)));
+                jy = -1595 + (33 * Math.floor(days / 12053));
+                days %= 12053;
+                jy += 4 * Math.floor(days / 1461);
+                days %= 1461;
+                if (days > 365) {
+                    jy += Math.floor((days - 1) / 365);
+                    days = (days - 1) % 365;
+                }
+                if (days < 186) {
+                    jm = 1 + Math.floor(days / 31);
+                    jd = 1 + (days % 31);
+                } else {
+                    jm = 7 + Math.floor((days - 186) / 30);
+                    jd = 1 + ((days - 186) % 30);
+                }
+                return jy + '/' + String(jm).padStart(2, '0') + '/' + String(jd).padStart(2, '0');
+            }
+        };
+
+        // راه‌اندازی ماژول جلسات
+        aiAgentSessions.init();
     });

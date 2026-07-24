@@ -125,13 +125,9 @@ function ai_agent_chat() {
             die();
         }
 
-        // ذخیره‌ی چت در دیتابیس و گرفتن شناسه‌ی سطر ثبت شده
-        $chat_id = ai_agent_save_chat($session_id, $message, $full_content);
-
-        // ارسال رویداد done با chat_id برای فعال‌سازی سیستم فیدبک لایک/دیسلایک
+        // ارسال رویداد done
         ai_agent_sse_send(array(
-            'type'    => 'done',
-            'chat_id' => (int) $chat_id,
+            'type' => 'done',
         ));
         @flush();
     }
@@ -155,26 +151,6 @@ add_action('wp_ajax_nopriv_ai_agent_chat', 'ai_agent_chat');
 function ai_agent_sse_send($data) {
     echo 'data: ' . wp_json_encode($data) . "\n\n";
 }
-
-/*
-============================================
-ثبت فیدبک لایک یا دیسلایک کاربر
-============================================
-*/
-function ai_agent_submit_feedback() {
-    $chat_id  = intval($_POST['chat_id']);
-    $feedback = sanitize_text_field($_POST['feedback']);
-
-    $updated  = ai_agent_update_feedback($chat_id, $feedback);
-
-    if($updated) {
-        wp_send_json_success();
-    } else {
-        wp_send_json_error();
-    }
-}
-add_action('wp_ajax_ai_agent_feedback', 'ai_agent_submit_feedback');
-add_action('wp_ajax_nopriv_ai_agent_feedback', 'ai_agent_submit_feedback');
 
 /*
 ============================================
@@ -267,3 +243,67 @@ function ai_agent_get_history_handler() {
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
 add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');
+
+/*
+============================================
+هندلر AJAX: دریافت لیست جلسات چت از سرور
+برای نمایش در تب تاریخچه تنظیمات (فقط ادمین)
+============================================
+*/
+function ai_agent_get_chat_sessions_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $page      = isset($_GET['page']) ? intval($_GET['page']) : 1;
+    $page_size = isset($_GET['page_size']) ? intval($_GET['page_size']) : 10;
+    // status_filter هرگز ارسال نمی‌شود (طبق درخواست کاربر)
+
+    $result = ai_agent_fetch_chat_sessions($page, $page_size);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_get_chat_sessions', 'ai_agent_get_chat_sessions_handler');
+
+/*
+============================================
+هندلر AJAX: دریافت پیام‌های یک جلسه چت از سرور
+برای نمایش در آکاردئون تب تاریخچه تنظیمات (فقط ادمین)
+============================================
+*/
+function ai_agent_get_session_messages_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $session_id = isset($_GET['session_id']) ? sanitize_text_field($_GET['session_id']) : '';
+    $page       = isset($_GET['page']) ? intval($_GET['page']) : 1;
+    $page_size  = isset($_GET['page_size']) ? intval($_GET['page_size']) : 10;
+
+    if (empty($session_id)) {
+        wp_send_json_error(array('message' => 'شناسه‌ی جلسه ارسال نشده است.'));
+    }
+
+    $result = ai_agent_fetch_session_messages($session_id, true, $page, $page_size);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_get_session_messages', 'ai_agent_get_session_messages_handler');

@@ -1160,3 +1160,229 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
         'summary' => (isset($resp_data['summary']) && is_array($resp_data['summary'])) ? $resp_data['summary'] : null,
     );
 }
+
+/*
+============================================
+واکشی لیست جلسات چت از سرور
+اندپوینت: GET https://mhtrxz.ir/api/v1/chat/sessions
+
+پارامترها:
+    $page : شماره صفحه (پیش‌فرض: 1)
+    $page_size : تعداد آیتم در هر صفحه (پیش‌فرض: 10)
+    $status_filter : فیلتر وضعیت (اختیاری — اگر خالی باشد ارسال نمی‌شود)
+
+خروجی: آرایه‌ای با کلیدهای:
+    status  => success | error
+    message : پیام (در حالت خطا)
+    items   : آرایه‌ی جلسات
+    total   : تعداد کل جلسات
+    page    : شماره صفحه فعلی
+    page_size : تعداد در هر صفحه
+    has_next : آیا صفحه بعدی وجود دارد
+============================================
+*/
+function ai_agent_fetch_chat_sessions($page = 1, $page_size = 10, $status_filter = '') {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.',
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $url = 'https://mhtrxz.ir/api/v1/chat/sessions';
+
+    $query_params = array(
+        'page'      => max(1, intval($page)),
+        'page_size' => max(1, intval($page_size)),
+    );
+
+    if ($status_filter !== '') {
+        $query_params['status_filter'] = sanitize_text_field($status_filter);
+    }
+
+    $url .= '?' . http_build_query($query_params);
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 20,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    if (!is_array($data) || !isset($data['items'])) {
+        return array(
+            'status'  => 'error',
+            'message' => 'پاسخ سرور ساختار مورد انتظار را نداشت.',
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    return array(
+        'status'    => 'success',
+        'message'   => '',
+        'items'     => is_array($data['items']) ? $data['items'] : array(),
+        'total'     => isset($data['total']) ? intval($data['total']) : 0,
+        'page'      => isset($data['page']) ? intval($data['page']) : 1,
+        'page_size' => isset($data['page_size']) ? intval($data['page_size']) : $page_size,
+        'has_next'  => isset($data['has_next']) ? (bool) $data['has_next'] : false,
+    );
+}
+
+/*
+============================================
+واکشی پیام‌های یک جلسه چت از سرور
+اندپوینت: GET https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/messages
+
+پارامترها:
+    $session_id      : شناسه‌ی جلسه (UUID)
+    $include_system  : آیا پیام‌های سیستم هم برگردانده شوند (پیش‌فرض: true)
+    $page            : شماره صفحه (پیش‌فرض: 1)
+    $page_size       : تعداد پیام در هر صفحه (پیش‌فرض: 10)
+
+خروجی: آرایه‌ای با کلیدهای:
+    status  => success | error
+    message : پیام (در حالت خطا)
+    items   : آرایه‌ی پیام‌ها
+    total   : تعداد کل پیام‌ها
+    page    : شماره صفحه فعلی
+    page_size : تعداد در هر صفحه
+    has_next : آیا صفحه بعدی وجود دارد
+============================================
+*/
+function ai_agent_fetch_session_messages($session_id, $include_system = true, $page = 1, $page_size = 10) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key) || empty($session_id)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'API Key یا شناسه‌ی جلسه تنظیم نشده است.',
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
+
+    $query_params = array(
+        'include_system' => $include_system ? 'true' : 'false',
+        'page'      => max(1, intval($page)),
+        'page_size' => max(1, intval($page_size)),
+    );
+
+    $url .= '?' . http_build_query($query_params);
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 20,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'items'   => array(),
+            'total'   => 0,
+            'page'    => 1,
+            'page_size' => $page_size,
+            'has_next' => false,
+        );
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    if (is_array($data) && isset($data['items'])) {
+        return array(
+            'status'    => 'success',
+            'message'   => '',
+            'items'     => is_array($data['items']) ? $data['items'] : array(),
+            'total'     => isset($data['total']) ? intval($data['total']) : count($data['items']),
+            'page'      => isset($data['page']) ? intval($data['page']) : 1,
+            'page_size' => isset($data['page_size']) ? intval($data['page_size']) : $page_size,
+            'has_next'  => isset($data['has_next']) ? (bool) $data['has_next'] : false,
+        );
+    }
+
+    if (is_array($data) && !isset($data['detail'])) {
+        return array(
+            'status'    => 'success',
+            'message'   => '',
+            'items'     => $data,
+            'total'     => count($data),
+            'page'      => 1,
+            'page_size' => $page_size,
+            'has_next'  => false,
+        );
+    }
+
+    return array(
+        'status'  => 'error',
+        'message' => 'پاسخ سرور ساختار مورد انتظار را نداشت.',
+        'items'   => array(),
+        'total'   => 0,
+        'page'    => 1,
+        'page_size' => $page_size,
+        'has_next' => false,
+    );
+}

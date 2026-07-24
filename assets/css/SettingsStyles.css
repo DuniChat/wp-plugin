@@ -138,24 +138,6 @@
     border-top: 1px dashed #dcdcde;
 }
 
-/* ----- عرض ستون‌های جداول تاریخچه و پشتیبانی ----- */
-.ai-agent-col-8  { width: 8%; }
-.ai-agent-col-10 { width: 10%; }
-.ai-agent-col-17 { width: 17%; }
-.ai-agent-col-25 { width: 25%; }
-.ai-agent-col-35 { width: 35%; }
-.ai-agent-col-40 { width: 40%; }
-
-/* ----- نمایش بازخورد لایک/دیسلایک در تب تاریخچه ----- */
-.ai-agent-feedback-like {
-    color: green;
-    font-weight: bold;
-}
-.ai-agent-feedback-dislike {
-    color: red;
-    font-weight: bold;
-}
-
 /* ----- متن خاکستری برای موارد «ثبت نشده» / «هنوز سینکی انجام نشده» ----- */
 .ai-agent-muted-placeholder {
     color: #888;
@@ -189,4 +171,248 @@
     padding: 3px 8px;
     border-radius: 4px;
     color: #155724;
+}
+
+/* =====================================================================
+   آکاردئون تاریخچه جلسات چت
+   ===================================================================== */
+
+/* ----- لیست جلسات ----- */
+.ai-agent-sessions-list {
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* ----- هر آیتم آکاردئون ----- */
+.ai-agent-session-item {
+    border-bottom: 1px solid #dcdcde;
+}
+.ai-agent-session-item:last-child {
+    border-bottom: none;
+}
+
+/* ----- هدر آکاردئون (کلیک‌پذیر) ----- */
+.ai-agent-session-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    background: #f6f7f7;
+    transition: background 0.15s ease;
+    gap: 10px;
+}
+.ai-agent-session-header:hover {
+    background: #eef0f1;
+}
+.ai-agent-session-item.ai-agent-session-open .ai-agent-session-header {
+    background: #e5e7e9;
+}
+
+/* ----- فلش آکاردئون ----- */
+.ai-agent-session-arrow {
+    font-size: 11px;
+    color: #666;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+}
+
+/* ----- شناسه‌ی جلسه ----- */
+.ai-agent-session-id {
+    font-size: 12px;
+    direction: ltr;
+    text-align: left;
+    color: #2271b1;
+    background: #f0f6fc;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    word-break: break-all;
+}
+
+/* ----- تاریخ جلسه ----- */
+.ai-agent-session-date {
+    font-size: 12px;
+    color: #555;
+    flex-shrink: 0;
+    direction: ltr;
+    text-align: left;
+}
+
+/* ----- بج وضعیت جلسه ----- */
+.ai-agent-session-status-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-right: auto;
+}
+.ai-agent-session-status-badge:contains('در انتظار'),
+.ai-agent-session-status-badge[data-status="pending_human"] {
+    background: #fff3cd;
+    color: #856404;
+}
+/* از آنجا که :contains در همه مرورگرها به‌خوبی پشتیبانی نمی‌شود،
+   رنگ بج‌ها را از طریق JavaScript روی استایل inline تنظیم می‌کنیم */
+
+/* ----- بدنه آکاردئون (محتوای پیام‌ها) ----- */
+.ai-agent-session-body {
+    padding: 0 14px 14px 14px;
+    border-top: 1px solid #e5e5e5;
+}
+
+/* =====================================================================
+   پیام‌های چت (شبیه رابط کاربری چت)
+   ===================================================================== */
+
+.ai-agent-chat-messages {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px 0;
+    direction: rtl;
+}
+
+/* ----- حباب پیام عمومی ----- */
+.ai-agent-msg-bubble {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    max-width: 85%;
+    position: relative;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+/* ----- هدر هر پیام ----- */
+.ai-agent-msg-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+.ai-agent-msg-role {
+    font-weight: 600;
+}
+.ai-agent-msg-time {
+    font-size: 10px;
+    opacity: 0.7;
+    direction: ltr;
+}
+
+/* ----- محتوای پیام ----- */
+.ai-agent-msg-content {
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* ----- پیام کاربر (user) — آبی/راست‌چین ----- */
+.ai-agent-msg-user {
+    background: #dcf0ff;
+    color: #1a1a1a;
+    margin-left: auto;
+    border-bottom-right-radius: 2px;
+}
+.ai-agent-msg-user .ai-agent-msg-role {
+    color: #0369a1;
+}
+
+/* ----- پیام دستیار (assistant) — خاکستری روشن/چپ‌چین ----- */
+.ai-agent-msg-assistant {
+    background: #f0f0f0;
+    color: #1a1a1a;
+    margin-right: auto;
+    border-bottom-left-radius: 2px;
+}
+.ai-agent-msg-assistant .ai-agent-msg-role {
+    color: #4b5563;
+}
+
+/* ----- پیام پشتیبان (support) — سبز ----- */
+.ai-agent-msg-support {
+    background: #d4edda;
+    color: #1a1a1a;
+    margin-right: auto;
+    border-bottom-left-radius: 2px;
+}
+.ai-agent-msg-support .ai-agent-msg-role {
+    color: #155724;
+}
+
+/* ----- پیام سیستم (system) — زرد/کمرنگ ----- */
+.ai-agent-msg-system {
+    background: #fff3cd;
+    color: #1a1a1a;
+    margin: 0 auto 10px auto;
+    max-width: 90%;
+    text-align: center;
+    font-size: 12px;
+}
+.ai-agent-msg-system .ai-agent-msg-header {
+    justify-content: center;
+}
+.ai-agent-msg-system .ai-agent-msg-role {
+    color: #856404;
+}
+
+/* ----- وضعیت بارگذاری ----- */
+.ai-agent-sessions-loading {
+    padding: 14px;
+    text-align: center;
+    color: #2271b1;
+    font-weight: 600;
+}
+.ai-agent-sessions-error {
+    padding: 14px;
+    text-align: center;
+}
+.ai-agent-msg-loading {
+    padding: 10px;
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+}
+
+/* ----- نوار ابزار جلسات ----- */
+.ai-agent-sessions-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* ----- تعداد پیام‌ها ----- */
+.ai-agent-msg-total {
+    font-size: 11px;
+    color: #888;
+}
+
+/* ----- دکمه‌ی مشاهده پیام‌های قدیمی‌تر ----- */
+.ai-agent-msg-nav {
+    margin-top: 10px;
+    text-align: center;
+}
+
+/* ----- ریسپانسیو ----- */
+@media (max-width: 782px) {
+    .ai-agent-session-header {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .ai-agent-session-id {
+        font-size: 11px;
+    }
+    .ai-agent-session-status-badge {
+        margin-right: 0;
+    }
+    .ai-agent-msg-bubble {
+        max-width: 95%;
+    }
+    .ai-agent-sessions-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
