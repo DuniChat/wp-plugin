@@ -53,12 +53,12 @@ if (!defined('ABSPATH')) {
     escalate_conversation_id  : شناسه‌ی گفتگو در سیستم پشتیبان (در صورت escalate)
 ============================================
 */
-function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null) {
+function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null) {
 
     $settings = ai_agent_get_settings();
     $api_key  = ai_agent_get_api_key();
     $timeout  = max(1, intval($settings['timeout']));
-
+    $references = array();
     // اگر API Key تنظیم نشده بود، کالی زده نمی‌شود
     if (empty($api_key)) {
         if (is_callable($on_error)) {
@@ -119,7 +119,8 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
 $parser_line = function($line) use (
     &$full_content, &$api_session_id, &$api_message_id, $on_chunk,
     &$escalated, &$escalate_reason, &$escalate_conversation_id, $on_escalate,
-    &$current_event
+    &$current_event,
+    &$references, $on_references
 ) {
     $line = trim($line);
     if ($line === '' || $line === '[DONE]') {
@@ -159,6 +160,16 @@ $parser_line = function($line) use (
             }
             if (is_callable($on_escalate)) {
                 $on_escalate($escalate_reason, $escalate_conversation_id);
+            }
+            return;
+        }
+        // رویداد references: لیست محصولات/صفحات مرتبطی که مدل به آن‌ها استناد کرده
+        if ($current_event === 'references') {
+            if (isset($decoded['references']) && is_array($decoded['references'])) {
+                $references = $decoded['references'];
+                if (is_callable($on_references)) {
+                    $on_references($references);
+                }
             }
             return;
         }
@@ -306,6 +317,7 @@ $parser_line = function($line) use (
         'escalate'                 => $escalated,
         'escalate_reason'          => $escalate_reason,
         'escalate_conversation_id' => $escalate_conversation_id,
+        'references'               => $references,
     );
 }
 

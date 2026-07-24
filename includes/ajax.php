@@ -95,8 +95,16 @@ function ai_agent_chat() {
         @flush();
     };
 
+    // ۹.۶) Callback برای رویداد references (لیست محصولات مرتبط)
+    $on_references = function($references) {
+        ai_agent_sse_send(array(
+            'type'       => 'references',
+            'references' => $references,
+        ));
+        @flush();
+    };
     // ۱۰) فراخوانی تابع استریم در api.php
-    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate);
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references);
     //DEBUG
     error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
     // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done

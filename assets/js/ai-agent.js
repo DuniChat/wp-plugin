@@ -182,23 +182,49 @@ jQuery(function ($) {
 
     /*
     ============================================
+    ساخت باکس رفرنس‌ها (محصولات/صفحات مرتبط) به‌صورت هایپرلینک
+    ============================================
+    */
+    function buildReferencesBox(references) {
+        if (!Array.isArray(references) || references.length === 0) return null;
+
+        const $box = $('<div class="ai-references-box"></div>');
+        const $title = $('<div class="ai-references-title"></div>').text('موارد مرتبط:');
+        const $list = $('<div class="ai-references-list"></div>');
+
+        references.forEach(function (ref) {
+            if (!ref || !ref.url) return;
+            const label = ref.title ? String(ref.title) : String(ref.url);
+            const $link = $('<a class="ai-reference-link" target="_blank" rel="noopener noreferrer"></a>')
+                .attr('href', ref.url)
+                .text(label);
+            $list.append($link);
+        });
+
+        if ($list.children().length === 0) return null;
+
+        $box.append($title).append($list);
+        return $box;
+    }
+    /*
+    ============================================
     ساخت یک پیام AI خالی برای استریم کردن محتوا داخل آن
     برمی‌گرداند: { $wrapper, $content, $loading }
     ============================================
     */
     function addStreamingMessage() {
-        const $wrapper = $('<div class="ai-message fade-in-up"></div>');
-        const $body = $('<div class="ai-message-body"></div>');
-        const $content = $('<span class="ai-streaming-content"></span>');
-        const $loading = $(
-            '<div class="typing-dots" id="ai-loading-stream"><span></span><span></span><span></span></div>'
-        );
-        $body.append($content);
-        $body.append($loading);
-        $wrapper.append($body);
-        messages.append($wrapper);
-        return { $wrapper: $wrapper, $body: $body, $content: $content, $loading: $loading };
-    }
+    const $wrapper = $('<div class="ai-message fade-in-up"></div>');
+    const $body = $('<div class="ai-message-body"></div>');
+    const $content = $('<span class="ai-streaming-content"></span>');
+    const $loading = $(
+        '<div class="typing-dots" id="ai-loading-stream"><span></span><span></span><span></span></div>'
+    );
+    $body.append($content);
+    $body.append($loading);
+    $wrapper.append($body);
+    messages.append($wrapper);
+    return { $wrapper, $body, $content, $loading, references: [], rawText: '' }; // <-- rawText اضافه شد
+}
 
     function removeLoading() {
         $("#ai-loading, #ai-loading-stream").remove();
@@ -214,7 +240,44 @@ jQuery(function ($) {
         div.textContent = text;
         return div.innerHTML;
     }
+    /*
+    ============================================
+    استخراج لینک‌های مارک‌داون [عنوان](URL) که مدل ممکن است
+    مستقیماً داخل متن پیام نوشته باشد (به‌جای رویداد references)
+    و جدا کردن آن‌ها از متن اصلی پیام
+    ============================================
+    */
+    function extractMarkdownReferences(rawText) {
+        const linkRegex = /\[([^\[\]]+)\]\((https?:\/\/[^\s()]+)\)/g;
+        const refs = [];
+        let match;
+        let firstMatchIndex = -1;
 
+        while ((match = linkRegex.exec(rawText)) !== null) {
+            if (firstMatchIndex === -1) firstMatchIndex = match.index;
+            refs.push({ title: match[1].trim(), url: match[2].trim() });
+        }
+
+        if (refs.length === 0) {
+            return { cleanedText: rawText, references: [] };
+        }
+
+        // متنی که قبل از اولین لینک آمده، متن واقعی پاسخ است
+        let cleanedText = rawText.slice(0, firstMatchIndex);
+
+        // حذف عنوان‌های رایجی مثل «موارد مرتبط:» که معمولاً قبل از لینک‌ها می‌آید
+        cleanedText = cleanedText.replace(/(موارد\s*مرتبط|منابع|رفرنس‌ها)\s*:?\s*$/i, '').trimEnd();
+
+        // حذف رفرنس‌های تکراری (URL یکسان)
+        const seen = new Set();
+        const uniqueRefs = refs.filter(r => {
+            if (seen.has(r.url)) return false;
+            seen.add(r.url);
+            return true;
+        });
+
+        return { cleanedText, references: uniqueRefs };
+    }
     /*
     ============================================
     ارسال پیام به سمت سرور و استریم پاسخ
@@ -348,22 +411,33 @@ jQuery(function ($) {
         }
 
         if (data.type === 'chunk' && typeof data.content !== 'undefined') {
-            // اولین چانک: لودینگ را حذف می‌کنیم
-            stream.$loading.remove();
-            // محتوا را escape کرده و اضافه می‌کنیم
-            stream.$content.append(escapeHtml(data.content));
+        stream.$loading.remove();
+        stream.rawText += data.content; // ذخیره‌ی متن خام برای پردازش نهایی
+        stream.$content.append(escapeHtml(data.content));
+        } else if (data.type === 'references' && Array.isArray(data.references)) {
+            // به‌جای فقط ذخیره کردن، باکس رو همین لحظه که رسید بساز و نمایش بده
+            stream.references = data.references;
+            const $refBox = buildReferencesBox(stream.references);
+            if ($refBox) {
+                $refBox.addClass('fade-in-up'); // همون انیمیشن نرم فید این‌آپ که پیام‌ها دارن
+                stream.$body.append($refBox);
+                stream.referencesRendered = true; // فلگ تا در done دوباره تکراری اضافه نشه
+            }
         } else if (data.type === 'session_init' && data.session_id) {
-            // ذخیره session_id دریافتی از API در کوکی
             setSessionId(data.session_id);
         } else if (data.type === 'escalate') {
-            // در این حالت مدل هیچ متنی ننوشته؛ حباب استریم خالی را حذف
-            // و یک پیام سیستمی جدا برای اعلام انتقال به پشتیبان نمایش می‌دهیم
             stream.$loading.remove();
             stream.$wrapper.remove();
             addEscalateMessage(data.reason);
         } else if (data.type === 'done') {
             stream.$loading.remove();
-            // اضافه‌ کردن UI فیدبک (لایک/دیسلایک) به انتهای پیام
+
+            // فقط اگر رویداد references قبلاً نیومده بود و باکس ساخته نشده، اینجا بسازش
+            if (!stream.referencesRendered && stream.references && stream.references.length) {
+                const $refBox = buildReferencesBox(stream.references);
+                if ($refBox) stream.$body.append($refBox);
+            }
+
             if (data.chat_id) {
                 stream.$body.append(feedbackHtmlFor(data.chat_id));
                 if (typeof onDone === 'function') onDone(data.chat_id);

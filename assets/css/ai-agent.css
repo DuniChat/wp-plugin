@@ -417,6 +417,60 @@
     border-top: 1px dashed #e2e8f0;
 }
 
+/* باکس رفرنس‌ها (محصولات/صفحات مرتبط) — انتهای پیام هوش مصنوعی */
+.ai-references-box {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.ai-references-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.ai-references-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.ai-reference-link {
+    font-size: 12.5px;
+    color: #2563eb;
+    text-decoration: none;
+    padding: 6px 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    display: block;
+    word-break: break-word;
+}
+
+.ai-reference-link:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    text-decoration: underline;
+}
+
+/* دارک‌مود */
+#ai-agent[data-theme="dark"] .ai-references-box {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+#ai-agent[data-theme="dark"] .ai-references-title {
+    color: #94a3b8;
+}
+#ai-agent[data-theme="dark"] .ai-reference-link {
+    color: #93c5fd;
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+#ai-agent[data-theme="dark"] .ai-reference-link:hover {
+    background: #24344d;
+    border-color: rgba(147, 197, 253, 0.35);
+}
 .ai-feedback-buttons {
     display: flex;
     gap: 10px;
