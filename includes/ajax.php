@@ -83,8 +83,20 @@ function ai_agent_chat() {
         @flush();
     };
 
+    // ۹.۵) Callback برای حالت انتقال به پشتیبان انسانی (رویداد escalate)
+    // در این حالت مدل هیچ متنی تولید نمی‌کند؛ فقط دلیل انتقال اعلام می‌شود
+    // و بلافاصله (بدون منتظر ماندن برای done) به مرورگر اطلاع‌رسانی می‌کنیم.
+    $on_escalate = function($reason, $conversation_id) {
+        ai_agent_sse_send(array(
+            'type'            => 'escalate',
+            'reason'          => $reason,
+            'conversation_id' => $conversation_id,
+        ));
+        @flush();
+    };
+
     // ۱۰) فراخوانی تابع استریم در api.php
-    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error);
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate);
     //DEBUG
     error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
     // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done
@@ -114,9 +126,12 @@ function ai_agent_chat() {
         }
 
         $full_content = isset($result['full_content']) ? $result['full_content'] : '';
+        $is_escalate  = !empty($result['escalate']);
 
         // اگر به هر دلیلی محتوایی دریافت نشد، یک پیام خطا به کاربر می‌دهیم
-        if (trim($full_content) === '') {
+        // به‌جز حالتی که گفتگو به پشتیبان انسانی منتقل شده؛ طبق مستندات API
+        // در حالت escalate هیچ delta ای ارسال نمی‌شود و این طبیعی است.
+        if (!$is_escalate && trim($full_content) === '') {
             ai_agent_sse_send(array(
                 'type'    => 'error',
                 'message' => 'پاسخی از سرور دریافت نشد. لطفاً مجدداً تلاش کنید.',

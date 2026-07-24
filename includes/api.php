@@ -40,14 +40,20 @@ if (!defined('ABSPATH')) {
     $on_chunk    : callable($content, $raw_chunk) — برای هر چانک محتوا
     $on_done     : callable() — پس از پایان موفق استریم
     $on_error    : callable($message) — در صورت خطا
+    $on_escalate : callable($reason, $conversation_id) — وقتی مدل تصمیم به
+                   انتقال گفتگو به پشتیبان انسانی می‌گیرد (رویداد escalate).
+                   در این حالت هیچ متنی (delta) از سمت مدل ارسال نمی‌شود.
 
 خروجی: آرایه‌ای با کلیدهای:
-    status       => success | error | timeout
-    message      : پیام (در حالت خطا)
-    full_content : کل متن تجمیع‌شده (در حالت success)
+    status                    => success | error | timeout
+    message                   : پیام (در حالت خطا)
+    full_content              : کل متن تجمیع‌شده (در حالت success)
+    escalate                  : bool — آیا این پاسخ به انتقال به پشتیبان ختم شد
+    escalate_reason           : دلیل انتقال به پشتیبان (در صورت escalate)
+    escalate_conversation_id  : شناسه‌ی گفتگو در سیستم پشتیبان (در صورت escalate)
 ============================================
 */
-function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null) {
+function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null) {
 
     $settings = ai_agent_get_settings();
     $api_key  = ai_agent_get_api_key();
@@ -99,18 +105,38 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
     $api_session_id = null;
     $api_message_id = null;
 
+    // وضعیت مربوط به انتقال به پشتیبان (رویداد escalate)
+    $escalated                = false;
+    $escalate_reason          = null;
+    $escalate_conversation_id = null;
+
+    // نام رویداد فعلی SSE (از خط "event: xxx")؛ چون یک رویداد ممکن است
+    // چند خط داشته باشد (event: ... سپس data: ...)، باید بین خطوط حفظ شود
+    // تا وقتی به خط data می‌رسیم بدانیم متعلق به کدام رویداد است.
+    $current_event = '';
+
     // ساخت یک closure برای parse کردن یک خط SSE / JSON
-$parser_line = function($line) use (&$full_content, &$api_session_id, &$api_message_id, $on_chunk) {
+$parser_line = function($line) use (
+    &$full_content, &$api_session_id, &$api_message_id, $on_chunk,
+    &$escalated, &$escalate_reason, &$escalate_conversation_id, $on_escalate,
+    &$current_event
+) {
     $line = trim($line);
     if ($line === '' || $line === '[DONE]') {
+        // خط خالی یعنی پایان یک رویداد SSE؛ نام رویداد را ریست می‌کنیم
+        $current_event = '';
+        return;
+    }
+
+    if (strpos($line, 'event:') === 0) {
+        $current_event = trim(substr($line, 6));
         return;
     }
 
     if (strpos($line, 'data:') === 0) {
         $line = trim(substr($line, 5));
     }
-    elseif (strpos($line, 'event:') === 0
-         || strpos($line, 'id:') === 0
+    elseif (strpos($line, 'id:') === 0
          || strpos($line, 'retry:') === 0
          || strpos($line, ':') === 0) {
         return;
@@ -122,6 +148,21 @@ $parser_line = function($line) use (&$full_content, &$api_session_id, &$api_mess
 
     $decoded = json_decode($line, true);
     if (is_array($decoded)) {
+
+        // رویداد escalate: مدل تصمیم به انتقال گفتگو به پشتیبان انسانی گرفته
+        // است. در این حالت هیچ content ای وجود ندارد، فقط دلیل انتقال.
+        if ($current_event === 'escalate') {
+            $escalated       = true;
+            $escalate_reason = isset($decoded['reason']) ? (string) $decoded['reason'] : '';
+            if (isset($decoded['conversation_id'])) {
+                $escalate_conversation_id = $decoded['conversation_id'];
+            }
+            if (is_callable($on_escalate)) {
+                $on_escalate($escalate_reason, $escalate_conversation_id);
+            }
+            return;
+        }
+
         // استخراج session_id و message_id از اولین رویداد SSE
         if (isset($decoded['session_id']) && $api_session_id === null) {
             $api_session_id = $decoded['session_id'];
@@ -129,6 +170,17 @@ $parser_line = function($line) use (&$full_content, &$api_session_id, &$api_mess
         if (isset($decoded['message_id']) && $api_message_id === null) {
             $api_message_id = $decoded['message_id'];
         }
+
+        // رویداد done ممکن است خودش هم escalate:true را گزارش کند
+        // (مثلاً اگر به هر دلیلی رویداد escalate جداگانه دریافت نشده باشد)
+        if ($current_event === 'done' && !empty($decoded['escalate']) && !$escalated) {
+            $escalated       = true;
+            $escalate_reason = isset($decoded['escalate_reason']) ? (string) $decoded['escalate_reason'] : '';
+            if (is_callable($on_escalate)) {
+                $on_escalate($escalate_reason, $escalate_conversation_id);
+            }
+        }
+
         // پردازش چانک‌های محتوایی
         if (isset($decoded['content'])) {
             $content = (string) $decoded['content'];
@@ -247,10 +299,13 @@ $parser_line = function($line) use (&$full_content, &$api_session_id, &$api_mess
     }
 
     return array(
-        'status'       => 'success',
-        'full_content' => $full_content,
-        'session_id'   => $api_session_id,
-        'message_id'   => $api_message_id,
+        'status'                   => 'success',
+        'full_content'             => $full_content,
+        'session_id'               => $api_session_id,
+        'message_id'               => $api_message_id,
+        'escalate'                 => $escalated,
+        'escalate_reason'          => $escalate_reason,
+        'escalate_conversation_id' => $escalate_conversation_id,
     );
 }
 
@@ -429,22 +484,18 @@ function ai_agent_unmap_content_types($internal_types) {
         return array();
     }
 
-    $allowed = array(
-        'post',
-        'page',
-        'product',
-        'list',
+    $map = array(
+        'posts'        => 'post',
+        'pages'        => 'page',
+        'products'     => 'product',
+        'product_cats' => 'list',
     );
 
     $result = array();
 
     foreach ($internal_types as $type) {
-        if (is_string($type)) {
-            $type = trim($type);
-
-            if (in_array($type, $allowed, true)) {
-                $result[] = $type;
-            }
+        if (isset($map[$type])) {
+            $result[] = $map[$type];
         }
     }
 
@@ -473,22 +524,18 @@ function ai_agent_map_content_types($api_types) {
         return array();
     }
 
-    $allowed = array(
-        'post',
-        'page',
-        'product',
-        'list',
+    $map = array(
+        'post'    => 'posts',
+        'page'    => 'pages',
+        'product' => 'products',
+        'list'    => 'product_cats',
     );
 
     $result = array();
 
     foreach ($api_types as $type) {
-        if (is_string($type)) {
-            $type = trim($type);
-
-            if (in_array($type, $allowed, true)) {
-                $result[] = $type;
-            }
+        if (isset($map[$type])) {
+            $result[] = $map[$type];
         }
     }
 

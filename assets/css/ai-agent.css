@@ -245,6 +245,58 @@
     order: 1;
 }
 
+/* پیام سیستمی «انتقال به پشتیبان انسانی» — از پیام‌های ai/user/admin جداست
+   چون نه از طرف مدل نوشته شده و نه از طرف کارشناس؛ فقط یک اعلام سیستمی است */
+.ai-escalate-message {
+    align-self: center;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 92%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #fff7ed;
+    border: 1px dashed #fb923c;
+    text-align: right;
+}
+
+#ai-agent[data-theme="dark"] .ai-escalate-message {
+    background: rgba(251, 146, 60, 0.12);
+    border-color: rgba(251, 146, 60, 0.5);
+}
+
+.ai-escalate-icon {
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.ai-escalate-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ai-escalate-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c2410c;
+}
+
+#ai-agent[data-theme="dark"] .ai-escalate-title {
+    color: #fdba74;
+}
+
+.ai-escalate-reason {
+    margin-top: 4px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #7c2d12;
+}
+
+#ai-agent[data-theme="dark"] .ai-escalate-reason {
+    color: #fed7aa;
+}
+
 /* حباب پیام کارشناس واقعی سیستم */
 .admin-message {
     background: #f1f5f9;

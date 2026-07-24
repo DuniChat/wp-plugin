@@ -146,6 +146,30 @@ jQuery(function ($) {
         }
     }
 
+    /*
+    ============================================
+    نمایش پیام سیستمی «انتقال به پشتیبان انسانی»
+
+    این پیام با ai-message یا admin-message فرق دارد چون از طرف
+    مدل هوش مصنوعی یا کارشناس نوشته نشده؛ فقط اعلامی سیستمی است که
+    می‌گوید گفتگو به پشتیبان انسانی وصل می‌شود و چرا.
+    ============================================
+    */
+    function addEscalateMessage(reason) {
+        const reasonHtml = reason
+            ? '<div class="ai-escalate-reason">' + escapeHtml(reason) + '</div>'
+            : '';
+        messages.append(
+            '<div class="ai-escalate-message fade-in-up">' +
+                '<span class="ai-escalate-icon">🎧</span>' +
+                '<div class="ai-escalate-text">' +
+                    '<div class="ai-escalate-title">در حال انتقال گفتگو به پشتیبان انسانی...</div>' +
+                    reasonHtml +
+                '</div>' +
+            '</div>'
+        );
+    }
+
     function feedbackHtmlFor(chatId) {
         return `
             <div class="ai-feedback-wrapper" data-chat-id="${chatId}">
@@ -331,6 +355,12 @@ jQuery(function ($) {
         } else if (data.type === 'session_init' && data.session_id) {
             // ذخیره session_id دریافتی از API در کوکی
             setSessionId(data.session_id);
+        } else if (data.type === 'escalate') {
+            // در این حالت مدل هیچ متنی ننوشته؛ حباب استریم خالی را حذف
+            // و یک پیام سیستمی جدا برای اعلام انتقال به پشتیبان نمایش می‌دهیم
+            stream.$loading.remove();
+            stream.$wrapper.remove();
+            addEscalateMessage(data.reason);
         } else if (data.type === 'done') {
             stream.$loading.remove();
             // اضافه‌ کردن UI فیدبک (لایک/دیسلایک) به انتهای پیام
