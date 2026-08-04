@@ -464,6 +464,67 @@ function ai_agent_fetch_sync_settings() {
 
 /*
 ============================================
+واکشی موجودی کیف پول کاربر از سرور اختصاصی
+اندپوینت: GET https://dunichat.ir/api/v1/sync/wallet-balance
+هدر X-API-Key: کلید API کاربر (رمزگشایی‌شده از دیتابیس)
+
+پاسخ سرور:
+    { "balance_irr": 0 }
+
+این تابع برای نمایش موجودی فعلی کیف پول کاربر (بر حسب ریال) در
+صفحه‌ی تنظیمات افزونه استفاده می‌شود.
+
+خروجی:
+- آرایه‌ی شامل کلید balance_irr در صورت موفقیت
+- false در صورت خطا یا نبود API Key
+============================================
+*/
+function ai_agent_fetch_wallet_balance() {
+
+    // کلید API را به‌صورت رمزگشایی‌شده از دیتابیس می‌خوانیم
+    $api_key = ai_agent_get_api_key();
+
+    // اگر کاربر هنوز API Key وارد نکرده بود، کالی زده نمی‌شود
+    if (empty($api_key)) {
+        error_log('AI_AGENT_DEBUG wallet_balance: API Key خالی است، درخواست ارسال نشد.');
+        return false;
+    }
+
+    $url = 'https://dunichat.ir/api/v1/sync/wallet-balance';
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 15,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        error_log('AI_AGENT_DEBUG wallet_balance WP_Error: ' . $response->get_error_code() . ' - ' . $response->get_error_message());
+        return false;
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+
+    if ($code !== 200) {
+        error_log('AI_AGENT_DEBUG wallet_balance HTTP ' . intval($code) . ' body=' . $body);
+        return false;
+    }
+
+    $data = json_decode($body, true);
+
+    if (!is_array($data) || !isset($data['balance_irr'])) {
+        error_log('AI_AGENT_DEBUG wallet_balance: پاسخ JSON معتبر یا ساختار مورد انتظار نبود. raw body=' . $body);
+        return false;
+    }
+
+    return $data;
+}
+
+/*
+============================================
 ارسال (PATCH) مقادیر تنظیمات به سرور همگام‌سازی
 اندپوینت: PATCH https://dunichat.ir/api/v1/sync/settings
 

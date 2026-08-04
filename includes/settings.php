@@ -6,7 +6,6 @@ function ai_agent_get_settings(){
     $defaults = array(
         'model'               => 'tencent/hy3:free',
         'color'               => '#F4865B',
-        'max_tokens'          => 500,
         'timeout'             => 15,
         'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
         'system_prompt'       => '',      // پرامت سیستم (از API همگام‌سازی خوانده می‌شود)
@@ -31,9 +30,6 @@ function ai_agent_sanitize_settings($input){
     $output['model'] = (isset($input['model']) && trim($input['model']) !== '') ? sanitize_text_field($input['model']) : 'tencent/hy3:free';
     $color = isset($input['color']) ? sanitize_hex_color($input['color']) : '';
     $output['color'] = $color ? $color : '#2563eb';
-
-    $max_tokens = isset($input['max_tokens']) ? intval($input['max_tokens']) : 500;
-    $output['max_tokens'] = $max_tokens > 0 ? $max_tokens : 500;
 
     $timeout = isset($input['timeout']) ? intval($input['timeout']) : 15;
     $output['timeout'] = $timeout > 0 ? $timeout : 15;
@@ -377,6 +373,18 @@ function ai_agent_settings_page(){
                         </td>
                     </tr>
 
+                    <!-- ====== موجودی کیف پول ====== -->
+                    <tr>
+                        <th scope="row">موجودی کیف پول</th>
+                        <td>
+                            <span id="ai-agent-wallet-balance-value" class="ai-agent-wallet-balance-value">—</span>
+                            <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="button button-secondary button-small ai-agent-action-btn is-green">به‌روزرسانی موجودی</button>
+                            <span id="ai-agent-wallet-balance-status" class="ai-agent-status-text"></span>
+                            <?php wp_nonce_field('ai_agent_wallet_balance_nonce_action', 'ai_agent_wallet_balance_nonce_field'); ?>
+                            <p class="description">موجودی فعلی کیف پول شما در سرور دانیچَت (بر حسب ریال). این مقدار هر بار که این صفحه باز شود، به‌صورت خودکار به‌روزرسانی می‌شود.</p>
+                        </td>
+                    </tr>
+
                     <tr>
                         <th scope="row"><label for="ai_agent_model_search">مدل هوش مصنوعی</label></th>
                         <td>
@@ -385,11 +393,8 @@ function ai_agent_settings_page(){
                                 <input type="hidden" name="ai_agent_settings[model]" id="ai_agent_model" value="<?php echo esc_attr($settings['model']); ?>" />
                                 <?php wp_nonce_field('ai_agent_models_nonce_action', 'ai_agent_models_nonce_field'); ?>
 
-                                <div id="ai-agent-models-list" class="ai-agent-models-list"></div>
-                                <p class="ai-agent-mt6">
-                                    <button type="button" id="ai-agent-load-more" class="button button-secondary button-small ai-agent-hidden">بارگذاری بیشتر</button>
-                                </p>
-                                <p class="description">مدل موردنظر را جستجو یا از لیست انتخاب کنید. مقدار فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></p>
+                                <div id="ai-agent-models-list" class="ai-agent-models-list" role="listbox"></div>
+                                <p class="description">مدل موردنظر را تایپ/جستجو کنید یا از لیست انتخاب کنید. قیمت ورودی و خروجی هر مدل (به ازای هر ۱ میلیون توکن) کنار آن نمایش داده می‌شود. مقدار فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></p>
                             </div>
                         </td>
                     </tr>
@@ -407,12 +412,6 @@ function ai_agent_settings_page(){
                         <th scope="row"><label for="ai_agent_color">رنگ دستیار</label></th>
                         <td>
                             <input type="text" name="ai_agent_settings[color]" id="ai_agent_color" value="<?php echo esc_attr($settings['color']); ?>" class="ai-agent-color-field" />
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="ai_agent_max_tokens">تعداد توکن‌ها</label></th>
-                        <td>
-                            <input type="number" min="1" step="1" name="ai_agent_settings[max_tokens]" id="ai_agent_max_tokens" value="<?php echo esc_attr($settings['max_tokens']); ?>" />
                         </td>
                     </tr>
                     <tr>

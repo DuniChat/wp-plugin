@@ -269,6 +269,37 @@ function ai_agent_search_models_handler() {
 }
 add_action('wp_ajax_ai_agent_search_models', 'ai_agent_search_models_handler');
 
+/*
+============================================
+هندلر AJAX دریافت موجودی کیف پول کاربر از سرور همگام‌سازی
+(فقط ادمین — برای نمایش در صفحه‌ی تنظیمات افزونه)
+============================================
+*/
+function ai_agent_get_wallet_balance_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_wallet_balance_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        wp_send_json_error(array('message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'));
+    }
+
+    $result = ai_agent_fetch_wallet_balance();
+
+    if ($result === false) {
+        wp_send_json_error(array('message' => 'خطا در دریافت موجودی کیف پول از سرور.'));
+    }
+
+    wp_send_json_success(array('balance_irr' => $result['balance_irr']));
+}
+add_action('wp_ajax_ai_agent_get_wallet_balance', 'ai_agent_get_wallet_balance_handler');
+
 
 /*
 ============================================

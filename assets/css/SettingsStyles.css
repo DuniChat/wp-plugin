@@ -23,6 +23,16 @@
     margin-right: 6px;
 }
 
+/* ----- مقدار موجودی کیف پول ----- */
+.ai-agent-wallet-balance-value {
+    font-weight: 700;
+    font-size: 14px;
+    color: #16a34a;
+    direction: ltr;
+    display: inline-block;
+    margin-left: 10px;
+}
+
 /* ----- جستجوی مدل هوش مصنوعی ----- */
 .ai-agent-model-search-wrap {
     position: relative;

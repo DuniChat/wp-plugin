@@ -53,6 +53,13 @@
             return String(model);
         }
 
+        // فرمت‌بندی مبلغ ریالی با جداکننده‌ی هزارگان (مثال: 150000 → 150,000 ریال)
+        function aiAgentFormatIrr(amount) {
+            var n = Number(amount);
+            if (isNaN(n)) return String(amount) + ' ریال';
+            return n.toLocaleString('en-US') + ' ریال';
+        }
+
         function aiAgentRenderModels(models) {
             var $list = $('#ai-agent-models-list');
             $list.empty();
@@ -72,10 +79,39 @@
                 $item.append($('<div></div>').css({fontWeight:'600'}).text(label));
                 $item.append($('<div></div>').css({fontSize:'11px', color:'#888', marginTop:'2px', direction:'ltr', textAlign:'right'}).text(value + (provider ? ' · ' + provider : '')));
 
+                // نمایش قیمت ورودی و خروجی مدل (به ازای هر ۱ میلیون توکن) تا کاربر بهتر انتخاب کند
+                if (model && typeof model === 'object') {
+                    var hasInPrice  = typeof model.system_input_price_irr_per_1m !== 'undefined' && model.system_input_price_irr_per_1m !== null;
+                    var hasOutPrice = typeof model.system_output_price_irr_per_1m !== 'undefined' && model.system_output_price_irr_per_1m !== null;
+
+                    if (hasInPrice || hasOutPrice) {
+                        var priceParts = [];
+                        if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1m));
+                        if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_1m));
+
+                        $item.append(
+                            $('<div></div>')
+                                .css({fontSize:'11px', color:'#2563eb', marginTop:'2px'})
+                                .text(priceParts.join(' · ') + ' (به ازای هر ۱ میلیون توکن)')
+                        );
+                    }
+                }
+
                 $item.on('mouseenter', function(){ $(this).css('background', '#f0f6fc'); });
                 $item.on('mouseleave', function(){ $(this).css('background', '#fff'); });
                 $list.append($item);
             });
+
+            // «بارگذاری بیشتر» به‌صورت یک ردیف داخل خودِ لیست کشویی (کومبوباکس) نمایش داده می‌شود؛
+            // نه به‌عنوان یک دکمه‌ی جدا بیرون از لیست. اگر تعداد نتایج به سقف limit فعلی رسیده باشد،
+            // یعنی احتمالاً نتایج بیشتری هم وجود دارد.
+            if (models.length >= aiAgentModelsLimit) {
+                var $loadMore = $('<div class="ai-agent-model-item ai-agent-model-loadmore" style="padding:8px 10px;cursor:pointer;text-align:center;font-weight:600;"></div>').text('بارگذاری بیشتر...');
+                $loadMore.on('mouseenter', function(){ $(this).css('background', '#f0f6fc'); });
+                $loadMore.on('mouseleave', function(){ $(this).css('background', '#fff'); });
+                $list.append($loadMore);
+            }
+
             $list.show();
         }
 
@@ -100,17 +136,14 @@
                     if (response.success) {
                         var models = response.data.models || [];
                         aiAgentRenderModels(models);
-                        $('#ai-agent-load-more').toggle(models.length >= aiAgentModelsLimit);
                     } else {
                         $('#ai-agent-models-list').empty().append('<div style="padding:8px 10px;color:#b91c1c;">' + (response.data && response.data.message ? response.data.message : 'خطا در دریافت لیست مدل‌ها') + '</div>').show();
-                        $('#ai-agent-load-more').hide();
                     }
                 },
                 error: function(jqXHR, textStatus) {
                     if (textStatus === 'abort') return; // درخواست عمداً لغو شده، خطا نیست
                     if (reqId !== aiAgentModelsReqId) return;
                     $('#ai-agent-models-list').empty().append('<div style="padding:8px 10px;color:#b91c1c;">خطا در برقراری ارتباط با سرور</div>').show();
-                    $('#ai-agent-load-more').hide();
                 }
             });
         }
@@ -135,13 +168,17 @@
             }
         });
 
-        $('#ai-agent-load-more').on('click', function(e) {
+        // ردیف «بارگذاری بیشتر» حالا داخل خودِ لیست کشویی است؛ کلیک روی آن نباید
+        // به‌عنوان انتخاب مدل تلقی شود و نباید باعث بسته شدن لیست شود (چون خودش هم
+        // درون #ai-agent-models-list است).
+        $(document).on('click', '.ai-agent-model-loadmore', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             aiAgentModelsLimit += 10;
             aiAgentLoadModels();
         });
 
-        $(document).on('click', '.ai-agent-model-item', function() {
+        $(document).on('click', '.ai-agent-model-item:not(.ai-agent-model-loadmore)', function() {
             var value = $(this).attr('data-value');
             $('#ai_agent_model').val(value);
             $('#ai_agent_model_search').val(value);
@@ -149,12 +186,60 @@
             $('#ai-agent-models-list').hide();
         });
 
-        // بستن لیست با کلیک بیرون از باکس (دکمه «بارگذاری بیشتر» نباید باعث بسته شدن لیست شود)
+        // بستن لیست با کلیک بیرون از باکس (شامل ردیف «بارگذاری بیشتر» که حالا داخل خودِ لیست است)
         $(document).on('click', function(e) {
-            if (!$(e.target).closest('#ai_agent_model_search, #ai-agent-models-list, #ai-agent-load-more').length) {
+            if (!$(e.target).closest('#ai_agent_model_search, #ai-agent-models-list').length) {
                 $('#ai-agent-models-list').hide();
             }
         });
+
+        // ----- موجودی کیف پول -----
+        function aiAgentLoadWalletBalance(showLoadingUI) {
+            var $valueEl  = $('#ai-agent-wallet-balance-value');
+            var $statusEl = $('#ai-agent-wallet-balance-status');
+            var $btn      = $('#ai-agent-wallet-balance-refresh-btn');
+            var token     = $('#ai_agent_wallet_balance_nonce_field').val();
+
+            if (!token || !$valueEl.length) return; // یعنی این بخش در صفحه وجود ندارد
+
+            if (showLoadingUI) {
+                $btn.prop('disabled', true).text('در حال دریافت...');
+            }
+            $statusEl.css('color', '#16a34a').text('در حال دریافت موجودی از سرور...');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'ai_agent_get_wallet_balance',
+                    nonce: token
+                },
+                success: function(response) {
+                    $btn.prop('disabled', false).text('به‌روزرسانی موجودی');
+                    if (response.success) {
+                        $valueEl.text(aiAgentFormatIrr(response.data.balance_irr));
+                        $statusEl.css('color', 'green').text('موجودی با موفقیت به‌روزرسانی شد.');
+                    } else {
+                        var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت موجودی کیف پول.';
+                        $statusEl.css('color', '#b91c1c').text(msg);
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).text('به‌روزرسانی موجودی');
+                    $statusEl.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                }
+            });
+        }
+
+        $('#ai-agent-wallet-balance-refresh-btn').on('click', function(e) {
+            e.preventDefault();
+            aiAgentLoadWalletBalance(true);
+        });
+
+        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات (اگر این بخش در صفحه موجود باشد)
+        if ($('#ai-agent-wallet-balance-value').length) {
+            aiAgentLoadWalletBalance(false);
+        }
 
         // ----- دکمه «بارگذاری اطلاعات از سرور» (بازخوانی تنظیمات، نه سینک داده‌های امبدینگ) -----
         $('#ai-agent-reload-settings-btn').on('click', function(e) {
