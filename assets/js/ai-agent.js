@@ -350,8 +350,19 @@ function buildReferencesListBox(references) {
 
     if ($list.children().length === 0) return null;
 
+    // به‌صورت پیش‌فرض بسته (collapsed) است؛ با کلیک روی عنوان «موارد مرتبط» باز/بسته می‌شود
+    $list.hide();
+
     const $box = $('<div class="ai-references-box"></div>');
-    const $title = $('<div class="ai-references-title"></div>').text('موارد مرتبط:');
+    const $title = $('<button type="button" class="ai-references-title ai-references-toggle"></button>');
+    $title.append($('<span class="ai-references-title-text"></span>').text('موارد مرتبط:'));
+    $title.append($('<span class="ai-references-arrow">&#9662;</span>'));
+
+    $title.on('click', function () {
+        $list.slideToggle(180);
+        $title.toggleClass('is-open');
+    });
+
     $box.append($title).append($list);
     return $box;
 }
@@ -389,6 +400,40 @@ function buildReferencesListBox(references) {
         div.textContent = text;
         return div.innerHTML;
     }
+    /*
+    ============================================
+    تبدیل ساده و امن مارک‌داون به HTML برای متن پیام‌های مدل
+
+    فقط دو حالت پشتیبانی می‌شود (چون فقط همین دو مورد از سمت مدل
+    استفاده می‌شود):
+        **متن پررنگ**              →  <strong>متن پررنگ</strong>
+        [عنوان لینک](https://...)  →  <a href="...">عنوان لینک</a>
+
+    برای جلوگیری از XSS، ابتدا کل متن با escapeHtml امن می‌شود و
+    سپس الگوهای بالا روی متنِ امن‌شده اعمال می‌گردند (بنابراین
+    خروجی نهایی هیچ‌وقت شامل تگ HTML خام از سمت مدل نخواهد بود).
+    ============================================
+    */
+    function renderInlineMarkdown(rawText) {
+        if (!rawText) return '';
+
+        let html = escapeHtml(rawText);
+
+        // بولد: **متن**
+        html = html.replace(/\*\*([^\*\n]+)\*\*/g, '<strong>$1</strong>');
+
+        // لینک: [عنوان](URL) — فقط http/https پذیرفته می‌شود
+        html = html.replace(
+            /\[([^\[\]]+)\]\((https?:\/\/[^\s()]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+        );
+
+        // شکستن خط
+        html = html.replace(/\n/g, '<br>');
+
+        return html;
+    }
+
     /*
     ============================================
     استخراج لینک‌های مارک‌داون [عنوان](URL) که مدل ممکن است
@@ -596,6 +641,11 @@ function buildReferencesListBox(references) {
                 return;
             }
 
+            // پس از پایان استریم، متن نهایی را با پشتیبانی از مارک‌داون
+            // (بولد و لینک) دوباره رندر می‌کنیم؛ در حین استریم فقط متن
+            // خام escape شده نمایش داده می‌شد تا حس تایپ زنده حفظ شود
+            stream.$content.html(renderInlineMarkdown(stream.rawText));
+
             if (!stream.referencesRendered && stream.references && stream.references.length) {
     const $gallery = buildReferencesGallery(stream.references);
     if ($gallery) stream.$content.before($gallery);
@@ -697,7 +747,7 @@ function renderHistoryMessage(msg) {
     if (role === 'user') {
         addMessage('user', escapeHtml(msg.content));
     } else {
-        addMessage('ai', escapeHtml(msg.content));
+        addMessage('ai', renderInlineMarkdown(msg.content));
 
         if (Array.isArray(msg.references) && msg.references.length > 0) {
             const $lastBody = messages.children().last().find('.ai-message-body');
