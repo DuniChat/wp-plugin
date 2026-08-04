@@ -20,7 +20,6 @@ function ai_agent_widget(){
     <div id="ai-agent-window">
         <div id="ai-agent-header">
             <div class="ai-agent-header-title">
-                <span class="online-indicator"></span>
                 <span class="ai-theme-toggle" title="تغییر حالت شب/روز">
                     <span class="ai-theme-icon ai-theme-icon-moon">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 1 0 10.5 10.5z"/></svg>
@@ -39,7 +38,7 @@ function ai_agent_widget(){
                         </svg>
                     </span>
                 </span>
-                هم گفتار
+                دانیچَت
             </div>
             <div class="ai-agent-header-actions">
                 <span id="ai-agent-new-chat" title="چت جدید">

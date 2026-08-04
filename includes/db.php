@@ -92,7 +92,11 @@ if (!defined('AI_AGENT_SESSION_COOKIE')) {
 if (!defined('AI_AGENT_SESSION_COOKIE_EXPIRE')) {
     define('AI_AGENT_SESSION_COOKIE_EXPIRE', defined('WEEK_IN_SECONDS') ? WEEK_IN_SECONDS : 7 * DAY_IN_SECONDS);
 }
-
+// نام کوکی‌ای که نشان می‌دهد این session به پشتیبان انسانی منتقل شده است
+// (تا در پیام‌های بعدی کاربر، خالی بودن پاسخ API خطا محسوب نشود)
+if (!defined('AI_AGENT_ESCALATED_COOKIE')) {
+    define('AI_AGENT_ESCALATED_COOKIE', 'ai_agent_escalated_session');
+}
 /*
 تولید یک کلید رمزنگاری ۳۲ بایتی (256 بیت) ثابت و مخصوص همین سایت
 با استفاده از AUTH_KEY / AUTH_SALT وردپرس. اگر این ثابت‌ها به هر
@@ -293,7 +297,7 @@ function ai_agent_is_valid_uuid($uuid) {
    ============================================================
 
    این توابع برای پیگیری‌ی محتواهایی که قبلاً به سرور همگام‌سازی
-   (https://mhtrxz.ir/api/v1/sync/content) ارسال شده‌اند استفاده می‌شوند.
+   (https://dunichat.ir/api/v1/sync/content) ارسال شده‌اند استفاده می‌شوند.
 
    - جدول wp_ai_agent_synced_items شامل سه ستون اصلی است:
        source_id     : آی‌دی یکتای محتوا در وردپرس (post_id یا term_id)

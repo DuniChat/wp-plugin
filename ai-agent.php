@@ -1,13 +1,13 @@
 <?php
 /*
 Plugin Name: Ham Goftar
-Plugin URI: https://mhtrxz.ir
+Plugin URI: https://dunichat.ir
 Description: AI Floating Chat with Admin Support & Data Syncing
 Version: 1.0.0
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Mani
-Author URI: https://mhtrxz.ir
+Author URI: https://dunichat.ir
 License: GPL v2 or later
 Text Domain: ai-agent
 */

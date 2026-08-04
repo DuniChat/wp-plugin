@@ -53,6 +53,9 @@ function ai_agent_chat() {
     $message    = isset($_POST['message'])    ? sanitize_text_field($_POST['message'])    : '';
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
 
+    // بررسی اینکه آیا این session قبلاً به پشتیبان انسانی منتقل شده
+    $escalated_cookie_session = isset($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) ? sanitize_text_field($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) : '';
+    $is_already_escalated = (!empty($session_id) && !empty($escalated_cookie_session) && hash_equals($escalated_cookie_session, $session_id));
     if (empty($message)) {
         ai_agent_sse_send(array(
             'type'    => 'error',
@@ -86,7 +89,22 @@ function ai_agent_chat() {
     // ۹.۵) Callback برای حالت انتقال به پشتیبان انسانی (رویداد escalate)
     // در این حالت مدل هیچ متنی تولید نمی‌کند؛ فقط دلیل انتقال اعلام می‌شود
     // و بلافاصله (بدون منتظر ماندن برای done) به مرورگر اطلاع‌رسانی می‌کنیم.
-    $on_escalate = function($reason, $conversation_id) {
+    $on_escalate = function($reason, $conversation_id, $api_session_id = null) use (&$session_id) {
+        // به‌محض دریافت رویداد escalate، کوکی را (در صورت امکان) ست می‌کنیم
+        $sid_to_store = !empty($api_session_id) ? $api_session_id : $session_id;
+        if (!empty($sid_to_store) && !headers_sent()) {
+            setcookie(
+                AI_AGENT_ESCALATED_COOKIE,
+                $sid_to_store,
+                array(
+                    'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
+                    'path'     => '/',
+                    'httponly' => false,
+                    'samesite' => 'Lax',
+                )
+            );
+        }
+
         ai_agent_sse_send(array(
             'type'            => 'escalate',
             'reason'          => $reason,
@@ -136,10 +154,9 @@ function ai_agent_chat() {
         $full_content = isset($result['full_content']) ? $result['full_content'] : '';
         $is_escalate  = !empty($result['escalate']);
 
-        // اگر به هر دلیلی محتوایی دریافت نشد، یک پیام خطا به کاربر می‌دهیم
-        // به‌جز حالتی که گفتگو به پشتیبان انسانی منتقل شده؛ طبق مستندات API
-        // در حالت escalate هیچ delta ای ارسال نمی‌شود و این طبیعی است.
-        if (!$is_escalate && trim($full_content) === '') {
+        // اگر escalate همین الان اتفاق افتاد یا این session از قبل escalate شده بود
+        // (کاربر منتظر پاسخ پشتیبان انسانی است)، خالی بودن پاسخ طبیعی است و خطا نیست
+        if (!$is_escalate && !$is_already_escalated && trim($full_content) === '') {
             ai_agent_sse_send(array(
                 'type'    => 'error',
                 'message' => 'پاسخی از سرور دریافت نشد. لطفاً مجدداً تلاش کنید.',
@@ -148,7 +165,20 @@ function ai_agent_chat() {
             die();
         }
 
-        // ارسال رویداد done
+        // تلاش مجدد برای ست‌کردن کوکی escalate اگر هنوز ست نشده باشد
+        if (($is_escalate || $is_already_escalated) && !empty($session_id) && !headers_sent()) {
+            setcookie(
+                AI_AGENT_ESCALATED_COOKIE,
+                $session_id,
+                array(
+                    'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
+                    'path'     => '/',
+                    'httponly' => false,
+                    'samesite' => 'Lax',
+                )
+            );
+        }
+
         ai_agent_sse_send(array(
             'type' => 'done',
         ));

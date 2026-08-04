@@ -8,7 +8,7 @@ if (!defined('ABSPATH')) {
 ارسال پیام کاربر به API چت و استریم پاسخ به‌صورت SSE
 
 این تابع یک درخواست POST به اندپوینت:
-    https://mhtrxz.ir/api/v1/chat/messages
+    https://dunichat.ir/api/v1/chat/messages
 با هدرهای زیر می‌فرستد:
     X-API-Key:      <API Key کاربر (رمزگشایی‌شده از دیتابیس)>
     session-id:     <UUID یکتای نشست>
@@ -70,7 +70,7 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/messages';
+    $url = 'https://dunichat.ir/api/v1/chat/messages';
 
     // ساخت بدنه‌ی درخواست طبق مستندات اندپوینت
     $body = wp_json_encode(array(
@@ -158,8 +158,9 @@ $parser_line = function($line) use (
             if (isset($decoded['conversation_id'])) {
                 $escalate_conversation_id = $decoded['conversation_id'];
             }
+            // در بلاک رویداد escalate:
             if (is_callable($on_escalate)) {
-                $on_escalate($escalate_reason, $escalate_conversation_id);
+                $on_escalate($escalate_reason, $escalate_conversation_id, $api_session_id);
             }
             return;
         }
@@ -187,8 +188,9 @@ $parser_line = function($line) use (
         if ($current_event === 'done' && !empty($decoded['escalate']) && !$escalated) {
             $escalated       = true;
             $escalate_reason = isset($decoded['escalate_reason']) ? (string) $decoded['escalate_reason'] : '';
+            // در بلاک رویداد escalate:
             if (is_callable($on_escalate)) {
-                $on_escalate($escalate_reason, $escalate_conversation_id);
+                $on_escalate($escalate_reason, $escalate_conversation_id, $api_session_id);
             }
         }
 
@@ -338,7 +340,7 @@ function ai_agent_fetch_models($query = '', $limit = 10) {
         $args['limit'] = intval($limit);
     }
 
-    $base_url = 'https://mhtrxz.ir/api/v1/models';
+    $base_url = 'https://dunichat.ir/api/v1/models';
     $url = !empty($args) ? $base_url . '?' . http_build_query($args) : $base_url;
 
     $response = wp_remote_get($url, array(
@@ -376,7 +378,7 @@ function ai_agent_fetch_models($query = '', $limit = 10) {
 /*
 ============================================
 واکشی تنظیمات همگام‌سازی از سرور اختصاصی
-اندپوینت: GET https://mhtrxz.ir/api/v1/sync/settings
+اندپوینت: GET https://dunichat.ir/api/v1/sync/settings
 
 این تابع در هر بار باز شدن صفحه‌ی تنظیمات افزونه فراخوانی می‌شود
 و مقادیر فعلی مدل انتخاب‌شده، پرامت سیستم و منابع مجاز را از سرور
@@ -395,10 +397,11 @@ function ai_agent_fetch_sync_settings() {
 
     // اگر کاربر هنوز API Key وارد نکرده بود، کالی زده نمی‌شود
     if (empty($api_key)) {
+        error_log('AI_AGENT_DEBUG sync_settings: API Key خالی است، درخواست ارسال نشد.');
         return false;
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/sync/settings';
+    $url = 'https://dunichat.ir/api/v1/sync/settings';
 
     $response = wp_remote_get($url, array(
         'timeout' => 15,
@@ -409,18 +412,22 @@ function ai_agent_fetch_sync_settings() {
     ));
 
     if (is_wp_error($response)) {
+        error_log('AI_AGENT_DEBUG sync_settings WP_Error: ' . $response->get_error_code() . ' - ' . $response->get_error_message());
         return false;
     }
 
     $code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+
     if ($code !== 200) {
+        error_log('AI_AGENT_DEBUG sync_settings HTTP ' . intval($code) . ' body=' . $body);
         return false;
     }
 
-    $body = wp_remote_retrieve_body($response);
     $data = json_decode($body, true);
 
     if (!is_array($data)) {
+        error_log('AI_AGENT_DEBUG sync_settings: پاسخ JSON معتبر نبود. raw body=' . $body);
         return false;
     }
 
@@ -430,7 +437,7 @@ function ai_agent_fetch_sync_settings() {
 /*
 ============================================
 ارسال (PATCH) مقادیر تنظیمات به سرور همگام‌سازی
-اندپوینت: PATCH https://mhtrxz.ir/api/v1/sync/settings
+اندپوینت: PATCH https://dunichat.ir/api/v1/sync/settings
 
 این تابع زمانی فراخوانی می‌شود که کاربر روی دکمه‌ی «ذخیره تنظیمات
 افزونه» کلیک کرده و می‌خواهیم مقادیر جدید (مدل انتخابی، پرامت
@@ -455,7 +462,7 @@ function ai_agent_push_sync_settings($payload) {
         return false;
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/sync/settings';
+    $url = 'https://dunichat.ir/api/v1/sync/settings';
 
     $response = wp_remote_request($url, array(
         'method'  => 'PATCH',
@@ -556,7 +563,7 @@ function ai_agent_map_content_types($api_types) {
 /*
 ============================================
 واکشی تاریخچه‌ی پیام‌های یک session از سرور
-اندپوینت: GET https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/messages
+اندپوینت: GET https://dunichat.ir/api/v1/chat/sessions/{session_id}/messages
 
 خروجی: آرایه‌ای از پیام‌ها (هر کدام شامل id, role, content, created_at)
 در صورت موفقیت، یا false در صورت خطا/نبود API Key
@@ -570,7 +577,7 @@ function ai_agent_fetch_chat_history($session_id) {
         return false;
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
 
     $response = wp_remote_get($url, array(
         'timeout' => 15,
@@ -603,7 +610,7 @@ function ai_agent_fetch_chat_history($session_id) {
 ============================================
 ارسال محتوای همگام‌سازی به اندپوینت /sync/content
 
-اندپوینت: POST https://mhtrxz.ir/api/v1/sync/content
+اندپوینت: POST https://dunichat.ir/api/v1/sync/content
 هدر X-API-Key: کلید API کاربر (رمزگشایی‌شده از دیتابیس)
 
 بدنه‌ی درخواست (JSON):
@@ -707,7 +714,7 @@ function ai_agent_push_sync_content($items) {
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/sync/content';
+    $url = 'https://dunichat.ir/api/v1/sync/content';
     // چون محدودیت nginx برداشته شده، همه آیتم‌ها یکجا و بدون تقسیم‌بندی ارسال می‌شوند
     $body = wp_json_encode(array('items' => $clean_items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
@@ -915,7 +922,7 @@ function ai_agent_parse_sync_error_detail($resp_data, $resp_body = '') {
 ============================================
 ارسال درخواست حذف محتوا به اندپوینت /sync/delete
 
-اندپوینت: POST https://mhtrxz.ir/api/v1/sync/delete
+اندپوینت: POST https://dunichat.ir/api/v1/sync/delete
 هدر X-API-Key: کلید API کاربر (رمزگشایی‌شده از دیتابیس)
 
 بدنه‌ی درخواست (JSON):
@@ -986,7 +993,7 @@ function ai_agent_push_sync_delete($items) {
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/sync/delete';
+    $url = 'https://dunichat.ir/api/v1/sync/delete';
 
     // 3. Batch (20 per request) - same reasoning as push_sync_content
     $batches = array_chunk($clean_items, 20);
@@ -1107,7 +1114,7 @@ function ai_agent_push_sync_delete($items) {
 /*
 ============================================
 استعلام وضعیت دسته‌ای job_id های ارسال‌شده به سرور
-اندپوینت: POST https://mhtrxz.ir/api/v1/sync/content/status/batch
+اندپوینت: POST https://dunichat.ir/api/v1/sync/content/status/batch
 هدر X-API-Key: کلید API کاربر (رمزگشایی‌شده از دیتابیس)
 
 بدنه‌ی درخواست (JSON):
@@ -1161,7 +1168,7 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/sync/content/status/batch';
+    $url = 'https://dunichat.ir/api/v1/sync/content/status/batch';
 
     $body = wp_json_encode(array('job_ids' => $job_ids));
 
@@ -1220,7 +1227,7 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
 /*
 ============================================
 واکشی لیست جلسات چت از سرور
-اندپوینت: GET https://mhtrxz.ir/api/v1/chat/sessions
+اندپوینت: GET https://dunichat.ir/api/v1/chat/sessions
 
 پارامترها:
     $page : شماره صفحه (پیش‌فرض: 1)
@@ -1253,7 +1260,7 @@ function ai_agent_fetch_chat_sessions($page = 1, $page_size = 10, $status_filter
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/sessions';
+    $url = 'https://dunichat.ir/api/v1/chat/sessions';
 
     $query_params = array(
         'page'      => max(1, intval($page)),
@@ -1328,7 +1335,7 @@ function ai_agent_fetch_chat_sessions($page = 1, $page_size = 10, $status_filter
 /*
 ============================================
 واکشی پیام‌های یک جلسه چت از سرور
-اندپوینت: GET https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/messages
+اندپوینت: GET https://dunichat.ir/api/v1/chat/sessions/{session_id}/messages
 
 پارامترها:
     $session_id      : شناسه‌ی جلسه (UUID)
@@ -1362,7 +1369,7 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
         );
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
 
     $query_params = array(
         'include_system' => $include_system ? 'true' : 'false',
@@ -1446,7 +1453,7 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
 /*
 ============================================
 ارسال پاسخ دستی پشتیبان انسانی به یک جلسه‌ی چت
-اندپوینت: POST https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/reply
+اندپوینت: POST https://dunichat.ir/api/v1/chat/sessions/{session_id}/reply
 
 این تابع زمانی استفاده می‌شود که پشتیبان از داخل پیشخوان وردپرس
 (تب تاریخچه چت‌ها → آکاردئون جلسه) برای یک جلسه‌ی «در انتظار
@@ -1480,7 +1487,7 @@ function ai_agent_send_session_reply($session_id, $message) {
         return array('status' => 'error', 'message' => 'متن پیام نمی‌تواند خالی باشد.');
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/reply';
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/reply';
 
     $response = wp_remote_post($url, array(
         'timeout'     => 20,
@@ -1524,7 +1531,7 @@ function ai_agent_send_session_reply($session_id, $message) {
 /*
 ============================================
 پایان دادن به یک جلسه‌ی چت توسط پشتیبان انسانی
-اندپوینت: POST https://mhtrxz.ir/api/v1/chat/sessions/{session_id}/close
+اندپوینت: POST https://dunichat.ir/api/v1/chat/sessions/{session_id}/close
 
 بدون بدنه؛ فقط هدرهای X-API-Key و session-id ارسال می‌شوند.
 این تابع فقط برای جلسات «در انتظار پشتیبان» یا «پشتیبان» از پنل
@@ -1547,7 +1554,7 @@ function ai_agent_close_session($session_id) {
         return array('status' => 'error', 'message' => 'شناسه‌ی جلسه نامعتبر است.');
     }
 
-    $url = 'https://mhtrxz.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/close';
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/close';
 
     $response = wp_remote_post($url, array(
         'timeout'     => 20,

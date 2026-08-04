@@ -95,7 +95,7 @@ add_filter('pre_update_option_ai_agent_settings', 'ai_agent_persist_api_key_on_s
 روند کار:
   ۱) API Key رمزگشایی‌شده از wp_options خوانده می‌شود؛ اگر خالی بود
      کالی به سرور زده نمی‌شود.
-  ۲) درخواست GET به https://mhtrxz.ir/api/v1/sync/settings زده می‌شود.
+  ۲) درخواست GET به https://dunichat.ir/api/v1/sync/settings زده می‌شود.
   ۳) ساختار پاسخ بررسی می‌شود:
        - خطای ارتباطی / کد HTTP غیر 200
        - پاسخ شامل کلید detail (خطای سرور، مثل کلید API نامعتبر)
@@ -297,7 +297,7 @@ function ai_agent_reload_settings_handler(){
 add_action('wp_ajax_ai_agent_reload_settings', 'ai_agent_reload_settings_handler');
 
 function ai_agent_add_menu(){
-    add_menu_page('تنظیمات هم گفتار', 'هم گفتار', 'manage_options', 'ai-agent-settings', 'ai_agent_settings_page', AI_AGENT_URL . 'assets/images/favicon20x20.png', 80);
+    add_menu_page('تنظیمات دانیچَت', 'دانیچَت', 'manage_options', 'ai-agent-settings', 'ai_agent_settings_page', AI_AGENT_URL . 'assets/images/favicon20x20.png', 80);
 }
 add_action('admin_menu', 'ai_agent_add_menu');
 
@@ -373,7 +373,7 @@ function ai_agent_settings_page(){
                         <td>
                             <input type="password" name="ai_agent_settings[api_key]" id="ai_agent_api_key" value="<?php echo esc_attr($settings['api_key']); ?>" class="regular-text" autocomplete="off" />
                             <button type="button" class="button button-secondary button-small" id="ai-agent-toggle-api-key" class="ai-agent-toggle-key-btn">نمایش</button>
-                             <p class="description">کلید دریافت شده از سایت (<code>mhtrxz.ir</code>) را وارد کنید.</p>
+                             <p class="description">کلید دریافت شده از سایت (<code>dunichat.ir</code>) را وارد کنید.</p>
                         </td>
                     </tr>
 

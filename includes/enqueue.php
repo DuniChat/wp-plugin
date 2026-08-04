@@ -32,7 +32,8 @@ function ai_agent_enqueue(){
         'ajax_url'         => admin_url('admin-ajax.php'),
         'timeout'          => intval($settings['timeout']) * 1000,
         'color'            => $settings['color'],
-        'session_cookie'   => AI_AGENT_SESSION_COOKIE, // نام کوکی برای خواندن در JS
+        'session_cookie'   => AI_AGENT_SESSION_COOKIE,
+        'escalated_cookie' => AI_AGENT_ESCALATED_COOKIE,
     )
 );
 

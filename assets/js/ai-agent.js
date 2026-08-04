@@ -90,10 +90,13 @@ jQuery(function ($) {
 
     // پاک کردن کوکی session_id (برای شروع چت جدید)
     function clearSessionId() {
-        sessionId = null;
-        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
-        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
-    }
+    sessionId = null;
+    const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
+    document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+
+    const escalatedCookieName = (window.ai_agent && ai_agent.escalated_cookie) ? ai_agent.escalated_cookie : 'ai_agent_escalated_session';
+    document.cookie = escalatedCookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+}
 
     let sessionId = getSessionId();
 
@@ -462,7 +465,13 @@ jQuery(function ($) {
         } else if (data.type === 'done') {
             stream.$loading.remove();
 
-            // فقط اگر رویداد references قبلاً نیومده بود و باکس ساخته نشده، اینجا بسازش
+            // اگر هیچ محتوایی دریافت نشد (مثلاً بعد از انتقال به پشتیبان، تا وقتی پاسخ ندهد)
+            // حباب خالی را حذف می‌کنیم تا فضای خالی عجیب نمایش داده نشود
+            if (stream.rawText.trim() === '' && (!stream.references || stream.references.length === 0)) {
+                stream.$wrapper.remove();
+                return;
+            }
+
             if (!stream.referencesRendered && stream.references && stream.references.length) {
                 const $refBox = buildReferencesBox(stream.references);
                 if ($refBox) stream.$body.append($refBox);
