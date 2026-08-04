@@ -622,14 +622,18 @@ function ai_agent_fetch_chat_history($session_id) {
             "title":        "string",
             "content":      "string",
             "url":          "string",
-            "status":       "publish"   // وضعیت انتشار (publish, draft, private, ...)
+            "status":       "publish",  // وضعیت انتشار (publish, draft, private, ...)
+            "images":       ["base64", "base64", ...]  // حداکثر ۴ عکس به‌صورت base64
         }
     ]
 }
 
-پارامتر $items: آرایه‌ای از آیتم‌ها با کلیدهای فوق (حداکثر ۱۰۰ آیتم در هر
-درخواست توصیه می‌شود؛ اگر بیشتر باشد، تابع خودش آن‌ها را دسته‌بندی و در
-چند درخواست مجزا ارسال می‌کند).
+پارامتر $items: آرایه‌ای از آیتم‌ها با کلیدهای فوق.
+
+نکته‌ی مهم درباره‌ی صف‌بندی: چون فیلد images اضافه شده، حجم هر آیتم
+به‌طور قابل‌توجهی بیشتر شده است. برای جلوگیری از ارسال یک‌باره‌ی
+حجم زیاد به سرور، آیتم‌ها در صف‌های ۱۰تایی (batch) تقسیم و در چند
+درخواست مجزا به API ارسال می‌شوند.
 
 خروجی: آرایه‌ای با کلیدهای:
     status     => success | partial | error
@@ -682,6 +686,19 @@ function ai_agent_push_sync_content($items) {
         $url     = isset($item['url'])     ? (string) $item['url']     : '';
         $status  = isset($item['status'])  ? (string) $item['status']  : 'publish';
 
+        // استخراج عکس‌ها (حداکثر ۴ عکس)؛ رشته‌های خالی و غیررشته‌ای فیلتر می‌شوند
+        $images = array();
+        if (isset($item['images']) && is_array($item['images'])) {
+            foreach ($item['images'] as $img) {
+                if (count($images) >= 4) {
+                    break; // سقف ۴ عکس طبق قرارداد API
+                }
+                if (is_string($img) && trim($img) !== '') {
+                    $images[] = $img;
+                }
+            }
+        }
+
         if (!in_array($status, $allowed_statuses, true)) {
             $status = 'publish';
         }
@@ -702,6 +719,7 @@ function ai_agent_push_sync_content($items) {
             'content'      => $content,
             'url'          => $url,
             'status'       => $status,
+            'images'       => $images,
         );
     }
 
@@ -715,110 +733,138 @@ function ai_agent_push_sync_content($items) {
     }
 
     $url = 'https://dunichat.ir/api/v1/sync/content';
-    // چون محدودیت nginx برداشته شده، همه آیتم‌ها یکجا و بدون تقسیم‌بندی ارسال می‌شوند
-    $body = wp_json_encode(array('items' => $clean_items), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('AI_AGENT_SYNC content single request size=' . strlen($body) . ' bytes, items=' . count($clean_items));
-    }
+    // ====================================================================
+    // صف‌بندی (Batching):
+    // چون فیلد images اضافه شده، حجم هر آیتم به‌طور قابل‌توجهی بیشتر شده است.
+    // برای جلوگیری از ارسال یک‌باره‌ی حجم زیاد به سرور و جلوگیری از timeout
+    // یا خطاهای nginx/PHP، آیتم‌ها را در دسته‌های ۱۰تایی تقسیم کرده و هر
+    // دسته را در یک درخواست مجزا به API ارسال می‌کنیم.
+    // در صورت خطای یک دسته، آن دسته رد شده و بقیه دسته‌ها همچنان ارسال می‌شوند.
+    // ====================================================================
+    $batch_size = 10;
+    $batches    = array_chunk($clean_items, $batch_size);
 
-    $request_args = array(
-        'timeout'     => 120, // حجم بیشتر → timeout بالاتر
-        'redirection' => 0,
-        'httpversion' => '1.1',
-        'headers'     => array(
-            'X-API-Key'    => $api_key,
-            'Accept'       => 'application/json',
-            'Content-Type' => 'application/json; charset=utf-8',
-            'Expect'       => '',
-        ),
-        'body' => $body,
-    );
+    $total_sent   = 0;
+    $all_results  = array();
+    $first_error  = '';
+    $total_valid  = count($clean_items);
+    $batches_total = count($batches);
 
-    $response = wp_remote_post($url, $request_args);
+    foreach ($batches as $batch_index => $batch) {
 
-    // یک بار retry برای خطاهای اتصال گذرا
-    if (is_wp_error($response)) {
-        $err_msg = $response->get_error_message();
-        if (false !== strpos($err_msg, 'Connection was reset')
-            || false !== strpos($err_msg, 'Recv failure')
-            || false !== strpos($err_msg, 'Could not resolve host')) {
-            sleep(1);
-            $response = wp_remote_post($url, $request_args);
-        }
-    }
+        $body = wp_json_encode(array('items' => $batch), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    if (is_wp_error($response)) {
-        return array(
-            'status'     => 'error',
-            'message'    => 'خطای ارتباطی با سرور همگام‌سازی: ' . $response->get_error_message(),
-            'sent_count' => 0,
-            'results'    => array(),
-        );
-    }
-
-    $code      = wp_remote_retrieve_response_code($response);
-    $resp_body = wp_remote_retrieve_body($response);
-    $resp_data = json_decode($resp_body, true);
-
-    if ($code < 200 || $code >= 300) {
-        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('AI_AGENT_SYNC content HTTP ' . intval($code) . ' body=' . $resp_body);
+            error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . '/' . $batches_total . ' size=' . strlen($body) . ' bytes, items=' . count($batch));
         }
-        return array(
-            'status'     => 'error',
-            'message'    => 'سرور همگام‌سازی با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
-            'sent_count' => 0,
-            'results'    => array(),
+
+        $request_args = array(
+            'timeout'     => 120, // حجم بیشتر به‌خاطر عکس‌ها → timeout بالاتر
+            'redirection' => 0,
+            'httpversion' => '1.1',
+            'headers'     => array(
+                'X-API-Key'    => $api_key,
+                'Accept'       => 'application/json',
+                'Content-Type' => 'application/json; charset=utf-8',
+                'Expect'       => '',
+            ),
+            'body'        => $body,
         );
-    }
 
-    // پارس آرایه‌ی results پاسخ سرور:
-    // {"results":[{"source_id":"78","content_type":"page","action":"queued","job_id":"..."}]}
-    $results = array();
-    if (is_array($resp_data) && isset($resp_data['results']) && is_array($resp_data['results'])) {
-        foreach ($resp_data['results'] as $r) {
-            if (!is_array($r) || !isset($r['source_id'], $r['content_type'])) {
-                continue;
+        $response = wp_remote_post($url, $request_args);
+
+        // یک بار retry برای خطاهای اتصال گذرا
+        if (is_wp_error($response)) {
+            $err_msg = $response->get_error_message();
+            if (false !== strpos($err_msg, 'Connection was reset')
+                || false !== strpos($err_msg, 'Recv failure')
+                || false !== strpos($err_msg, 'Could not resolve host')) {
+                sleep(1);
+                $response = wp_remote_post($url, $request_args);
             }
-            $results[] = array(
-                'source_id'    => (string) $r['source_id'],
-                'content_type' => (string) $r['content_type'],
-                'action'       => isset($r['action']) ? (string) $r['action'] : '',
-                'job_id'       => isset($r['job_id']) ? (string) $r['job_id'] : '',
-            );
+        }
+
+        if (is_wp_error($response)) {
+            if ($first_error === '') {
+                $first_error = 'خطای ارتباطی با سرور همگام‌سازی: ' . $response->get_error_message();
+            }
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . ' WP_ERROR: ' . $response->get_error_message());
+            }
+            continue; // رد شدن این دسته، ادامه‌ی دسته‌های بعدی
+        }
+
+        $code      = wp_remote_retrieve_response_code($response);
+        $resp_body = wp_remote_retrieve_body($response);
+        $resp_data = json_decode($resp_body, true);
+
+        if ($code < 200 || $code >= 300) {
+            $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . ' HTTP ' . intval($code) . ' body=' . $resp_body);
+            }
+            if ($first_error === '') {
+                $first_error = 'سرور همگام‌سازی با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : '');
+            }
+            continue; // رد شدن این دسته، ادامه‌ی دسته‌های بعدی
+        }
+
+        // پارس آرایه‌ی results پاسخ سرور:
+        // {"results":[{"source_id":"78","content_type":"page","action":"queued","job_id":"..."}]}
+        if (is_array($resp_data) && isset($resp_data['results']) && is_array($resp_data['results'])) {
+            foreach ($resp_data['results'] as $r) {
+                if (!is_array($r) || !isset($r['source_id'], $r['content_type'])) {
+                    continue;
+                }
+                $all_results[] = array(
+                    'source_id'    => (string) $r['source_id'],
+                    'content_type' => (string) $r['content_type'],
+                    'action'       => isset($r['action']) ? (string) $r['action'] : '',
+                    'job_id'       => isset($r['job_id']) ? (string) $r['job_id'] : '',
+                );
+            }
+        }
+
+        // مکث کوتاه بین دسته‌ها برای کاهش بار لحظه‌ای روی سرور (۰.۵ ثانیه)
+        if ($batch_index < $batches_total - 1) {
+            usleep(500000);
         }
     }
 
-    $sent_count  = count($results);
+    $sent_count   = count($all_results);
     $skipped_note = ($skipped_count > 0) ? ' (' . $skipped_count . ' آیتم نامعتبر حذف شدند) ' : '';
 
-    // اگر تعداد آیتم‌های موجود در results کمتر از تعداد ارسالی باشد، یعنی برخی
-    // آیتم‌ها توسط سرور رد شده‌اند؛ آن‌ها را synced علامت نمی‌زنیم تا در سینک بعدی دوباره ارسال شوند
+    // اگر هیچ آیتمی در هیچ دسته‌ای پذیرفته نشد → خطا
     if ($sent_count === 0) {
+        $final_msg = ($first_error !== '')
+            ? $first_error . $skipped_note
+            : 'سرور هیچ آیتمی را در پاسخ results برنگرداند.' . $skipped_note;
         return array(
             'status'     => 'error',
-            'message'    => 'سرور هیچ آیتمی را در پاسخ results برنگرداند.' . $skipped_note,
+            'message'    => $final_msg,
             'sent_count' => 0,
             'results'    => array(),
         );
     }
 
-    if ($sent_count < count($clean_items)) {
+    // اگر برخی آیتم‌ها پذیرفته شدند ولی برخی (به‌خاطر خطای دسته یا رد سرور) نشدند → partial
+    if ($sent_count < $total_valid) {
+        $extra_err = ($first_error !== '') ? ' ' . $first_error : '';
         return array(
             'status'     => 'partial',
-            'message'    => $sent_count . ' از ' . count($clean_items) . ' آیتم توسط سرور پذیرفته شد.' . $skipped_note,
+            'message'    => $sent_count . ' از ' . $total_valid . ' آیتم توسط سرور پذیرفته شد.' . $skipped_note . $extra_err,
             'sent_count' => $sent_count,
-            'results'    => $results,
+            'results'    => $all_results,
         );
     }
 
+    // همه‌ی آیتم‌ها با موفقیت پذیرفته شدند
     return array(
         'status'     => 'success',
         'message'    => 'تمام آیتم‌ها با موفقیت به سرور همگام‌سازی ارسال شدند.' . $skipped_note,
         'sent_count' => $sent_count,
-        'results'    => $results,
+        'results'    => $all_results,
     );
 }
 

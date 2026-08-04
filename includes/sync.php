@@ -11,7 +11,10 @@ if (!defined('ABSPATH')) {
   ۱) POST /api/v1/sync/content
      ارسال محتوای جدید (Posts / Pages / Products / Product Categories)
      با هدر X-API-Key و بدنه‌ی:
-       { "items": [ { source_id, content_type, title, content, url, status } ] }
+       { "items": [ { source_id, content_type, title, content, url, status, images } ] }
+     که در آن images یک آرایه‌ی base64 از عکس‌های هر آیتم است (حداکثر ۴ عکس).
+     برای جلوگیری از سنگین شدن یک درخواست، آیتم‌ها در صف‌های ۱۰تایی
+     (در api.php) به سرور ارسال می‌شوند.
 
   ۲) POST /api/v1/sync/delete
      اطلاع‌دادن به سرور درباره‌ی محتوای حذف‌شده از وردپرس
@@ -458,6 +461,7 @@ function ai_agent_sync_all_data_handler() {
             'content'      => 'متن کامل محتوا',
             'url'          => 'https://example.com/...',
             'status'       => 'publish',         // وضعیت انتشار
+            'images'       => array('base64...', 'base64...'),  // حداکثر ۴ عکس base64
         ),
         ...
     )
@@ -533,6 +537,10 @@ function ai_agent_collect_sync_items($sync_types) {
                     continue;
                 }
 
+                // استخراج عکس‌های پست/محصول به‌صورت base64 (حداکثر ۴ عکس)
+                // شامل عکس شاخص، گالری محصول و تصاویر پیوست‌شده
+                $images = ai_agent_collect_post_images_base64($post->ID);
+
                 $items[] = array(
                     'source_id'    => (string) $post->ID,
                     'content_type' => (string) $content_type,
@@ -540,6 +548,7 @@ function ai_agent_collect_sync_items($sync_types) {
                     'content'      => $content,
                     'url'          => $permalink !== '' ? $permalink : home_url('/'),
                     'status'       => (string) $post->post_status,
+                    'images'       => $images,
                 );
             }
         }
@@ -568,6 +577,9 @@ function ai_agent_collect_sync_items($sync_types) {
                     continue;
                 }
 
+                // استخراج عکس شاخص دسته‌بندی محصول (WooCommerce) به base64
+                $images = ai_agent_collect_term_images_base64($term->term_id);
+
                 $items[] = array(
                     'source_id'    => (string) $term->term_id,
                     'content_type' => 'product_category',
@@ -575,12 +587,250 @@ function ai_agent_collect_sync_items($sync_types) {
                     'content'      => $desc_trim !== '' ? $desc_trim : 'بدون محتوا',
                     'url'          => $term_link_str !== '' ? $term_link_str : home_url('/'),
                     'status'       => 'publish',
+                    'images'       => $images,
                 );
             }
         }
     }
 
     return $items;
+}
+
+/*
+============================================
+دریافت مسیر فیزیکی فایل یک attachment با اندازه‌ی مشخص
+
+این تابع برای استخراج عکس‌ها به‌صورت base64 و ارسال به API
+همگام‌سازی استفاده می‌شود. مسیر فیزیکی فایل روی دیسک لازم است
+تا بتوانیم با file_get_contents محتوای باینری آن را بخوانیم.
+
+ورودی:
+    $attachment_id : آی‌دی رسانه‌ی وردپرس
+    $size          : نام اندازه‌ی وردپرس (thumbnail, medium, large, full)
+
+خروجی: مسیر فیزیکی فایل روی دیسک یا رشته‌ی خالی در صورت نبود فایل
+
+نکته: برای $size = 'full' از خود فایل اصلی استفاده می‌شود؛
+       برای سایر اندازه‌ها نسخه‌ی تغییر اندازه‌یافته، و در صورت
+       نبودِ آن، fallback به فایل اصلی.
+============================================
+*/
+function ai_agent_get_attachment_image_path($attachment_id, $size = 'large') {
+
+    $attachment_id = absint($attachment_id);
+    if (empty($attachment_id)) {
+        return '';
+    }
+
+    // حالت full: مستقیم از فایل اصلی
+    if ($size === 'full') {
+        $path = get_attached_file($attachment_id);
+        if ($path && file_exists($path) && is_readable($path)) {
+            return $path;
+        }
+        return '';
+    }
+
+    // حالت‌های thumbnail / medium / large: از نسخه‌ی resize شده
+    $info = image_get_intermediate_size($attachment_id, $size);
+    if (!empty($info['path'])) {
+        $uploads = wp_get_upload_dir();
+        if (!empty($uploads['basedir'])) {
+            $full_path = $uploads['basedir'] . '/' . $info['path'];
+            if (file_exists($full_path) && is_readable($full_path)) {
+                return $full_path;
+            }
+        }
+        // ممکن است path خودش absolute باشد
+        if (file_exists($info['path']) && is_readable($info['path'])) {
+            return $info['path'];
+        }
+    }
+
+    // fallback به فایل اصلی
+    $path = get_attached_file($attachment_id);
+    if ($path && file_exists($path) && is_readable($path)) {
+        return $path;
+    }
+
+    return '';
+}
+
+/*
+============================================
+خواندن محتوای یک عکس از روی attachment_id و تبدیل به base64
+
+ورودی:
+    $attachment_id : آی‌دی رسانه‌ی وردپرس
+    $size          : اندازه‌ی دلخواه وردپرس (پیش‌فرض: large)
+
+خروجی: رشته‌ی base64 (بدون data: prefix) یا رشته‌ی خالی اگر فایل
+       خوانده نشود. از raw base64 استفاده می‌کنیم چون API انتظار
+       دارد هر عنصر images یک رشته‌ی base64 خالص باشد.
+============================================
+*/
+function ai_agent_attachment_to_base64($attachment_id, $size = 'large') {
+
+    $attachment_id = absint($attachment_id);
+    if (empty($attachment_id)) {
+        return '';
+    }
+
+    // فقط فایل‌های تصویری مجازند
+    $mime = get_post_mime_type($attachment_id);
+    if ($mime && strpos($mime, 'image/') !== 0) {
+        return '';
+    }
+
+    $path = ai_agent_get_attachment_image_path($attachment_id, $size);
+    if ($path === '') {
+        return '';
+    }
+
+    $contents = @file_get_contents($path);
+    if ($contents === false || $contents === '') {
+        return '';
+    }
+
+    return base64_encode($contents);
+}
+
+/*
+============================================
+جمع‌آوری عکس‌های یک پست/محصول و تبدیل به base64 برای ارسال به API
+
+این تابع در زمان سینک محتوا فراخوانی می‌شود تا برای هر پست،
+برگه یا محصول، تا سقف ۴ عکس را به‌صورت base64 آماده‌ی ارسال کند.
+
+اولویت انتخاب عکس‌ها:
+    ۱) عکس شاخص (Featured Image)
+    ۲) گالری محصول (برای محصولات ووکامرس: متای _product_image_gallery)
+    ۳) سایر تصاویر پیوست‌شده به پست (attachments با post_parent = پست)
+
+نکته‌ی مهم: حداکثر ۴ عکس بازگردانده می‌شود (طبق محدودیت API).
+       اگر بیش از ۴ عکس وجود داشت، فقط ۴ تای اول ارسال می‌شوند
+       و بقیه نادیده گرفته می‌شوند.
+
+نکته‌ی دوم: برای کنترل حجم payload، از سایز 'large' وردپرس
+       (پیش‌فرض 1024×1024) استفاده می‌کنیم. برای کاهش بیشتر حجم
+       می‌توانید این پارامتر را به 'medium' تغییر دهید.
+
+خروجی: آرایه‌ای از رشته‌های base64 (در صورت نبود عکس، آرایه‌ی خالی)
+============================================
+*/
+function ai_agent_collect_post_images_base64($post_id, $size = 'large') {
+
+    $post_id = absint($post_id);
+    if (empty($post_id)) {
+        return array();
+    }
+
+    $images   = array();
+    $seen_ids = array();
+
+    // ۱. عکس شاخص (Featured Image)
+    $thumb_id = get_post_thumbnail_id($post_id);
+    if (!empty($thumb_id)) {
+        $thumb_id = absint($thumb_id);
+        $b64 = ai_agent_attachment_to_base64($thumb_id, $size);
+        if ($b64 !== '') {
+            $images[]   = $b64;
+            $seen_ids[] = $thumb_id;
+        }
+    }
+
+    // ۲. گالری محصول (فقط برای محصولات ووکامرس)
+    if (class_exists('WooCommerce') && function_exists('get_post_type') && get_post_type($post_id) === 'product') {
+        $gallery_ids_str = get_post_meta($post_id, '_product_image_gallery', true);
+        if (!empty($gallery_ids_str)) {
+            $gallery_ids = array_filter(array_map('absint', explode(',', $gallery_ids_str)));
+            foreach ($gallery_ids as $gid) {
+                if (count($images) >= 4) {
+                    break;
+                }
+                if (in_array($gid, $seen_ids, true)) {
+                    continue;
+                }
+                $b64 = ai_agent_attachment_to_base64($gid, $size);
+                if ($b64 !== '') {
+                    $images[]   = $b64;
+                    $seen_ids[] = $gid;
+                }
+            }
+        }
+    }
+
+    // ۳. fallback: سایر تصاویر پیوست‌شده به پست
+    if (count($images) < 4) {
+        $attachments = get_posts(array(
+            'post_parent'    => $post_id,
+            'post_type'      => 'attachment',
+            'post_mime_type' => 'image',
+            'posts_per_page' => 8,
+            'orderby'        => 'menu_order',
+            'order'          => 'ASC',
+            'fields'         => 'ids',
+            'exclude'        => $seen_ids,
+            'post_status'    => 'inherit',
+        ));
+        if (!empty($attachments)) {
+            foreach ($attachments as $aid) {
+                if (count($images) >= 4) {
+                    break;
+                }
+                $aid = absint($aid);
+                if (in_array($aid, $seen_ids, true)) {
+                    continue;
+                }
+                $b64 = ai_agent_attachment_to_base64($aid, $size);
+                if ($b64 !== '') {
+                    $images[]   = $b64;
+                    $seen_ids[] = $aid;
+                }
+            }
+        }
+    }
+
+    // اطمینان نهایی از سقف ۴ عکس (محتاطانه، چون قبلاً هم کنترل شده)
+    if (count($images) > 4) {
+        $images = array_slice($images, 0, 4);
+    }
+
+    return $images;
+}
+
+/*
+============================================
+جمع‌آوری عکس‌های یک دسته‌بندی محصول (WooCommerce) و تبدیل به base64
+
+ووکامرس برای هر دسته‌بندی محصول، یک عکس شاخص در متای term با کلید
+'thumbnail_id' ذخیره می‌کند. این تابع آن عکس را استخراج و به base64
+تبدیل می‌کند.
+
+خروجی: آرایه‌ای از رشته‌های base64 (حداکثر ۱ مورد برای دسته‌ها،
+       ولی برای امنیت کد همچنان زیر ۴ نگه داشته می‌شود)
+============================================
+*/
+function ai_agent_collect_term_images_base64($term_id, $size = 'large') {
+
+    $term_id = absint($term_id);
+    if (empty($term_id)) {
+        return array();
+    }
+
+    $images = array();
+
+    // ووکامرس آی‌دی عکس شاخص دسته را در متای thumbnail_id نگه می‌دارد
+    $thumb_id = get_term_meta($term_id, 'thumbnail_id', true);
+    if (!empty($thumb_id)) {
+        $thumb_id = absint($thumb_id);
+        $b64 = ai_agent_attachment_to_base64($thumb_id, $size);
+        if ($b64 !== '') {
+            $images[] = $b64;
+        }
+    }
+
+    return $images;
 }
 
 /*
