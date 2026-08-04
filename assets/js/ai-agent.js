@@ -213,32 +213,148 @@ jQuery(function ($) {
             </div>`;
     }
 
-    /*
-    ============================================
-    ساخت باکس رفرنس‌ها (محصولات/صفحات مرتبط) به‌صورت هایپرلینک
-    ============================================
-    */
-    function buildReferencesBox(references) {
-        if (!Array.isArray(references) || references.length === 0) return null;
+/*
+============================================
+گالری عکس‌های محصولات مرتبط — بالای متن پیام نمایش داده می‌شود
+حداکثر ۲ عکس در دید کاربر و بقیه با اسکرول افقی (بدون اسکرول‌بار
+قابل‌مشاهده) در دسترس است. زیر گالری، نقطه‌های گرد نشان‌دهنده‌ی
+وجود آیتم‌های بیشتر و موقعیت فعلی اسکرول است.
+============================================
+*/
+function buildReferencesGallery(references) {
+    if (!Array.isArray(references) || references.length === 0) return null;
 
-        const $box = $('<div class="ai-references-box"></div>');
-        const $title = $('<div class="ai-references-title"></div>').text('موارد مرتبط:');
-        const $list = $('<div class="ai-references-list"></div>');
+    const withImages = references.filter(ref => ref && ref.url && ref.image);
+    if (withImages.length === 0) return null;
 
-        references.forEach(function (ref) {
-            if (!ref || !ref.url) return;
-            const label = ref.title ? String(ref.title) : String(ref.url);
-            const $link = $('<a class="ai-reference-link" target="_blank" rel="noopener noreferrer"></a>')
-                .attr('href', ref.url)
-                .text(label);
-            $list.append($link);
+    const $wrap = $('<div class="ai-references-gallery-wrap"></div>');
+    const $gallery = $('<div class="ai-references-gallery"></div>');
+    const $dots = $('<div class="ai-gallery-dots"></div>');
+    const itemEls = [];
+
+    withImages.forEach(function (ref) {
+        const $item = $('<a class="ai-reference-gallery-item" target="_blank" rel="noopener noreferrer"></a>')
+            .attr('href', ref.url)
+            .attr('title', ref.title ? String(ref.title) : '');
+
+        const $img = $('<img loading="lazy" alt="" />').attr('src', ref.image);
+
+        // مدیریت خطای لود عکس: کل آیتم گالری حذف می‌شود
+        $img.one('error', function () {
+            $item.remove();
+            const idx = itemEls.indexOf($item[0]);
+            if (idx > -1) itemEls.splice(idx, 1);
+            $dots.toggle($gallery.children().length > 2);
         });
 
-        if ($list.children().length === 0) return null;
+        $item.append($img);
+        $gallery.append($item);
+        itemEls.push($item[0]);
+    });
 
-        $box.append($title).append($list);
-        return $box;
+    if ($gallery.children().length === 0) return null;
+
+    // نقطه‌ها فقط وقتی بیشتر از ۲ عکس باشد نمایش داده می‌شوند
+    itemEls.forEach(function () {
+        $('<span class="ai-gallery-dot"></span>').appendTo($dots);
+    });
+    $dots.toggle(itemEls.length > 2);
+    $dots.children().first().addClass('active');
+
+    // اسکرول افقی با چرخ ماوس هنگام هاور (بدون نیاز به Shift)
+    $gallery.on('wheel', function (e) {
+        const dy = e.originalEvent.deltaY;
+        if (dy === 0) return;
+        e.preventDefault();
+        this.scrollLeft += dy;
+    });
+
+    // ----- قابلیت کشیدن (Drag to Scroll) با موس -----
+    (function enableDragScroll(galleryEl) {
+        let isDown = false;
+        let startX = 0;
+        let scrollLeftStart = 0;
+        let moved = false;
+
+        galleryEl.addEventListener('mousedown', function (e) {
+            isDown = true;
+            moved = false;
+            galleryEl.classList.add('ai-gallery-dragging');
+            startX = e.pageX - galleryEl.getBoundingClientRect().left;
+            scrollLeftStart = galleryEl.scrollLeft;
+        });
+
+        function endDrag() {
+            if (!isDown) return;
+            isDown = false;
+            galleryEl.classList.remove('ai-gallery-dragging');
+        }
+
+        document.addEventListener('mouseup', endDrag);
+        galleryEl.addEventListener('mouseleave', endDrag);
+
+        galleryEl.addEventListener('mousemove', function (e) {
+            if (!isDown) return;
+            e.preventDefault();
+            const x = e.pageX - galleryEl.getBoundingClientRect().left;
+            const walk = x - startX;
+            if (Math.abs(walk) > 5) moved = true; // آستانه‌ی تشخیص «کشیدن واقعی» از «کلیک ساده»
+            galleryEl.scrollLeft = scrollLeftStart - walk;
+        });
+
+        // جلوگیری از باز شدن لینک محصول وقتی کاربر واقعاً در حال کشیدن گالری بوده (نه کلیک ساده)
+        galleryEl.addEventListener('click', function (e) {
+            if (moved) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
+    })($gallery[0]);
+
+    // هماهنگ‌سازی نقطه‌ی فعال با آیتم قابل‌مشاهده در گالری
+    if (itemEls.length > 2 && 'IntersectionObserver' in window) {
+        const dotEls = $dots.children().toArray();
+        const io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (entry.intersectionRatio <= 0.6) return;
+                const idx = itemEls.indexOf(entry.target);
+                if (idx === -1 || !dotEls[idx]) return;
+                dotEls.forEach(d => d.classList.remove('active'));
+                dotEls[idx].classList.add('active');
+            });
+        }, { root: $gallery[0], threshold: [0.6] });
+        itemEls.forEach(el => io.observe(el));
     }
+
+    $wrap.append($gallery).append($dots);
+    return $wrap;
+}
+
+/*
+============================================
+لیست متنی هایپرلینک‌های رفرنس‌ها — همان‌جای قبلی (انتهای پیام)
+============================================
+*/
+function buildReferencesListBox(references) {
+    if (!Array.isArray(references) || references.length === 0) return null;
+
+    const $list = $('<div class="ai-references-list"></div>');
+    references.forEach(function (ref) {
+        if (!ref || !ref.url) return;
+        const label = ref.title ? String(ref.title) : String(ref.url);
+        const $link = $('<a class="ai-reference-link" target="_blank" rel="noopener noreferrer"></a>')
+            .attr('href', ref.url)
+            .text(label);
+        $list.append($link);
+    });
+
+    if ($list.children().length === 0) return null;
+
+    const $box = $('<div class="ai-references-box"></div>');
+    const $title = $('<div class="ai-references-title"></div>').text('موارد مرتبط:');
+    $box.append($title).append($list);
+    return $box;
+}
     /*
     ============================================
     ساخت یک پیام AI خالی برای استریم کردن محتوا داخل آن
@@ -448,15 +564,23 @@ jQuery(function ($) {
         stream.rawText += data.content; // ذخیره‌ی متن خام برای پردازش نهایی
         stream.$content.append(escapeHtml(data.content));
         } else if (data.type === 'references' && Array.isArray(data.references)) {
-            // به‌جای فقط ذخیره کردن، باکس رو همین لحظه که رسید بساز و نمایش بده
-            stream.references = data.references;
-            const $refBox = buildReferencesBox(stream.references);
-            if ($refBox) {
-                $refBox.addClass('fade-in-up'); // همون انیمیشن نرم فید این‌آپ که پیام‌ها دارن
-                stream.$body.append($refBox);
-                stream.referencesRendered = true; // فلگ تا در done دوباره تکراری اضافه نشه
-            }
-        } else if (data.type === 'session_init' && data.session_id) {
+    stream.references = data.references;
+
+    // گالری عکس‌ها بالای متن (قبل از $content)
+    const $gallery = buildReferencesGallery(stream.references);
+    if ($gallery) {
+        $gallery.addClass('fade-in-up');
+        stream.$content.before($gallery);
+    }
+
+    // باکس لینک‌های متنی ته پیام
+    const $refList = buildReferencesListBox(stream.references);
+    if ($refList) {
+        $refList.addClass('fade-in-up');
+        stream.$body.append($refList);
+        stream.referencesRendered = true;
+    }
+} else if (data.type === 'session_init' && data.session_id) {
             setSessionId(data.session_id);
         } else if (data.type === 'escalate') {
             stream.$loading.remove();
@@ -473,9 +597,12 @@ jQuery(function ($) {
             }
 
             if (!stream.referencesRendered && stream.references && stream.references.length) {
-                const $refBox = buildReferencesBox(stream.references);
-                if ($refBox) stream.$body.append($refBox);
-            }
+    const $gallery = buildReferencesGallery(stream.references);
+    if ($gallery) stream.$content.before($gallery);
+
+    const $refList = buildReferencesListBox(stream.references);
+    if ($refList) stream.$body.append($refList);
+}
 
             if (data.chat_id) {
                 stream.$body.append(feedbackHtmlFor(data.chat_id));
@@ -563,26 +690,26 @@ jQuery(function ($) {
     (تا زمانی که کوکی session_id پاک نشده، تاریخچه حفظ می‌شود)
     ============================================
     */
-    function renderHistoryMessage(msg) {
-        if (!msg || !msg.content) return;
-        const role = msg.role || 'assistant';
+function renderHistoryMessage(msg) {
+    if (!msg || !msg.content) return;
+    const role = msg.role || 'assistant';
 
-        if (role === 'user') {
-            addMessage('user', escapeHtml(msg.content));
-        } else {
-            // پیام‌های تاریخچه فاقد chat_id محلی هستند، پس دکمه‌ی فیدبک نمایش داده نمی‌شود
-            addMessage('ai', escapeHtml(msg.content));
+    if (role === 'user') {
+        addMessage('user', escapeHtml(msg.content));
+    } else {
+        addMessage('ai', escapeHtml(msg.content));
 
-            // اگر پیام دارای references بود، دقیقاً مثل حالت چت زنده
-            // باکس رفرنس‌ها را زیر همان حباب پیام اضافه می‌کنیم
-            if (Array.isArray(msg.references) && msg.references.length > 0) {
-                const $refBox = buildReferencesBox(msg.references);
-                if ($refBox) {
-                    messages.children().last().find('.ai-message-body').append($refBox);
-                }
-            }
+        if (Array.isArray(msg.references) && msg.references.length > 0) {
+            const $lastBody = messages.children().last().find('.ai-message-body');
+
+            const $gallery = buildReferencesGallery(msg.references);
+            if ($gallery) $lastBody.prepend($gallery);
+
+            const $refList = buildReferencesListBox(msg.references);
+            if ($refList) $lastBody.append($refList);
         }
     }
+}
 
     function loadChatHistory() {
         if (!sessionId) return;

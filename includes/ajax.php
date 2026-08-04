@@ -113,11 +113,15 @@ function ai_agent_chat() {
         @flush();
     };
 
-    // ۹.۶) Callback برای رویداد references (لیست محصولات مرتبط)
+// ۹.۶) Callback برای رویداد references (لیست محصولات مرتبط)
+    // قبل از ارسال به مرورگر، هر رفرنس با عکس نگاره اصلی محصول
+    // (در صورت وجود) غنی‌سازی می‌شود تا فرانت‌اند بتواند گالری
+    // تصاویر هایپرلینک‌دار را کنار پاسخ نمایش دهد.
     $on_references = function($references) {
+        $enriched = ai_agent_enrich_references_with_images($references);
         ai_agent_sse_send(array(
             'type'       => 'references',
-            'references' => $references,
+            'references' => $enriched,
         ));
         @flush();
     };
@@ -251,10 +255,20 @@ function ai_agent_get_history_handler() {
 
     $messages = ai_agent_fetch_chat_history($session_id);
 
-    // در صورت خطا (مثلاً session جدید و بدون تاریخچه) به‌جای خطا، لیست خالی می‌فرستیم
-    // تا چت‌باکس همچنان پیام خوش‌آمدگویی پیش‌فرض را نشان دهد
     if ($messages === false) {
         wp_send_json_success(array('messages' => array()));
+    }
+
+    // غنی‌سازی رفرنس‌های هر پیام با تصویر نگاره اصلی محصول
+    // (دقیقاً همان کاری که هنگام استریم زنده روی رویداد references انجام می‌شود،
+    // چون سرور تاریخچه فقط title/url برمی‌گرداند و image ندارد)
+    if (is_array($messages)) {
+        foreach ($messages as &$msg) {
+            if (is_array($msg) && !empty($msg['references']) && is_array($msg['references'])) {
+                $msg['references'] = ai_agent_enrich_references_with_images($msg['references']);
+            }
+        }
+        unset($msg);
     }
 
     wp_send_json_success(array('messages' => $messages));

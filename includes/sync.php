@@ -582,3 +582,75 @@ function ai_agent_collect_sync_items($sync_types) {
 
     return $items;
 }
+
+/*
+============================================
+دریافت URL عکس شاخص (نگاره اصلی) یک محصول/پست از روی لینک آن
+
+این تابع برای غنی‌سازی رفرنس‌های دریافتی از مدل هوش مصنوعی استفاده
+می‌شود. چون رفرنس‌ها فقط شامل url و title هستند، ابتدا با
+url_to_postid() آی‌دی پست را از روی لینک پیدا می‌کنیم و سپس عکس
+شاخص (Featured Image) آن را برمی‌گردانیم.
+
+نکته‌ی مهم: get_the_post_thumbnail_url فقط عکس نگاره اصلی محصول
+را برمی‌گرداند (نه تصاویر گالری محصول)، پس همیشه دقیقاً یک عکس
+برای هر محصول خواهیم داشت.
+
+خروجی: URL عکس (string) یا رشته‌ی خالی اگر:
+    - لینک به هیچ پستی نگاشت نشود
+    - پست عکس شاخص نداشته باشد
+============================================
+*/
+function ai_agent_get_reference_image_url($url) {
+
+    if (empty($url) || !is_string($url)) {
+        return '';
+    }
+
+    $post_id = url_to_postid($url);
+
+    if (empty($post_id)) {
+        return '';
+    }
+
+    if (!has_post_thumbnail($post_id)) {
+        return '';
+    }
+
+    $image_url = get_the_post_thumbnail_url($post_id, 'medium');
+
+    return !empty($image_url) ? (string) $image_url : '';
+}
+
+/*
+============================================
+غنی‌سازی آرایه‌ی رفرنس‌های دریافتی از مدل با افزودن کلید image
+
+ورودی: آرایه‌ای از رفرنس‌ها با ساختار { title, url }
+خروجی: همان آرایه با کلید اضافه‌ی image برای هر آیتم
+    (image خالی یعنی آن منبع عکس شاخص ندارد؛ فرانت‌اند آن را
+    نادیده می‌گیرد و از گالری حذف می‌کند)
+============================================
+*/
+function ai_agent_enrich_references_with_images($references) {
+
+    if (!is_array($references)) {
+        return array();
+    }
+
+    $enriched = array();
+
+    foreach ($references as $ref) {
+        if (!is_array($ref) || empty($ref['url'])) {
+            continue;
+        }
+
+        $enriched[] = array(
+            'title' => isset($ref['title']) ? (string) $ref['title'] : '',
+            'url'   => (string) $ref['url'],
+            'image' => ai_agent_get_reference_image_url($ref['url']),
+        );
+    }
+
+    return $enriched;
+}

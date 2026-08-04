@@ -288,7 +288,16 @@
 #ai-agent[data-theme="dark"] .ai-escalate-title {
     color: #fdba74;
 }
+#ai-agent[data-theme="dark"] .ai-message {
+    background: #111827;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.08);
+}
 
+#ai-agent[data-theme="dark"] .admin-message {
+    background: #1e293b;
+    color: #e2e8f0;
+}
 .ai-escalate-reason {
     margin-top: 4px;
     font-size: 12.5px;
@@ -345,6 +354,14 @@
        بعد از پاک کردن متن، ارتفاع واقعی محتوا را بدون تأخیر انیمیشن اندازه بگیرد؛
        در غیر این‌صورت مقدار scrollHeight هنگام کوچک شدن به‌درستی محاسبه نمی‌شد. */
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+
+    /* مخفی‌سازی اسکرول‌بار تکست‌باکس هنگام تایپ پیام طولانی و رسیدن به سقف ارتفاع */
+    scrollbar-width: none;      /* فایرفاکس */
+    -ms-overflow-style: none;   /* IE/Edge قدیمی */
+}
+
+#ai-agent-input::-webkit-scrollbar {
+    display: none;              /* کروم/سافاری/اج جدید */
 }
 
 #ai-agent[data-theme="dark"] #ai-agent-input {
@@ -473,6 +490,105 @@
 #ai-agent[data-theme="dark"] .ai-reference-link:hover {
     background: #24344d;
     border-color: rgba(147, 197, 253, 0.35);
+}
+/* گالری عکس نگاره اصلی محصولات مرتبط، کنار هم و هایپرلینک به صفحه محصول */
+.ai-references-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+/* ----- گالری بالای پیام: ۲ عکس در دید + اسکرول افقی بدون نمایش اسکرول‌بار ----- */
+.ai-references-gallery-wrap {
+    margin-bottom: 10px;
+}
+
+.ai-references-gallery-wrap .ai-references-gallery {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;      /* فایرفاکس */
+    -ms-overflow-style: none;   /* IE/Edge قدیمی */
+}
+.ai-references-gallery-wrap .ai-references-gallery::-webkit-scrollbar {
+    display: none;              /* کروم/سافاری */
+}
+
+.ai-references-gallery-wrap .ai-reference-gallery-item {
+    width: calc(50% - 4px);
+    flex: 0 0 calc(50% - 4px);
+    aspect-ratio: 1 / 1;
+    height: auto;
+    scroll-snap-align: start;
+}
+
+/* نقطه‌های گرد نشان‌دهنده‌ی اسکرول افقی */
+.ai-gallery-dots {
+    display: none;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 6px;
+}
+.ai-gallery-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+.ai-gallery-dot.active {
+    background: #000000;
+    transform: scale(1.25);
+}
+
+#ai-agent[data-theme="dark"] .ai-gallery-dot {
+    background: rgba(255, 255, 255, 0.3);
+}
+#ai-agent[data-theme="dark"] .ai-gallery-dot.active {
+    background: #e2e8f0;
+}
+.ai-reference-gallery-item {
+    display: block;
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.ai-reference-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.ai-reference-gallery-item:hover {
+    border-color: #2563eb;
+    transform: translateY(-2px) scale(1.03);
+}
+
+#ai-agent[data-theme="dark"] .ai-reference-gallery-item {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* حالت کشیدن (drag) گالری با موس: نشانگر دست و غیرفعال شدن انتخاب متن/عکس */
+.ai-references-gallery-wrap .ai-references-gallery {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.ai-references-gallery-wrap .ai-references-gallery.ai-gallery-dragging {
+    cursor: grabbing;
+    scroll-behavior: auto; /* در حین کشیدن، اسکرول نرم اسموت غیرفعال شود تا حرکت با موس هم‌زمان و دقیق باشد */
+}
+.ai-references-gallery-wrap .ai-references-gallery.ai-gallery-dragging * {
+    pointer-events: none; /* جلوگیری از فعال شدن لینک زیر انگشت هنگام کشیدن */
 }
 .ai-feedback-buttons {
     display: flex;
