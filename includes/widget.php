@@ -60,10 +60,46 @@ function ai_agent_widget(){
         </div>
 
         <div id="ai-agent-footer">
-            <textarea id="ai-agent-input" placeholder="پیام خود را بنویسید..."></textarea>
-            <button id="ai-agent-send" title="ارسال پیام" type="button">
-                <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/send.svg'); ?>" alt="ارسال" />
-            </button>
+            <?php
+            /*
+            ناحیه پیش‌نمایش عکس‌های انتخاب‌شده توسط کاربر.
+            این باکس به‌صورت پیش‌فرض مخفی است و زمانی که حداقل یک عکس
+            انتخاب شود، توسط JavaScript کلاس has-items می‌گیرد و نمایش
+            داده می‌شود. هر عکس به‌صورت یک thumbnail کوچک با دکمه حذف
+            نمایش داده می‌شود.
+            */ ?>
+            <div id="ai-agent-attachments" aria-label="عکس‌های پیوست"></div>
+
+            <div class="ai-agent-footer-row">
+                <?php
+                /*
+                دکمه سنجاق (Attach): با کلیک روی این دکمه، فایل‌اینپوت مخفی
+                پایین باز می‌شود. این فایل‌اینپوت فقط عکس می‌پذیرد (accept=image/*)
+                و قابلیت انتخاب چندگانه (multiple) دارد. حداکثر تعداد عکس‌ها
+                توسط JavaScript به ۴ عدد محدود می‌شود.
+                */ ?>
+                <button id="ai-agent-attach" title="افزودن عکس" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                    <span class="ai-attach-badge">0</span>
+                </button>
+
+                <textarea id="ai-agent-input" placeholder="پیام خود را بنویسید..."></textarea>
+
+                <button id="ai-agent-send" title="ارسال پیام" type="button">
+                    <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/send.svg'); ?>" alt="ارسال" />
+                </button>
+            </div>
+
+            <?php
+            /*
+            فایل‌اینپوت مخفی: فقط عکس می‌پذیرد و multiple است.
+            این المان به‌صورت مستقیم در UI دیده نمی‌شود؛ کلیک روی دکمه
+            سنجاق (ai-agent-attach) باعث trigger شدن کلیک روی این المان
+            می‌شود تا پنجره Browse سیستم‌عامل باز شود.
+            */ ?>
+            <input type="file" id="ai-agent-file-input" accept="image/*" multiple hidden />
         </div>
     </div>
 </div>

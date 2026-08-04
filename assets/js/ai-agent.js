@@ -11,6 +11,34 @@ jQuery(function ($) {
 
     /*
     ============================================
+    مدیریت عکس‌های پیوست (Attach Images)
+
+    کاربر با کلیک روی دکمه سنجاق می‌تواند تا حداکثر MAX_IMAGES عکس
+    را انتخاب کند. عکس‌ها بلافاصله به base64 (data URI) تبدیل شده
+    و در pendingImages نگهداری می‌شوند. پیش‌نمایش آن‌ها به‌صورت
+    thumbnail بالای فوتر نمایش داده می‌شود. هنگام ارسال پیام، این
+    عکس‌ها در بدنه‌ی درخواست به‌صورت آرایه‌ای از string‌های base64
+    (images[]) به اندپوینت /api/v1/chat/messages ارسال می‌شوند و
+    هم‌زمان در حباب پیام کاربر به‌صورت گالری + پرامپت زیر آن
+    نمایش داده می‌شوند.
+    ============================================
+    */
+    const attachBtn = $("#ai-agent-attach");
+    const fileInput = $("#ai-agent-file-input");
+    const attachmentsBox = $("#ai-agent-attachments");
+
+    // حداکثر تعداد عکس‌های مجاز در هر پیام
+    const MAX_IMAGES = (window.ai_agent && ai_agent.max_images) ? parseInt(ai_agent.max_images, 10) : 4;
+    // حداکثر حجم هر عکس (برای جلوگیری از ارسال عکس‌های بسیار بزرگ) — ۵ مگابایت
+    const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+    // آرایه‌ی عکس‌های انتخاب‌شده قبل از ارسال
+    // هر آیتم: { id: string, name: string, dataUrl: string }
+    let pendingImages = [];
+    let attachIdCounter = 0;
+
+    /*
+    ============================================
     مدیریت دستی تم دارک/لایت
 
     مقدار اولیه از تنظیمات سیستم کاربر خوانده می‌شود؛ اما بعد از آن
@@ -52,6 +80,176 @@ jQuery(function ($) {
     });
 
     initTheme();
+
+    /*
+    ============================================
+    باز کردن پنجره Browse با کلیک روی دکمه سنجاق
+    فایل‌اینپوت مخفی reset می‌شود تا بتوان همان فایل را دوباره انتخاب کرد
+    (در غیر این‌صورت change event برای انتخاب مجدد یک فایل fires نمی‌شود).
+    ============================================
+    */
+    attachBtn.on("click", function () {
+        fileInput.val(''); // ریست برای امکان انتخاب مجدد همان فایل
+        fileInput.trigger("click");
+    });
+
+    /*
+    ============================================
+    هندلر انتخاب فایل از پنجره Browse
+
+    فقط فایل‌های image/* پذیرفته می‌شوند (به‌علاوه‌ی فیلتر سمت سرور).
+    تعداد کل عکس‌های انتخاب‌شده نمی‌تواند از MAX_IMAGES بیشتر شود؛
+    عکس‌های اضافی نادیده گرفته می‌شوند و یک پیام کوتاه به کاربر نمایش
+    داده می‌شود. هر فایل با FileReader.readAsDataURL به base64 تبدیل
+    شده و به pendingImages اضافه می‌شود.
+    ============================================
+    */
+    fileInput.on("change", function () {
+        const files = this.files;
+        if (!files || files.length === 0) return;
+
+        const availableSlots = MAX_IMAGES - pendingImages.length;
+        if (availableSlots <= 0) {
+            alert('حداکثر ' + MAX_IMAGES + ' عکس می‌توانید اضافه کنید.');
+            return;
+        }
+
+        let addedCount = 0;
+        // فقط عکس‌هایی که به‌خاطر رسیدن به سقف MAX_IMAGES رد شدند (نه به‌خاطر نوع/حجم نامعتبر)
+        let limitSkippedCount = 0;
+        const filesToProcess = Array.prototype.slice.call(files);
+
+        filesToProcess.forEach(function (file) {
+            if (addedCount >= availableSlots) {
+                limitSkippedCount++;
+                return;
+            }
+            // فقط فایل‌های عکس پذیرفته می‌شوند
+            if (!file.type || file.type.indexOf('image/') !== 0) {
+                return;
+            }
+            // محدودیت حجم
+            if (file.size > MAX_IMAGE_BYTES) {
+                alert('عکس «' + (file.name || 'نامشخص') + '» بزرگ‌تر از ۵ مگابایت است و اضافه نشد.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const dataUrl = e.target && e.target.result ? String(e.target.result) : '';
+                if (!dataUrl) return;
+
+                pendingImages.push({
+                    id: 'att-' + (++attachIdCounter),
+                    name: file.name || 'image',
+                    dataUrl: dataUrl
+                });
+                renderAttachments();
+            };
+            reader.onerror = function () {
+                // در صورت خطا در خواندن فایل، بی‌سر و صدا نادیده گرفته می‌شود
+            };
+            reader.readAsDataURL(file);
+            addedCount++;
+        });
+
+        // هر زمان که تعدادی از عکس‌ها فقط به‌خاطر رسیدن به سقف ۴ تایی رد شده باشند،
+        // هشدار نمایش داده می‌شود؛ چه هیچ عکسی اضافه نشده باشد و چه بخشی از آن‌ها اضافه شده باشند
+        if (limitSkippedCount > 0) {
+            alert('حداکثر ' + MAX_IMAGES + ' عکس می‌توانید اضافه کنید. ' + limitSkippedCount + ' عکس اضافه به همین دلیل اضافه نشد.');
+        }
+    });
+
+    /*
+    ============================================
+    رندر کردن پیش‌نمایش عکس‌های انتخاب‌شده بالای فوتر
+
+    هر عکس به‌صورت یک thumbnail با دکمه حذف (×) نمایش داده می‌شود.
+    با کلیک روی خود thumbnail، عکس در لایت‌باکس به اندازه‌ی کامل
+    نمایش داده می‌شود. اگر عکسی انتخاب نشده باشد، کل باکس مخفی
+    می‌شود و عداد روی دکمه سنجاق هم پنهان می‌شود.
+    ============================================
+    */
+    function renderAttachments() {
+        attachmentsBox.empty();
+
+        if (pendingImages.length === 0) {
+            attachmentsBox.removeClass('has-items');
+            attachBtn.removeClass('has-attachments');
+            attachBtn.find('.ai-attach-badge').text('0');
+            return;
+        }
+
+        attachmentsBox.addClass('has-items');
+        attachBtn.addClass('has-attachments');
+        attachBtn.find('.ai-attach-badge').text(String(pendingImages.length));
+
+        pendingImages.forEach(function (img) {
+            const $thumb = $('<div class="ai-attach-thumb"></div>').attr('data-id', img.id);
+            const $img = $('<img alt="" />').attr('src', img.dataUrl);
+            // با کلیک روی thumbnail، عکس در لایت‌باکس بزرگ نمایش داده می‌شود
+            $img.on('click', function () {
+                openLightbox(img.dataUrl);
+            });
+            const $remove = $('<button type="button" class="ai-attach-thumb-remove" title="حذف">×</button>');
+            $remove.on('click', function (e) {
+                e.stopPropagation();
+                pendingImages = pendingImages.filter(function (p) { return p.id !== img.id; });
+                renderAttachments();
+            });
+
+            $thumb.append($img).append($remove);
+            attachmentsBox.append($thumb);
+        });
+    }
+
+    /*
+    ============================================
+    پاک کردن تمام عکس‌های انتخاب‌شده (بعد از ارسال)
+    ============================================
+    */
+    function clearAttachments() {
+        pendingImages = [];
+        renderAttachments();
+    }
+
+    /*
+    ============================================
+    لایت‌باکس نمایش عکس در اندازه‌ی کامل
+
+    با کلیک روی هر عکس (چه در پیش‌نمایش و چه در گالری پیام کاربر)
+    لایت‌باکس باز می‌شود. با کلیک روی هر نقطه از صفحه یا زدن Esc
+    بسته می‌شود. فقط یک لایت‌باکس در صفحه وجود دارد و دوباره
+    استفاده می‌شود.
+    ============================================
+    */
+    let $lightbox = null;
+    function ensureLightbox() {
+        if ($lightbox && $lightbox.length) return $lightbox;
+        $lightbox = $('<div class="ai-image-lightbox" aria-hidden="true"></div>');
+        const $img = $('<img alt="" />');
+        $lightbox.append($img);
+        // با کلیک روی پس‌زمینه یا خود عکس، لایت‌باکس بسته می‌شود
+        $lightbox.on('click', function () {
+            closeLightbox();
+        });
+        $(document).on('keydown.lightbox', function (e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+        $('body').append($lightbox);
+        return $lightbox;
+    }
+    function openLightbox(src) {
+        ensureLightbox();
+        $lightbox.find('img').attr('src', src);
+        $lightbox.addClass('is-open').attr('aria-hidden', 'false');
+    }
+    function closeLightbox() {
+        if ($lightbox && $lightbox.length) {
+            $lightbox.removeClass('is-open').attr('aria-hidden', 'true');
+            $lightbox.find('img').attr('src', '');
+        }
+    }
 
     /*
     ============================================
@@ -151,16 +349,26 @@ jQuery(function ($) {
         // خالی کردن باکس ورودی و بازگرداندن ارتفاع آن به حالت اولیه
         input.val('');
         autoResizeInput();
+
+        // پاک کردن عکس‌های پیوست انتخاب‌شده (اگر موردی وجود دارد)
+        clearAttachments();
+
         input.focus();
     });
 
     /*
     ============================================
     افزودن پیام با استایل‌های اختصاصی و متحرک
+
+    پارامتر images (آرایه‌ای از data URL ها) فقط برای پیام‌های کاربر
+    استفاده می‌شود. اگر عکسی موجود باشد، یک گالری از thumbnail‌ها
+    داخل حباب پیام نمایش داده می‌شود و متن (پرامپت) زیر گالری
+    قرار می‌گیرد. با کلیک روی هر عکس، لایت‌باکس اندازه‌ی کامل باز می‌شود.
     ============================================
     */
-    function addMessage(type, text, chatId) {
+    function addMessage(type, text, chatId, images) {
         chatId = chatId || null;
+        images = Array.isArray(images) ? images : [];
         let cls = "";
         if (type === "user") cls = "user-message";
         else if (type === "admin") cls = "admin-message";
@@ -168,7 +376,37 @@ jQuery(function ($) {
 
         if (type === "user" || type === "admin") {
             let titlePrefix = type === "admin" ? "<strong>پاسخ کارشناس:</strong><br>" : "";
-            messages.append('<div class="' + cls + ' fade-in-up">' + titlePrefix + text + '</div>');
+
+            // ساخت گالری عکس‌ها (فقط برای پیام کاربر که images دارد)
+            let galleryHtml = '';
+            if (images.length > 0) {
+                galleryHtml = '<div class="user-message-gallery">' +
+                    images.map(function (img) {
+                        // img یک data URL است؛ از آن مستقیماً در src استفاده می‌کنیم
+                        return '<a class="user-gallery-item" href="#" rel="noopener noreferrer">' +
+                            '<img src="' + img + '" alt="عکس ارسالی کاربر" />' +
+                            '</a>';
+                    }).join('') +
+                    '</div>';
+            }
+
+            // پرامپت کاربر؛ اگر فقط عکس ارسال شده و متنی نبود، خالی می‌ماند
+            let promptHtml = '';
+            if (text && String(text).trim() !== '') {
+                promptHtml = '<div class="user-message-prompt">' + text + '</div>';
+            }
+
+            const $msg = $('<div class="' + cls + ' fade-in-up"></div>');
+            $msg.append(titlePrefix + galleryHtml + promptHtml);
+
+            // هندلر کلیک روی عکس‌های گالری → باز شدن لایت‌باکس
+            $msg.find('.user-gallery-item').on('click', function (e) {
+                e.preventDefault();
+                const src = $(this).find('img').attr('src');
+                if (src) openLightbox(src);
+            });
+
+            messages.append($msg);
         } else {
             let feedbackHtml = '';
             if (chatId) {
@@ -483,11 +721,19 @@ function buildReferencesListBox(references) {
     */
     async function sendMessage() {
         let text = input.val().trim();
-        if (!text) return;
+        // کپی از عکس‌های انتخاب‌شده قبل از پاک شدن
+        let imagesToSend = pendingImages.map(function (img) { return img.dataUrl; });
 
-        addMessage("user", text);
+        // اگر نه متن داریم و نه عکس، ارسال انجام نمی‌شود
+        if (!text && imagesToSend.length === 0) return;
+
+        // نمایش پیام کاربر همراه با گالری عکس‌ها و پرامپت زیر آن
+        addMessage("user", escapeHtml(text), null, imagesToSend);
         input.val("");
         autoResizeInput(); // برگشت به ارتفاع پیش‌فرض بعد از ارسال
+
+        // پاک کردن عکس‌های انتخاب‌شده (نمایش آن‌ها در حباب کاربر کافی است)
+        clearAttachments();
 
         // ساخت یک پیام AI خالی که محتوای استریم‌شده داخل آن قرار می‌گیرد
         const stream = addStreamingMessage();
@@ -498,6 +744,15 @@ function buildReferencesListBox(references) {
         body.append('action', 'ai_agent_chat');
         body.append('message', text);
         body.append('session_id', sessionId || '');
+
+        // افزودن عکس‌ها به‌صورت آرایه (images[])؛ هر آیتم یک data URL (base64) است
+        // که در سمت سرور (ajax.php) به آرایه‌ی images در بدنه‌ی JSON به اندپوینت
+        // /api/v1/chat/messages منتقل می‌شود.
+        if (imagesToSend.length > 0) {
+            imagesToSend.forEach(function (dataUrl, i) {
+                body.append('images[' + i + ']', dataUrl);
+            });
+        }
 
 
         // AbortController برای اعمال timeout سمت کلاینت

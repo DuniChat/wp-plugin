@@ -53,10 +53,39 @@ function ai_agent_chat() {
     $message    = isset($_POST['message'])    ? sanitize_text_field($_POST['message'])    : '';
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
 
+    // ۴.۵) دریافت عکس‌های ارسالی کاربر (آرایه‌ای از data URL های base64)
+    // هر آیتم باید با "data:image/" شروع شود تا فقط عکس پذیرفته باشد.
+    // حداکثر AI_AGENT_MAX_CHAT_IMAGES عکس پذیرفته می‌شود (پیش‌فرض ۴).
+    $max_images = defined('AI_AGENT_MAX_CHAT_IMAGES') ? intval(AI_AGENT_MAX_CHAT_IMAGES) : 4;
+    if ($max_images < 1) {
+        $max_images = 4;
+    }
+    $images = array();
+    if (isset($_POST['images']) && is_array($_POST['images'])) {
+        foreach ($_POST['images'] as $img) {
+            if (!is_string($img)) {
+                continue;
+            }
+            // فقط data URL های معتبر عکس پذیرفته می‌شوند
+            if (strpos($img, 'data:image/') !== 0) {
+                continue;
+            }
+            // محدودیت طول برای جلوگیری از payload های غیرعادی (۱۵ مگابایت)
+            if (strlen($img) > 15 * 1024 * 1024) {
+                continue;
+            }
+            $images[] = $img;
+            if (count($images) >= $max_images) {
+                break; // سقف تعداد عکس
+            }
+        }
+    }
+
     // بررسی اینکه آیا این session قبلاً به پشتیبان انسانی منتقل شده
     $escalated_cookie_session = isset($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) ? sanitize_text_field($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) : '';
     $is_already_escalated = (!empty($session_id) && !empty($escalated_cookie_session) && hash_equals($escalated_cookie_session, $session_id));
-    if (empty($message)) {
+    // اگر نه متن داریم و نه عکس، پیام خالی محسوب می‌شود
+    if (empty($message) && empty($images)) {
         ai_agent_sse_send(array(
             'type'    => 'error',
             'message' => 'پیام خالی است.',
@@ -126,7 +155,9 @@ function ai_agent_chat() {
         @flush();
     };
     // ۱۰) فراخوانی تابع استریم در api.php
-    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references);
+    // آرایه‌ی images (data URL های base64) به تابع استریم پاس داده می‌شود
+    // تا در بدنه‌ی JSON درخواست به /api/v1/chat/messages قرار گیرد.
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references, $images);
     //DEBUG
     error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
     // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done

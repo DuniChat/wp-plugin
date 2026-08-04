@@ -325,9 +325,18 @@
     padding: 12px 16px;
     background: #ffffff;
     display: flex;
-    align-items: flex-end; /* دکمه ارسال هنگام رشد تکست‌باکس، پایین بماند */
-    gap: 10px;
+    flex-direction: column; /* چیدمان ستونی: عکس‌های پیوست بالا، ردیف دکمه‌ها+اینپوت پایین */
+    align-items: stretch;
+    gap: 8px;
     border-top: 1px solid #f1f5f9;
+}
+
+/* ردیف دکمه‌ها و تکست‌باکس: دکمه سنجاق + اینپوت + دکمه ارسال کنار هم */
+.ai-agent-footer-row {
+    display: flex;
+    align-items: flex-end; /* دکمه ارسال هنگام رشد تکست‌باکس، پایین بماند */
+    gap: 8px;
+    width: 100%;
 }
 
 #ai-agent[data-theme="dark"] #ai-agent-footer {
@@ -719,3 +728,229 @@ button.ai-references-title.ai-references-toggle {
     to { opacity: 1; transform: translateY(0); }
 }
 
+
+
+/* ============================================
+   دکمه سنجاق (Attach) برای افزودن عکس به پیام
+   ============================================ */
+#ai-agent-attach {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border: none;
+    outline: none;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #64748b;
+    align-self: center;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+#ai-agent-attach:hover {
+    color: #2563eb;
+    background: #f1f5f9;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-attach {
+    color: #94a3b8;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-attach:hover {
+    color: #93c5fd;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+#ai-agent-attach svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+    pointer-events: none;
+}
+
+/* عداد روی دکمه سنجاق که تعداد عکس‌های انتخاب‌شده را نشان می‌دهد */
+#ai-agent-attach .ai-attach-badge {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 10px;
+    padding: 2px 5px;
+    min-width: 14px;
+    text-align: center;
+    display: none;
+}
+
+#ai-agent-attach.has-attachments .ai-attach-badge {
+    display: inline-block;
+}
+
+/* ============================================
+   ناحیه پیش‌نمایش عکس‌های انتخاب‌شده (بالای فوتر)
+   ============================================ */
+#ai-agent-attachments {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0;
+    width: 100%;
+}
+
+#ai-agent-attachments.has-items {
+    display: flex;
+}
+
+.ai-attach-thumb {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-shrink: 0;
+    animation: fadeInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ai-attach-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.ai-attach-thumb-remove {
+    position: absolute !important;
+    top: 4px !important;
+    right: 4px !important;
+
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    max-width: 22px !important;
+    max-height: 22px !important;
+
+    padding: 0 !important;
+    margin: 0 !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    border: none !important;
+    border-radius: 50% !important;
+    background: rgba(15,23,42,.8) !important;
+
+    color: #fff !important;
+    font-size: 16px !important;
+    font-family: Arial, sans-serif !important;
+    font-weight: bold !important;
+    line-height: 1 !important;
+    text-align: center !important;
+
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    z-index: 9999 !important;
+
+    /* خنثی کردن استایل وودمارت */
+    gap: 0 !important;
+    text-transform: none !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3) !important;
+}
+
+.ai-attach-thumb-remove:hover{
+    background:#ef4444 !important;
+    transform:scale(1.1);
+}
+
+#ai-agent[data-theme="dark"] .ai-attach-thumb {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #1e293b;
+}
+
+/* ============================================
+   گالری عکس‌های ارسالی کاربر داخل حباب پیام کاربر
+   عکس‌ها در یک گرید نمایش داده می‌شوند و پرامپت
+   (متن پیام) زیر آن‌ها نوشته می‌شود.
+   ============================================ */
+.user-message-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+    max-width: 240px;
+}
+
+.user-message-gallery .user-gallery-item {
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.2s ease;
+    display: block;
+}
+
+.user-message-gallery .user-gallery-item:hover {
+    transform: scale(1.05);
+}
+
+.user-message-gallery .user-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* پرامپت زیر گالری عکس‌های کاربر */
+.user-message-prompt {
+    font-size: 13.5px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+/* وقتی فقط عکس ارسال شده و متنی نیست، فاصله اضافی زیر گالری نباشد */
+.user-message-gallery:last-child {
+    margin-bottom: 0;
+}
+
+/* ============================================
+   لایت‌باکس نمایش عکس در اندازه کامل
+   ============================================ */
+.ai-image-lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999999;
+    padding: 20px;
+    cursor: zoom-out;
+}
+
+.ai-image-lightbox.is-open {
+    display: flex;
+    animation: fadeInUp 0.2s ease forwards;
+}
+
+.ai-image-lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    object-fit: contain;
+}

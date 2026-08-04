@@ -53,7 +53,7 @@ if (!defined('ABSPATH')) {
     escalate_conversation_id  : شناسه‌ی گفتگو در سیستم پشتیبان (در صورت escalate)
 ============================================
 */
-function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null) {
+function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null, $images = array()) {
 
     $settings = ai_agent_get_settings();
     $api_key  = ai_agent_get_api_key();
@@ -72,13 +72,41 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
 
     $url = 'https://dunichat.ir/api/v1/chat/messages';
 
-    // ساخت بدنه‌ی درخواست طبق مستندات اندپوینت
-    $body = wp_json_encode(array(
+    /*
+    ساخت بدنه‌ی درخواست طبق مستندات اندپوینت /api/v1/chat/messages:
+        {
+            "message":       <پرامپت کاربر>,
+            "model":         <مدل انتخابی>,
+            "system_prompt": <پرامت سیستم>,
+            "stream":        true,
+            "images":        [<data URL base64>, ...]
+        }
+
+    آرایه‌ی images فقط زمانی به بدنه اضافه می‌شود که حداقل یک عکس
+    از سمت کلاینت ارسال شده باشد. هر آیتم یک data URL کامل
+    (مثلاً "data:image/png;base64,xxxx") است.
+    */
+    $body_args = array(
         'message'       => $message,
         'model'         => isset($settings['model']) ? $settings['model'] : '',
         'system_prompt' => isset($settings['system_prompt']) ? $settings['system_prompt'] : '',
         'stream'        => true,
-    ));
+    );
+
+    if (!empty($images) && is_array($images)) {
+        // فقط مقادیر معتبر (data URL عکس) عبور می‌کنند؛ کلید‌ها reset می‌شوند
+        $clean_images = array();
+        foreach ($images as $img) {
+            if (is_string($img) && strpos($img, 'data:image/') === 0) {
+                $clean_images[] = $img;
+            }
+        }
+        if (!empty($clean_images)) {
+            $body_args['images'] = array_values($clean_images);
+        }
+    }
+
+    $body = wp_json_encode($body_args);
 
     // هدرها (cURL آرایه‌ی «Key: Value» می‌گیرد)
     // session-id فقط اگر از قبل موجود بود ارسال می‌شود؛ در غیر این صورت
