@@ -763,42 +763,8 @@
 
                 for (var i = 0; i < messages.length; i++) {
                     var msg = messages[i];
-                    var role = (msg.role || 'user').toLowerCase();
-                    var content = msg.content || '';
-                    var created = msg.created_at || '';
-
-                    // فرمت‌بندی تاریخ پیام
-                    var timeStr = '';
-                    if (created) {
-                        var dt = new Date(created);
-                        if (!isNaN(dt.getTime())) {
-                            timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
-                                      String(dt.getMinutes()).padStart(2, '0') + ':' +
-                                      String(dt.getSeconds()).padStart(2, '0');
-                        }
-                    }
-
-                    // نگاشت role به کلاس و لیبل
-                    var roleClass = 'ai-agent-msg-' + role;
-                    var roleLabel = '';
-                    switch (role) {
-                        case 'user': roleLabel = 'کاربر'; break;
-                        case 'assistant': roleLabel = 'دستیار'; break;
-                        case 'support': roleLabel = 'پشتیبان'; break;
-                        case 'system': roleLabel = 'سیستم'; break;
-                        default: roleLabel = role;
-                    }
-
-                    var $msgBubble = $('<div class="ai-agent-msg-bubble ' + roleClass + '"></div>');
-                    var $msgHeader = $('<div class="ai-agent-msg-header"></div>');
-                    var $roleSpan = $('<span class="ai-agent-msg-role"></span>').text(roleLabel);
-                    var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
-                    $msgHeader.append($roleSpan).append($timeSpan);
-
-                    var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
-
-                    $msgBubble.append($msgHeader).append($msgContent);
-                    $chatArea.append($msgBubble);
+                    var $bubble = self.buildMessageBubble(msg);
+                    $chatArea.append($bubble);
                 }
 
                 $container.append($chatArea);
@@ -824,6 +790,243 @@
                 if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
                     $container.append(self.buildReplyBox(sessionId));
                 }
+
+                // شروع بارگذاری lazy عکس‌ها — یکی‌یکی، پس از رندر پیام‌ها
+                self.startLazyImageLoading($chatArea);
+            },
+
+            /*
+            ============================================
+            ساخت حباب پیام یکتا بر اساس msg
+
+            این متد از هر دو renderMessages و loadMoreMessages استفاده می‌شود
+            تا منطق ساخت پیام تکرار نشود. هر حباب شامل:
+              - هدر (نقش + زمان)
+              - محتوای متنی
+              - گالری عکس‌های lazy (اگر پیام image_keys داشته باشد)
+
+            placeholderهای عکس با کلاس ai-agent-msg-image-placeholder و
+            data-image-key ساخته می‌شوند و سپس توسط startLazyImageLoading
+            به‌صورت یکی‌یکی از اندپوینت ai_agent_get_media دریافت و جایگزین می‌شوند.
+            ============================================
+            */
+            buildMessageBubble: function(msg) {
+                var role = (msg.role || 'user').toLowerCase();
+                var content = msg.content || '';
+                var created = msg.created_at || '';
+                var imageKeys = Array.isArray(msg.image_keys) ? msg.image_keys : [];
+
+                // فرمت‌بندی تاریخ پیام
+                var timeStr = '';
+                if (created) {
+                    var dt = new Date(created);
+                    if (!isNaN(dt.getTime())) {
+                        timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
+                                  String(dt.getMinutes()).padStart(2, '0') + ':' +
+                                  String(dt.getSeconds()).padStart(2, '0');
+                    }
+                }
+
+                // نگاشت role به کلاس و لیبل
+                var roleClass = 'ai-agent-msg-' + role;
+                var roleLabel = '';
+                switch (role) {
+                    case 'user': roleLabel = 'کاربر'; break;
+                    case 'assistant': roleLabel = 'دستیار'; break;
+                    case 'support': roleLabel = 'پشتیبان'; break;
+                    case 'system': roleLabel = 'سیستم'; break;
+                    default: roleLabel = role;
+                }
+
+                var $msgBubble = $('<div class="ai-agent-msg-bubble ' + roleClass + '"></div>');
+                var $msgHeader = $('<div class="ai-agent-msg-header"></div>');
+                var $roleSpan = $('<span class="ai-agent-msg-role"></span>').text(roleLabel);
+                var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
+                $msgHeader.append($roleSpan).append($timeSpan);
+
+                var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
+
+                // گالری عکس‌های lazy — فقط برای پیام‌هایی که image_keys دارند
+                // (معمولاً پیام کاربر، اما اگر API برای نقش‌های دیگر هم فرستاد، نمایش می‌دهیم)
+                //
+                // ترتیب چیدمان داخل حباب پیام:
+                //     header  →  gallery  →  content
+                // یعنی عکس‌ها روی همان پیام و بالای متن نمایش داده می‌شوند،
+                // دقیقاً مشابه رفتار ویجت عمومی (ai-agent.js) که گالری بالای
+                // پرامپت متنی کاربر قرار می‌گیرد.
+                var $gallery = null;
+                if (imageKeys.length > 0) {
+                    $gallery = $('<div class="ai-agent-msg-image-gallery"></div>');
+                    for (var k = 0; k < imageKeys.length; k++) {
+                        var $ph = $('<div class="ai-agent-msg-image-placeholder is-loading"></div>')
+                            .attr('data-image-key', String(imageKeys[k]));
+                        // یک اسپینر کوچک داخل placeholder
+                        $ph.append('<span class="ai-agent-msg-image-spinner" aria-hidden="true"></span>');
+                        $gallery.append($ph);
+                    }
+                }
+
+                // چیدمان نهایی: header → gallery (در صورت وجود) → content
+                $msgBubble.append($msgHeader);
+                if ($gallery) {
+                    $msgBubble.append($gallery);
+                }
+                $msgBubble.append($msgContent);
+
+                return $msgBubble;
+            },
+
+            /*
+            ============================================
+            بارگذاری lazy عکس‌های یک chat area با استفاده از IntersectionObserver
+
+            placeholderها (با کلاس ai-agent-msg-image-placeholder و data-image-key)
+            زیر نظر IntersectionObserver قرار می‌گیرند. به محض ورود به viewport،
+            عکس مربوطه از اندپوینت ai_agent_get_media دریافت و جایگزین می‌شود.
+
+            درخواست‌ها به‌صورت یکی‌یکی (sequential) ارسال می‌شوند تا بار روی سرور
+            افزایش نکند. یک صف ساده نگه داشته می‌شود که در هر لحظه فقط یک
+            درخواست در حال انجام است.
+            ============================================
+            */
+            _lazyQueue: [],
+            _lazyInFlight: false,
+            _lazyObserver: null,
+
+            startLazyImageLoading: function($chatArea) {
+                var self = this;
+                if (!$chatArea || !$chatArea.length) return;
+
+                var $placeholders = $chatArea.find('.ai-agent-msg-image-placeholder.is-loading');
+
+                if ($placeholders.length === 0) return;
+
+                // اگر IntersectionObserver پشتیبانی می‌شود، از آن استفاده می‌کنیم
+                if ('IntersectionObserver' in window) {
+                    if (!self._lazyObserver) {
+                        self._lazyObserver = new IntersectionObserver(function(entries) {
+                            entries.forEach(function(entry) {
+                                if (entry.isIntersecting) {
+                                    self._lazyObserver.unobserve(entry.target);
+                                    self._enqueueLazyImage($(entry.target));
+                                }
+                            });
+                        }, {
+                            // از $chatArea به‌عنوان root استفاده می‌کنیم تا فقط
+                            // placeholderهای داخل همین ناحیه‌ی قابل اسکرول تشخیص داده شوند
+                            root: $chatArea[0],
+                            rootMargin: '100px',
+                            threshold: 0.05
+                        });
+                    }
+                    $placeholders.each(function() {
+                        self._lazyObserver.observe(this);
+                    });
+                } else {
+                    // مرورگرهای قدیمی: مستقیماً همه را در صف می‌گذاریم
+                    $placeholders.each(function() {
+                        self._enqueueLazyImage($(this));
+                    });
+                }
+            },
+
+            _enqueueLazyImage: function($ph) {
+                var self = this;
+                if (!$ph || !$ph.length) return;
+                if ($ph.data('lazy-queued') || $ph.data('lazy-loading')) return;
+                if (!$ph.hasClass('is-loading')) return; // قبلاً لود شده
+                $ph.data('lazy-queued', true);
+                self._lazyQueue.push($ph);
+                self._processLazyQueue();
+            },
+
+            _processLazyQueue: function() {
+                var self = this;
+                if (self._lazyInFlight) return;
+                var $ph = self._lazyQueue.shift();
+                if (!$ph || !$ph.length) return;
+
+                // اگر placeholder دیگر در DOM نیست (مثلاً آکاردئون بسته شده)، رد می‌کنیم
+                if (!$.contains(document, $ph[0])) {
+                    self._processLazyQueue();
+                    return;
+                }
+
+                var key = $ph.attr('data-image-key');
+                if (!key) {
+                    self._processLazyQueue();
+                    return;
+                }
+
+                $ph.data('lazy-queued', false);
+                $ph.data('lazy-loading', true);
+                self._lazyInFlight = true;
+
+                self._fetchMediaByKey(key, function(ok, dataUrl) {
+                    self._lazyInFlight = false;
+                    $ph.data('lazy-loading', false);
+
+                    if (ok && dataUrl) {
+                        $ph.removeClass('is-loading').addClass('is-loaded');
+                        $ph.find('.ai-agent-msg-image-spinner').remove();
+                        var $img = $('<img class="ai-agent-msg-image" alt="عکس پیوست" />').attr('src', dataUrl);
+                        $ph.append($img);
+
+                        // کلیک روی عکس → باز شدن در تب جدید با data URL
+                        $ph.addClass('is-clickable');
+                        $ph.on('click', function() {
+                            if (dataUrl) {
+                                var w = window.open('');
+                                if (w) {
+                                    w.document.write('<title>عکس پیوست</title><img src="' + dataUrl + '" style="max-width:100%;height:auto;" />');
+                                    w.document.close();
+                                }
+                            }
+                        });
+
+                        $img.one('error', function() {
+                            $ph.addClass('is-error');
+                        });
+                    } else {
+                        $ph.removeClass('is-loading').addClass('is-error');
+                        $ph.find('.ai-agent-msg-image-spinner').remove();
+                        $ph.append('<span class="ai-agent-msg-image-error" aria-hidden="true">⚠</span>');
+                        $ph.attr('title', 'خطا در بارگذاری عکس');
+                    }
+
+                    if (self._lazyQueue.length > 0) {
+                        setTimeout(function() { self._processLazyQueue(); }, 50);
+                    }
+                });
+            },
+
+            /*
+            ============================================
+            درخواست AJAX به اندپوینت ai_agent_get_media برای دریافت یک عکس
+            در پنل تنظیمات (admin) — از ajaxurl و nonce مربوط به chat sessions
+            استفاده می‌کند (هندلر sمت سرور nonce لازم ندارد، ولی برای سازگاری
+            با نسخه‌های آینده nonce نیز ارسال می‌شود).
+            ============================================
+            */
+            _fetchMediaByKey: function(key, callback) {
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: {
+                        action: 'ai_agent_get_media',
+                        nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
+                        key: key
+                    },
+                    dataType: 'json'
+                }).done(function(res) {
+                    if (res && res.success && res.data && res.data.data_url) {
+                        callback(true, res.data.data_url);
+                    } else {
+                        callback(false, null);
+                    }
+                }).fail(function() {
+                    callback(false, null);
+                });
             },
 
             /*
@@ -998,42 +1201,20 @@
                             var newMessages = d.items || [];
                             var $chatArea = $container.find('.ai-agent-chat-messages');
 
+                            // جمع‌آوری placeholderهای جدید برای lazy load بعدی
+                            var $newPlaceholders = $();
+
                             // اضافه کردن پیام‌های جدید به ابتدا (پیام‌های قدیمی‌تر)
                             for (var i = newMessages.length - 1; i >= 0; i--) {
                                 var msg = newMessages[i];
-                                var role = (msg.role || 'user').toLowerCase();
-                                var content = msg.content || '';
-                                var created = msg.created_at || '';
+                                var $bubble = self.buildMessageBubble(msg);
+                                $chatArea.prepend($bubble);
+                                $newPlaceholders = $newPlaceholders.add($bubble.find('.ai-agent-msg-image-placeholder.is-loading'));
+                            }
 
-                                var timeStr = '';
-                                if (created) {
-                                    var dt = new Date(created);
-                                    if (!isNaN(dt.getTime())) {
-                                        timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
-                                                  String(dt.getMinutes()).padStart(2, '0') + ':' +
-                                                  String(dt.getSeconds()).padStart(2, '0');
-                                    }
-                                }
-
-                                var roleClass = 'ai-agent-msg-' + role;
-                                var roleLabel = '';
-                                switch (role) {
-                                    case 'user': roleLabel = 'کاربر'; break;
-                                    case 'assistant': roleLabel = 'دستیار'; break;
-                                    case 'support': roleLabel = 'پشتیبان'; break;
-                                    case 'system': roleLabel = 'سیستم'; break;
-                                    default: roleLabel = role;
-                                }
-
-                                var $msgBubble = $('<div class="ai-agent-msg-bubble ' + roleClass + '"></div>');
-                                var $msgHeader = $('<div class="ai-agent-msg-header"></div>');
-                                var $roleSpan = $('<span class="ai-agent-msg-role"></span>').text(roleLabel);
-                                var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
-                                $msgHeader.append($roleSpan).append($timeSpan);
-
-                                var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
-                                $msgBubble.append($msgHeader).append($msgContent);
-                                $chatArea.prepend($msgBubble);
+                            // راه‌اندازی lazy load برای placeholderهای تازه‌اضافه‌شده
+                            if ($newPlaceholders.length > 0) {
+                                self.startLazyImageLoadingFor($newPlaceholders, $chatArea);
                             }
 
                             // صفحه‌بندی جدید اگر.hasNext
@@ -1054,6 +1235,42 @@
                         $indicator.html('<span style="color:#b91c1c;">خطا در بارگذاری.</span>');
                     }
                 });
+            },
+
+            /*
+            ============================================
+            راه‌اندازی lazy load برای یک مجموعه‌ی مشخص از placeholderها
+            (نسخه‌ی گرفته‌شده از startLazyImageLoading که به‌جای پیدا کردن
+            placeholderها داخل $chatArea، خودِ آن‌ها را مستقیماً می‌گیرد)
+            ============================================
+            */
+            startLazyImageLoadingFor: function($placeholders, $chatArea) {
+                var self = this;
+                if (!$placeholders || !$placeholders.length) return;
+
+                if ('IntersectionObserver' in window) {
+                    if (!self._lazyObserver) {
+                        self._lazyObserver = new IntersectionObserver(function(entries) {
+                            entries.forEach(function(entry) {
+                                if (entry.isIntersecting) {
+                                    self._lazyObserver.unobserve(entry.target);
+                                    self._enqueueLazyImage($(entry.target));
+                                }
+                            });
+                        }, {
+                            root: $chatArea[0],
+                            rootMargin: '100px',
+                            threshold: 0.05
+                        });
+                    }
+                    $placeholders.each(function() {
+                        self._lazyObserver.observe(this);
+                    });
+                } else {
+                    $placeholders.each(function() {
+                        self._enqueueLazyImage($(this));
+                    });
+                }
             },
 
             getStatusLabel: function(status) {

@@ -394,6 +394,103 @@
     color: #856404;
 }
 
+/* =====================================================================
+   گالری عکس‌های پیام (lazy load از اندپوینت ai_agent_get_media)
+
+   هر پیامی که فیلد image_keys داشته باشد، یک گالری شامل placeholder
+   می‌سازد. placeholderها با کمک IntersectionObserver به‌صورت یکی‌یکی از
+   سرور دریافت و با <img> واقعی جایگزین می‌شوند.
+
+   حالت‌ها:
+     - is-loading : placeholder در انتظار دریافت عکس (اسپینر نمایش می‌دهد)
+     - is-loaded  : عکس با موفقیت لود شده
+     - is-error   : خطا در دریافت عکس از سرور
+     - is-clickable : عکس قابل کلیک برای باز شدن در اندازه‌ی کامل
+   ===================================================================== */
+.ai-agent-msg-image-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    /* گالری اکنون بالای متن پیام قرار می‌گیرد (همانند ویجت عمومی)،
+       بنابراین فاصله‌ی پایین برای جداسازی از متن کافی است. اگر
+       پیام فاقد متن باشد، این فاصله مشکل ایجاد نمی‌کند چون گالری
+       آخرین فرزند حباب است. */
+    margin-bottom: 8px;
+}
+
+.ai-agent-msg-image-placeholder {
+    width: 84px;
+    height: 84px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #f0f0f1;
+    border: 1px solid #dcdcde;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-agent-msg-image-placeholder.is-loading {
+    background: linear-gradient(
+        100deg,
+        #f0f0f1 30%,
+        #e0e0e2 50%,
+        #f0f0f1 70%
+    );
+    background-size: 200% 100%;
+    animation: ai-msg-img-shimmer 1.4s linear infinite;
+}
+
+@keyframes ai-msg-img-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* اسپینر کوچک وسط placeholder در حال loading */
+.ai-agent-msg-image-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(34, 113, 177, 0.25);
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: ai-msg-img-spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+@keyframes ai-msg-img-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ai-agent-msg-image-placeholder.is-loaded {
+    background: #fff;
+    cursor: default;
+    padding: 0;
+}
+
+.ai-agent-msg-image-placeholder.is-clickable {
+    cursor: zoom-in;
+}
+
+.ai-agent-msg-image-placeholder .ai-agent-msg-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.ai-agent-msg-image-placeholder.is-error {
+    background: #fee2e2;
+    border-color: #fecaca;
+    cursor: default;
+}
+
+.ai-agent-msg-image-error {
+    font-size: 22px;
+    color: #b91c1c;
+    line-height: 1;
+}
+
 /* ----- وضعیت بارگذاری ----- */
 .ai-agent-sessions-loading {
     padding: 14px;

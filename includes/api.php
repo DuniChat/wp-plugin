@@ -654,7 +654,34 @@ function ai_agent_map_content_types($api_types) {
 واکشی تاریخچه‌ی پیام‌های یک session از سرور
 اندپوینت: GET https://dunichat.ir/api/v1/chat/sessions/{session_id}/messages
 
-خروجی: آرایه‌ای از پیام‌ها (هر کدام شامل id, role, content, created_at)
+خروجی جدید API (نسخه‌ی فعلی) یک شیء کامل است که شامل این کلیدهاست:
+    {
+        "id": "...",
+        "status": "...",
+        "end_user_identifier": "...",
+        "created_at": "...",
+        "message_count": 0,
+        "last_message_role": "...",
+        "last_message": "...",
+        "session_metadata": {...},
+        "messages": [
+            {
+                "id": "...",
+                "role": "user|assistant|support|system",
+                "content": "...",
+                "references": [{ "title": "...", "url": "..." }],
+                "image_keys": ["key1", "key2", ...],
+                "created_at": "..."
+            }
+        ]
+    }
+
+برای حفظ سازگاری با کدهای قدیمی که آرایه‌ای از پیام‌ها را انتظار دارند،
+این تابع فقط آرایه‌ی messages را برمی‌گرداند. فیلد image_keys هر پیام
+دقیقاً همان‌طور که از سمت API آمده حفظ می‌شود تا سمت کلاینت بتواند
+عکس‌های مربوط به هر پیام را به‌صورت lazy بارگذاری کند.
+
+خروجی: آرایه‌ای از پیام‌ها (هر کدام شامل id, role, content, references, image_keys, created_at)
 در صورت موفقیت، یا false در صورت خطا/نبود API Key
 ============================================
 */
@@ -692,7 +719,157 @@ function ai_agent_fetch_chat_history($session_id) {
         return false;
     }
 
-    return $data;
+    // فرمت جدید: پاسخ یک شیء است که messages داخل آن قرار دارد
+    if (isset($data['messages']) && is_array($data['messages'])) {
+        return $data['messages'];
+    }
+
+    // فرمت قدیم: خودِ $data آرایه‌ای از پیام‌ها بود
+    // (برای حفظ سازگاری با سرورهایی که هنوز به فرمت قدیمی جواب می‌دهند)
+    // اگر کلیدهای رشته‌ای داشت یعنی شیء است نه لیست پیام
+    $is_list = true;
+    foreach (array_keys($data) as $k) {
+        if (!is_int($k)) { $is_list = false; break; }
+    }
+    if ($is_list) {
+        return $data;
+    }
+
+    return array();
+}
+
+/*
+============================================
+واکشی یک عکس از سرور با استفاده از image_key
+اندپوینت: GET https://dunichat.ir/api/v1/media/site/{key}
+
+پارامترها:
+    $key : کلید عکس که از فیلد image_keys هر پیام دریافت شده است
+
+هدرها:
+    X-API-Key : کلید API کاربر (رمزگشایی‌شده از دیتابیس) — همان کلیدی که
+                برای تمام فراخوانی‌های دیگر API استفاده می‌شود.
+    Accept    : همه‌ی نوع‌ها (any)
+
+خروجی: آرایه‌ای با کلیدهای:
+    status       => success | error
+    message      : پیام (در حالت خطا)
+    data_url     : داده‌ی عکس به‌صورت Data URL (data:<mime>;base64,<...>)
+                   برای استفاده‌ی مستقیم در src تگ <img>
+    content_type : MIME type عکس (مثلاً image/png)
+============================================
+*/
+function ai_agent_fetch_media($key) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'API Key تنظیم نشده است.',
+        );
+    }
+
+    // پاکسازی کلید: فقط کاراکترهای امن در URL نگه داشته می‌شوند
+    $key = (string) $key;
+    if ($key === '') {
+        return array(
+            'status'  => 'error',
+            'message' => 'کلید عکس ارسال نشده است.',
+        );
+    }
+    // جلوگیری از تزریق مسیر (path traversal) — فقط کاراکترهای رایج مجازند
+    // توجه: کاراکتر «/» در کلید عکس‌ها کاملاً مجاز است چون API کلید را
+    // به‌صورت یک مسیر چندبخشی برمی‌گرداند، مثلاً:
+    //   site_cd798a30949c4d239ee9bb7ebbf2cb37/chat/5b346f4088dc481fa221466945165955.jpg
+    // بنابراین نباید کل کلید را با rawurlencode کد‌گذاری کرد، چون در آن صورت
+    // «/» به «%2F» تبدیل شده و سرور مسیر را به‌درستی تشخیص نمی‌دهد.
+    if (preg_match('#[^A-Za-z0-9\-_.~/]#', $key)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'کلید عکس نامعتبر است.',
+        );
+    }
+
+    // ساخت URL نهایی: کلید به‌صورت بخش‌بخش (segment) کد‌گذاری می‌شود تا
+    // جداکننده‌ی «/» بین بخش‌ها حفظ بماند. هر بخش به‌تنهایی rawurlencode
+    // می‌شود تا در آینده اگر کاراکتر خاصی اضافه شد هم ایمن بماند.
+    $segments     = explode('/', $key);
+    $encoded_segs = array();
+    foreach ($segments as $seg) {
+        // بخش‌های خالی (مثلاً از کلیدهایی مثل «a//b») رد می‌شوند تا
+        // از ساخته‌شدن مسیرهای مشکوک جلوگیری شود.
+        if ($seg === '') {
+            continue;
+        }
+        $encoded_segs[] = rawurlencode($seg);
+    }
+    if (empty($encoded_segs)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'کلید عکس نامعتبر است.',
+        );
+    }
+    $url = 'https://dunichat.ir/api/v1/media/site/' . implode('/', $encoded_segs);
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 20,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => '*/*',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+        );
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+        );
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    if ($body === '' || $body === null) {
+        return array(
+            'status'  => 'error',
+            'message' => 'بدنه‌ی پاسخ خالی بود.',
+        );
+    }
+
+    // تشخیص MIME type از هدر Content-Type پاسخ
+    $content_type = 'image/jpeg'; // پیش‌فرض معقول
+    $resp_headers = wp_remote_retrieve_headers($response);
+    if (!empty($resp_headers['content_type'])) {
+        $ct = strtolower((string) $resp_headers['content_type']);
+        // فقط قسمت اصلی MIME را نگه می‌داریم (بدون ; charset=...)
+        $parts = explode(';', $ct);
+        $ct = trim($parts[0]);
+        if (strpos($ct, 'image/') === 0 || $ct === 'application/octet-stream') {
+            $content_type = ($ct === 'application/octet-stream') ? 'image/jpeg' : $ct;
+        }
+    }
+
+    $b64 = base64_encode($body);
+    if ($b64 === false || $b64 === '') {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطا در رمزگذاری داده‌ی عکس.',
+        );
+    }
+
+    return array(
+        'status'       => 'success',
+        'message'      => '',
+        'data_url'     => 'data:' . $content_type . ';base64,' . $b64,
+        'content_type' => $content_type,
+    );
 }
 
 /*
@@ -1550,6 +1727,54 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
     $body = wp_remote_retrieve_body($response);
     $data = json_decode($body, true);
 
+    /*
+    فرمت جدید پاسخ API یک شیء کامل است که شامل این کلیدهاست:
+        {
+            "id": "...",
+            "status": "...",
+            "end_user_identifier": "...",
+            "created_at": "...",
+            "message_count": 0,
+            "last_message_role": "...",
+            "last_message": "...",
+            "session_metadata": {...},
+            "messages": [
+                {
+                    "id": "...",
+                    "role": "...",
+                    "content": "...",
+                    "references": [...],
+                    "image_keys": ["..."],
+                    "created_at": "..."
+                }
+            ]
+        }
+
+    با توجه به اینکه API جدید از صفحه‌بندی در سطح query params پشتیبانی
+    نمی‌کند (همه‌ی پیام‌های session را در یک پاسخ برمی‌گرداند)، صفحه‌بندی
+    سمت کلاینت انجام می‌شود: slice پیام‌ها بر اساس page/page_size فعلی.
+    */
+    if (is_array($data) && isset($data['messages']) && is_array($data['messages'])) {
+        $all_messages = $data['messages'];
+        $total = count($all_messages);
+
+        // صفحه‌بندی سمت کلاینت (چون API جدید همه را در یک پاسخ برمی‌گرداند)
+        $offset = ($page - 1) * $page_size;
+        $page_items = array_slice($all_messages, $offset, $page_size);
+        $has_next = ($offset + count($page_items)) < $total;
+
+        return array(
+            'status'    => 'success',
+            'message'   => '',
+            'items'     => $page_items,
+            'total'     => $total,
+            'page'      => $page,
+            'page_size' => $page_size,
+            'has_next'  => $has_next,
+        );
+    }
+
+    // سازگاری با فرمت قدیم: items موجود بود
     if (is_array($data) && isset($data['items'])) {
         return array(
             'status'    => 'success',
@@ -1562,16 +1787,24 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
         );
     }
 
+    // سازگاری با فرمت قدیم‌تر: خودِ $data آرایه‌ای از پیام‌ها بود
     if (is_array($data) && !isset($data['detail'])) {
-        return array(
-            'status'    => 'success',
-            'message'   => '',
-            'items'     => $data,
-            'total'     => count($data),
-            'page'      => 1,
-            'page_size' => $page_size,
-            'has_next'  => false,
-        );
+        // اگر کلیدهای رشته‌ای داشت یعنی شیء است نه لیست پیام → نامعتبر
+        $is_list = true;
+        foreach (array_keys($data) as $k) {
+            if (!is_int($k)) { $is_list = false; break; }
+        }
+        if ($is_list) {
+            return array(
+                'status'    => 'success',
+                'message'   => '',
+                'items'     => $data,
+                'total'     => count($data),
+                'page'      => 1,
+                'page_size' => $page_size,
+                'has_next'  => false,
+            );
+        }
     }
 
     return array(

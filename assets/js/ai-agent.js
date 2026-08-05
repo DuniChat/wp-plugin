@@ -364,11 +364,17 @@ jQuery(function ($) {
     استفاده می‌شود. اگر عکسی موجود باشد، یک گالری از thumbnail‌ها
     داخل حباب پیام نمایش داده می‌شود و متن (پرامپت) زیر گالری
     قرار می‌گیرد. با کلیک روی هر عکس، لایت‌باکس اندازه‌ی کامل باز می‌شود.
+
+    پارامتر imageKeys (آرایه‌ای از string) برای پیام‌هایی است که از
+    تاریخچه بارگذاری شده‌اند و عکس‌های آن‌ها به‌صورت lazy بارگذاری می‌شوند.
+    در این حالت ابتدا یک placeholder خاکستری نمایش داده می‌شود و سپس
+    پس از لود شدن عکس از سرور، با آن جایگزین می‌گردد.
     ============================================
     */
-    function addMessage(type, text, chatId, images) {
+    function addMessage(type, text, chatId, images, imageKeys) {
         chatId = chatId || null;
         images = Array.isArray(images) ? images : [];
+        imageKeys = Array.isArray(imageKeys) ? imageKeys : [];
         let cls = "";
         if (type === "user") cls = "user-message";
         else if (type === "admin") cls = "admin-message";
@@ -385,6 +391,16 @@ jQuery(function ($) {
                         // img یک data URL است؛ از آن مستقیماً در src استفاده می‌کنیم
                         return '<a class="user-gallery-item" href="#" rel="noopener noreferrer">' +
                             '<img src="' + img + '" alt="عکس ارسالی کاربر" />' +
+                            '</a>';
+                    }).join('') +
+                    '</div>';
+            } else if (imageKeys.length > 0) {
+                // حالت lazy: برای هر کلید یک placeholder خاکستری نمایش می‌دهیم
+                // که به محض دریافت عکس از سرور، با عکس واقعی جایگزین می‌شود.
+                galleryHtml = '<div class="user-message-gallery">' +
+                    imageKeys.map(function (k) {
+                        return '<a class="user-gallery-item is-loading" href="#" rel="noopener noreferrer" data-image-key="' + escapeAttr(k) + '">' +
+                            '<span class="user-gallery-placeholder"></span>' +
                             '</a>';
                     }).join('') +
                     '</div>';
@@ -407,6 +423,23 @@ jQuery(function ($) {
             });
 
             messages.append($msg);
+
+            // اگر imageKeys داشتیم، placeholderها را زیر نظر IntersectionObserver
+            // قرار می‌دهیم تا به محض ورود به viewport (یا نزدیک شدن به آن)، عکس
+            // مربوطه از سرور به‌صورت یکی‌یکی دریافت شود.
+            if (imageKeys.length > 0) {
+                const observer = ensureLazyObserver();
+                $msg.find('.user-gallery-item.is-loading').each(function () {
+                    var $ph = $(this);
+                    if (observer) {
+                        observer.observe($ph[0]);
+                    } else {
+                        // اگر IntersectionObserver پشتیبانی نمی‌شد (مرورگرهای قدیمی)،
+                        // مستقیماً در صف قرار می‌دهیم تا یکی‌یکی لود شوند.
+                        enqueueLazyImage($ph);
+                    }
+                });
+            }
         } else {
             let feedbackHtml = '';
             if (chatId) {
@@ -415,6 +448,155 @@ jQuery(function ($) {
             // متن و دکمه‌های فیدبک داخل یک بدنه‌ی جدا قرار می‌گیرند تا آواتار CSS کنار کل پیام بنشیند
             messages.append('<div class="' + cls + ' fade-in-up"><div class="ai-message-body">' + text + feedbackHtml + '</div></div>');
         }
+    }
+
+    /*
+    ============================================
+    Escape برای attribute (مثل data-image-key="...")
+    برای جلوگیری از XSS در زمانی که کلید عکس داخل HTML قرار می‌گیرد.
+    ============================================
+    */
+    function escapeAttr(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    /*
+    ============================================
+    بارگذاری lazy عکس‌های تاریخچه با استفاده از IntersectionObserver
+
+    برای هر placeholder (المان .user-gallery-item.is-loading با data-image-key)
+    یک observer ساخته می‌شود. به محض اینکه placeholder وارد viewport شود،
+    عکس مربوطه از اندپوینت ai_agent_get_media دریافت شده و placeholder
+    با یک <img> واقعی جایگزین می‌شود.
+
+    درخواست‌ها به‌صورت یکی‌یکی (sequential) و نه موازی ارسال می‌شوند تا
+    بار اضافی روی سرور ایجاد نشود. یک صف ساده با استفاده از Set پیاده‌سازی
+    شده: در هر لحظه حداکثر یک درخواست در حال انجام است و بقیه در صف می‌مانند
+    تا نوبتشان برسد.
+    ============================================
+    */
+    let lazyImageQueue = [];
+    let lazyImageInFlight = false;
+    let lazyImageObserver = null;
+
+    function ensureLazyObserver() {
+        if (lazyImageObserver) return lazyImageObserver;
+        if (!('IntersectionObserver' in window)) return null;
+
+        lazyImageObserver = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                    const $ph = $(entry.target);
+                    // یک‌بار observer این المان را قطع کن تا دوباره در صف نرود
+                    lazyImageObserver.unobserve(entry.target);
+                    enqueueLazyImage($ph);
+                }
+            });
+        }, {
+            root: messages[0],
+            rootMargin: '100px',
+            threshold: 0.05
+        });
+
+        return lazyImageObserver;
+    }
+
+    function enqueueLazyImage($ph) {
+        if (!$ph || !$ph.length) return;
+        // اگر قبلاً در صف است یا در حال لود است، دوباره اضافه نکن
+        if ($ph.data('lazy-queued') || $ph.data('lazy-loading')) return;
+        if (!$ph.hasClass('is-loading')) return; // قبلاً لود شده
+        $ph.data('lazy-queued', true);
+        lazyImageQueue.push($ph);
+        processLazyQueue();
+    }
+
+    function processLazyQueue() {
+        if (lazyImageInFlight) return;
+        const $ph = lazyImageQueue.shift();
+        if (!$ph || !$ph.length) return;
+
+        // اگر placeholder دیگر در DOM نیست (مثلاً چت پاک شده)، نادیده می‌گیریم
+        if (!$.contains(document, $ph[0])) {
+            processLazyQueue();
+            return;
+        }
+
+        const key = $ph.attr('data-image-key');
+        if (!key) {
+            processLazyQueue();
+            return;
+        }
+
+        $ph.data('lazy-queued', false);
+        $ph.data('lazy-loading', true);
+        lazyImageInFlight = true;
+
+        fetchMediaByKey(key, function (ok, dataUrl) {
+            lazyImageInFlight = false;
+            $ph.data('lazy-loading', false);
+
+            if (ok && dataUrl) {
+                // جایگزینی placeholder با <img> واقعی
+                $ph.removeClass('is-loading').addClass('is-loaded');
+                $ph.find('.user-gallery-placeholder').remove();
+                const $img = $('<img alt="عکس پیوست" />').attr('src', dataUrl);
+                $ph.prepend($img);
+
+                // مدیریت خطای لود عکس نهایی (مثلاً data URL خراب بود)
+                $img.one('error', function () {
+                    $ph.addClass('is-error');
+                    $ph.attr('title', 'خطا در نمایش عکس');
+                });
+            } else {
+                // خطا در دریافت عکس از سرور
+                $ph.removeClass('is-loading').addClass('is-error');
+                $ph.find('.user-gallery-placeholder').remove();
+                $ph.attr('title', 'خطا در بارگذاری عکس');
+                // یک آیکون کوچک خطا نمایش می‌دهیم
+                $ph.prepend('<span class="user-gallery-error-icon" aria-hidden="true">⚠</span>');
+            }
+
+            // اگر صف خالی نشده، ادامه می‌دهیم
+            if (lazyImageQueue.length > 0) {
+                // یک تأخیر کوتاه برای جلوگیری از شلوغ شدن شبکه
+                setTimeout(processLazyQueue, 50);
+            }
+        });
+    }
+
+    /*
+    ============================================
+    درخواست AJAX به اندپوینت ai_agent_get_media برای دریافت یک عکس
+
+    پارامترها:
+        key      : کلید عکس از image_keys
+        callback : function(ok: boolean, dataUrl: string|null)
+    ============================================
+    */
+    function fetchMediaByKey(key, callback) {
+        $.ajax({
+            url: ai_agent.ajax_url,
+            method: 'POST',
+            data: {
+                action: 'ai_agent_get_media',
+                key: key
+            },
+            dataType: 'json'
+        }).done(function (res) {
+            if (res && res.success && res.data && res.data.data_url) {
+                callback(true, res.data.data_url);
+            } else {
+                callback(false, null);
+            }
+        }).fail(function () {
+            callback(false, null);
+        });
     }
 
     /*
@@ -993,16 +1175,36 @@ function buildReferencesListBox(references) {
     ============================================
     بارگذاری تاریخچه‌ی چت هنگام باز شدن مجدد سایت
     (تا زمانی که کوکی session_id پاک نشده، تاریخچه حفظ می‌شود)
+
+    هر پیام از سمت API می‌تواند شامل این فیلدها باشد:
+        - role        : user | assistant | support | system
+        - content     : متن پیام
+        - references  : آرایه‌ای از { title, url }
+        - image_keys  : آرایه‌ای از کلیدهای عکس (برای پیام کاربر)
+
+    برای پیام‌های کاربر، image_keys به addMessage پاس داده می‌شود تا
+    عکس‌ها به‌صورت lazy و یکی‌یکی از اندپوینت ai_agent_get_media دریافت
+    شوند و در گالری همان پیام نمایش داده شوند. پیام‌های دیگر معمولاً
+    image_keys ندارند اما در صورت وجود، نادیده گرفته می‌شوند (چون گالری
+    عکس فقط برای پیام کاربر تعریف شده است).
     ============================================
     */
 function renderHistoryMessage(msg) {
-    if (!msg || !msg.content) return;
+    if (!msg || (!msg.content && !(Array.isArray(msg.image_keys) && msg.image_keys.length))) return;
     const role = msg.role || 'assistant';
+    const content = msg.content || '';
+    const imageKeys = Array.isArray(msg.image_keys) ? msg.image_keys : [];
 
     if (role === 'user') {
-        addMessage('user', escapeHtml(msg.content));
+        // پیام کاربر: متن + گالری عکس‌های lazy از image_keys
+        // اگر محتوای متنی نبود ولی image_keys بود، باز هم حباب کاربر با گالری نمایش داده می‌شود
+        addMessage('user', escapeHtml(content), null, [], imageKeys);
+    } else if (role === 'support') {
+        // پیام پشتیبان انسانی
+        addMessage('admin', renderInlineMarkdown(content));
     } else {
-        addMessage('ai', renderInlineMarkdown(msg.content));
+        // assistant / system / سایر
+        addMessage('ai', renderInlineMarkdown(content));
 
         if (Array.isArray(msg.references) && msg.references.length > 0) {
             const $lastBody = messages.children().last().find('.ai-message-body');

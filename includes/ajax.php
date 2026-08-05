@@ -305,6 +305,11 @@ add_action('wp_ajax_ai_agent_get_wallet_balance', 'ai_agent_get_wallet_balance_h
 ============================================
 دریافت تاریخچه‌ی پیام‌های یک session از سرور
 برای نمایش تاریخچه‌ی چت هنگام باز شدن مجدد ویجت
+
+خروجی: { success: true, data: { messages: [...] } }
+هر پیام شامل فیلدهای id, role, content, references, image_keys, created_at است.
+image_keys آرایه‌ای از کلیدهای عکس است که کلاینت باید آن‌ها را به‌صورت lazy
+و یکی‌یکی از اندپوینت ai_agent_get_media بگیرد.
 ============================================
 */
 function ai_agent_get_history_handler() {
@@ -324,10 +329,19 @@ function ai_agent_get_history_handler() {
     // غنی‌سازی رفرنس‌های هر پیام با تصویر نگاره اصلی محصول
     // (دقیقاً همان کاری که هنگام استریم زنده روی رویداد references انجام می‌شود،
     // چون سرور تاریخچه فقط title/url برمی‌گرداند و image ندارد)
+    //
+    // فیلد image_keys عمداً دست‌نخورده باقی می‌ماند تا کلاینت بتواند عکس‌های
+    // مربوط به هر پیام را به‌صورت lazy و یکی‌یکی بارگذاری کند.
     if (is_array($messages)) {
         foreach ($messages as &$msg) {
             if (is_array($msg) && !empty($msg['references']) && is_array($msg['references'])) {
                 $msg['references'] = ai_agent_enrich_references_with_images($msg['references']);
+            }
+            // تضمین اینکه image_keys همیشه یک آرایه‌ی معتبر است (حتی اگر API فرستاده نباشد)
+            if (!is_array($msg) || !isset($msg['image_keys']) || !is_array($msg['image_keys'])) {
+                if (is_array($msg)) {
+                    $msg['image_keys'] = array();
+                }
             }
         }
         unset($msg);
@@ -337,6 +351,61 @@ function ai_agent_get_history_handler() {
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
 add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');
+
+/*
+============================================
+هندلر AJAX: دریافت یک عکس از سرور با استفاده از image_key
+
+این هندلر به‌عنوان یک پروکسی سمت سرور عمل می‌کند تا کلاینت بتواند
+عکس‌های پیام‌های چت را بدون افشای API Key مستقیماً در مرورگر بارگذاری
+کند. کلاینت برای هر کلید در image_keys یک درخواست جداگانه (یکی‌یکی)
+به این اندپوینت می‌فرستد.
+
+اندپوینت هدف: GET https://dunichat.ir/api/v1/media/site/{key}
+هدر: X-API-Key (همان کلید API کاربر که در دیتابیس ذخیره شده)
+
+پارامترهای ورودی (POST یا GET):
+    key : کلید عکس از image_keys
+
+خروجی (JSON):
+    success => true,  data => { data_url: "data:image/...;base64,...", content_type: "image/..." }
+    success => false, data => { message: "..." }
+
+توضیح امنیتی:
+    این اندپوینت مانند ai_agent_get_history بدون وریفای nonce کار می‌کند،
+    چون در سمت nopriv (ویجت سایت برای کاربران لاگین‌نشده) استفاده می‌شود.
+    خودِ image_key به‌عنوان یک توکن یکبار‌مصرف/تصادفی عمل می‌کند و
+    بدون داشتن آن، دسترسی به عکس ممکن نیست. کلید API واقعی هرگز در
+    مرورگر افشا نمی‌شود.
+============================================
+*/
+function ai_agent_get_media_handler() {
+
+    // توجه: از wp_unslash برای پاکسازی magic quotes احتمالی استفاده می‌کنیم
+    // تا اگر WordPress به‌طور خودکار backslash به ورودی اضافه کرده بود، حذف شود.
+    // سپس sanitize_text_field تگ‌ها و کاراکترهای کنترلی را پاک می‌کند.
+    // کاراکتر «/» در کلید عکس‌ها (مثل site_xxx/chat/yyy.jpg) معتبر است و
+    // sanitize_text_field آن را دست‌نخورده باقی می‌گذارد.
+    $raw_key = isset($_REQUEST['key']) ? wp_unslash($_REQUEST['key']) : '';
+    $key = sanitize_text_field($raw_key);
+    if ($key === '') {
+        wp_send_json_error(array('message' => 'کلید عکس ارسال نشده است.'));
+    }
+
+    $result = ai_agent_fetch_media($key);
+
+    if (is_array($result) && isset($result['status']) && $result['status'] === 'success') {
+        wp_send_json_success(array(
+            'data_url'     => $result['data_url'],
+            'content_type' => isset($result['content_type']) ? $result['content_type'] : '',
+        ));
+    }
+
+    $msg = (is_array($result) && isset($result['message'])) ? $result['message'] : 'خطا در دریافت عکس.';
+    wp_send_json_error(array('message' => $msg));
+}
+add_action('wp_ajax_ai_agent_get_media', 'ai_agent_get_media_handler');
+add_action('wp_ajax_nopriv_ai_agent_get_media', 'ai_agent_get_media_handler');
 
 /*
 ============================================
@@ -372,6 +441,10 @@ add_action('wp_ajax_ai_agent_get_chat_sessions', 'ai_agent_get_chat_sessions_han
 ============================================
 هندلر AJAX: دریافت پیام‌های یک جلسه چت از سرور
 برای نمایش در آکاردئون تب تاریخچه تنظیمات (فقط ادمین)
+
+هر پیام شامل فیلد image_keys (آرایه‌ای از کلیدهای عکس) است که کلاینت
+باید برای هر کدام یک درخواست جداگانه به ai_agent_get_media بفرستد تا
+عکس‌ها به‌صورت lazy و یکی‌یکی در گالری همان پیام نمایش داده شوند.
 ============================================
 */
 function ai_agent_get_session_messages_handler() {
@@ -395,6 +468,15 @@ function ai_agent_get_session_messages_handler() {
     $result = ai_agent_fetch_session_messages($session_id, true, $page, $page_size);
 
     if ($result['status'] === 'success') {
+        // تضمین اینکه هر پیام فیلد image_keys را به‌صورت آرایه دارد
+        if (isset($result['items']) && is_array($result['items'])) {
+            foreach ($result['items'] as &$msg) {
+                if (is_array($msg) && (!isset($msg['image_keys']) || !is_array($msg['image_keys']))) {
+                    $msg['image_keys'] = array();
+                }
+            }
+            unset($msg);
+        }
         wp_send_json_success($result);
     } else {
         wp_send_json_error(array('message' => $result['message']));

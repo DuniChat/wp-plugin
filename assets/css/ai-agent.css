@@ -902,6 +902,7 @@ button.ai-references-title.ai-references-toggle {
     padding: 0;
     transition: transform 0.2s ease;
     display: block;
+    position: relative;
 }
 
 .user-message-gallery .user-gallery-item:hover {
@@ -913,6 +914,52 @@ button.ai-references-title.ai-references-toggle {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+/* placeholder خاکستری برای حالت lazy (is-loading) — انیمیشن shimmer */
+.user-message-gallery .user-gallery-placeholder {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        100deg,
+        rgba(255, 255, 255, 0.05) 30%,
+        rgba(255, 255, 255, 0.18) 50%,
+        rgba(255, 255, 255, 0.05) 70%
+    );
+    background-size: 200% 100%;
+    animation: ai-gallery-shimmer 1.4s linear infinite;
+}
+
+@keyframes ai-gallery-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* overlay محو روی placeholder در حال loading */
+.user-message-gallery .user-gallery-item.is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+/* آیتم با خطا در دریافت عکس از سرور */
+.user-message-gallery .user-gallery-item.is-error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    cursor: default;
+}
+
+.user-message-gallery .user-gallery-error-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    color: rgba(239, 68, 68, 0.9);
+    pointer-events: none;
 }
 
 /* پرامپت زیر گالری عکس‌های کاربر */
