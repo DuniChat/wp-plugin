@@ -65,8 +65,8 @@
             $list.empty();
 
             if (!models || !models.length) {
-                $list.append('<div style="padding:8px 10px;color:#888;">موردی یافت نشد</div>');
-                $list.show();
+                $list.append('<div class="ai-agent-combobox-empty">موردی یافت نشد</div>');
+                aiAgentComboboxOpen();
                 return;
             }
 
@@ -75,9 +75,11 @@
                 var label    = aiAgentGetModelLabel(model);
                 var provider = (model && typeof model === 'object' && model.provider) ? model.provider : '';
 
-                var $item = $('<div class="ai-agent-model-item" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #f0f0f1;"></div>').attr('data-value', value);
-                $item.append($('<div></div>').css({fontWeight:'600'}).text(label));
-                $item.append($('<div></div>').css({fontSize:'11px', color:'#888', marginTop:'2px', direction:'ltr', textAlign:'right'}).text(value + (provider ? ' · ' + provider : '')));
+                // استایل‌ها به‌طور کامل از SettingsStyles.css استفاده می‌کنند؛ این‌جا فقط
+                // ساختار DOM ساخته می‌شود تا هم نمایش یکدست باشد و هم hover از طریق CSS.
+                var $item = $('<div class="ai-agent-model-item"></div>').attr('data-value', value);
+                $item.append($('<div></div>').text(label));
+                $item.append($('<div></div>').text(value + (provider ? ' · ' + provider : '')));
 
                 // نمایش قیمت ورودی و خروجی مدل (به ازای هر ۱ میلیون توکن) تا کاربر بهتر انتخاب کند
                 if (model && typeof model === 'object') {
@@ -89,16 +91,10 @@
                         if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1m));
                         if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_1m));
 
-                        $item.append(
-                            $('<div></div>')
-                                .css({fontSize:'11px', color:'#2563eb', marginTop:'2px'})
-                                .text(priceParts.join(' · ') + ' (به ازای هر ۱ میلیون توکن)')
-                        );
+                        $item.append($('<div></div>').text(priceParts.join(' · ') + ' (به ازای هر ۱ میلیون توکن)'));
                     }
                 }
 
-                $item.on('mouseenter', function(){ $(this).css('background', '#f0f6fc'); });
-                $item.on('mouseleave', function(){ $(this).css('background', '#fff'); });
                 $list.append($item);
             });
 
@@ -106,13 +102,23 @@
             // نه به‌عنوان یک دکمه‌ی جدا بیرون از لیست. اگر تعداد نتایج به سقف limit فعلی رسیده باشد،
             // یعنی احتمالاً نتایج بیشتری هم وجود دارد.
             if (models.length >= aiAgentModelsLimit) {
-                var $loadMore = $('<div class="ai-agent-model-item ai-agent-model-loadmore" style="padding:8px 10px;cursor:pointer;text-align:center;font-weight:600;"></div>').text('بارگذاری بیشتر...');
-                $loadMore.on('mouseenter', function(){ $(this).css('background', '#f0f6fc'); });
-                $loadMore.on('mouseleave', function(){ $(this).css('background', '#fff'); });
+                var $loadMore = $('<div class="ai-agent-model-item ai-agent-model-loadmore"></div>').text('بارگذاری بیشتر...');
                 $list.append($loadMore);
             }
 
-            $list.show();
+            aiAgentComboboxOpen();
+        }
+
+        // ----- کنترل باز/بسته شدن کومبوباکس -----
+        // این توابع کلاس‌های is-open را روی کنترلر و لیست اضافه/حذف می‌کنند تا
+        // هم فلش دکمه‌ی کشویی بچرخد و هم لیست نمایش داده شود.
+        function aiAgentComboboxOpen() {
+            $('#ai-agent-combobox').addClass('is-open');
+            $('#ai-agent-models-list').addClass('is-open');
+        }
+        function aiAgentComboboxClose() {
+            $('#ai-agent-combobox').removeClass('is-open');
+            $('#ai-agent-models-list').removeClass('is-open');
         }
 
         function aiAgentLoadModels() {
@@ -137,13 +143,15 @@
                         var models = response.data.models || [];
                         aiAgentRenderModels(models);
                     } else {
-                        $('#ai-agent-models-list').empty().append('<div style="padding:8px 10px;color:#b91c1c;">' + (response.data && response.data.message ? response.data.message : 'خطا در دریافت لیست مدل‌ها') + '</div>').show();
+                        $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">' + (response.data && response.data.message ? response.data.message : 'خطا در دریافت لیست مدل‌ها') + '</div>');
+                        aiAgentComboboxOpen();
                     }
                 },
                 error: function(jqXHR, textStatus) {
                     if (textStatus === 'abort') return; // درخواست عمداً لغو شده، خطا نیست
                     if (reqId !== aiAgentModelsReqId) return;
-                    $('#ai-agent-models-list').empty().append('<div style="padding:8px 10px;color:#b91c1c;">خطا در برقراری ارتباط با سرور</div>').show();
+                    $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">خطا در برقراری ارتباط با سرور</div>');
+                    aiAgentComboboxOpen();
                 }
             });
         }
@@ -156,11 +164,31 @@
             aiAgentModelsTimer = setTimeout(aiAgentLoadModels, 300);
         });
 
+        // دکمه‌ی کشویی (فلش): باز/بسته کردن لیست به‌صورت toggle.
+        // این کار حس یک کومبوباکس واقعی را به کاربر می‌دهد: می‌تواند روی دکمه کلیک
+        // کند تا منوی کشویی باز شود یا مستقیماً داخل فیلد تایپ کند تا جستجو اجرا شود.
+        $('#ai-agent-combobox-toggle').on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if ($('#ai-agent-models-list').hasClass('is-open')) {
+                aiAgentComboboxClose();
+            } else {
+                if ($('#ai-agent-models-list').children().length > 0) {
+                    aiAgentComboboxOpen();
+                } else {
+                    aiAgentModelsQuery = $('#ai_agent_model_search').val();
+                    aiAgentModelsLimit = 10;
+                    aiAgentLoadModels();
+                }
+                $('#ai_agent_model_search').focus();
+            }
+        });
+
         // با فوکوس روی باکس: اگر لیست از قبل بارگذاری شده، همان را نشان بده (بدون کوئری مجدد)
         // و فقط اگر خالی است، یک‌بار بارگذاری کن. این از ریست شدن لیست هنگام اسکرول/فوکوس مجدد جلوگیری می‌کند
         $('#ai_agent_model_search').on('focus', function() {
             if ($('#ai-agent-models-list').children().length > 0) {
-                $('#ai-agent-models-list').show();
+                aiAgentComboboxOpen();
             } else {
                 aiAgentModelsQuery = $(this).val();
                 aiAgentModelsLimit = 10;
@@ -183,17 +211,20 @@
             $('#ai_agent_model').val(value);
             $('#ai_agent_model_search').val(value);
             $('#ai-agent-model-current').text(value);
-            $('#ai-agent-models-list').hide();
+            aiAgentComboboxClose();
         });
 
-        // بستن لیست با کلیک بیرون از باکس (شامل ردیف «بارگذاری بیشتر» که حالا داخل خودِ لیست است)
+        // بستن لیست با کلیک بیرون از کومبوباکس (شامل ردیف «بارگذاری بیشتر» که حالا داخل خودِ لیست است)
         $(document).on('click', function(e) {
-            if (!$(e.target).closest('#ai_agent_model_search, #ai-agent-models-list').length) {
-                $('#ai-agent-models-list').hide();
+            if (!$(e.target).closest('#ai-agent-combobox').length) {
+                aiAgentComboboxClose();
             }
         });
 
         // ----- موجودی کیف پول -----
+        // دکمه‌ی بروزرسانی موجودی اکنون یک ایکون دایره‌ای سینک است (نه دکمه‌ی متنی).
+        // به جای تغییر متن دکمه، کلاس is-loading روی آن toggle می‌شود که باعث می‌شود
+        // ایکون سینک به چرخش درآید. متن دکمه هرگز نمایش داده نمی‌شود، فقط ایکون.
         function aiAgentLoadWalletBalance(showLoadingUI) {
             var $valueEl  = $('#ai-agent-wallet-balance-value');
             var $statusEl = $('#ai-agent-wallet-balance-status');
@@ -203,9 +234,9 @@
             if (!token || !$valueEl.length) return; // یعنی این بخش در صفحه وجود ندارد
 
             if (showLoadingUI) {
-                $btn.prop('disabled', true).text('در حال دریافت...');
+                $btn.prop('disabled', true).addClass('is-loading');
             }
-            $statusEl.css('color', '#16a34a').text('در حال دریافت موجودی از سرور...');
+            $statusEl.text('در حال دریافت موجودی...');
 
             $.ajax({
                 url: ajaxurl,
@@ -215,18 +246,18 @@
                     nonce: token
                 },
                 success: function(response) {
-                    $btn.prop('disabled', false).text('به‌روزرسانی موجودی');
+                    $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         $valueEl.text(aiAgentFormatIrr(response.data.balance_irr));
-                        $statusEl.css('color', 'green').text('موجودی با موفقیت به‌روزرسانی شد.');
+                        $statusEl.text('');
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت موجودی کیف پول.';
-                        $statusEl.css('color', '#b91c1c').text(msg);
+                        $statusEl.text(msg);
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).text('به‌روزرسانی موجودی');
-                    $statusEl.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $statusEl.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
                 }
             });
         }
@@ -242,14 +273,17 @@
         }
 
         // ----- دکمه «بارگذاری اطلاعات از سرور» (بازخوانی تنظیمات، نه سینک داده‌های امبدینگ) -----
+        // دکمه‌ها اکنون SVG + متن دارند؛ برای حفظ SVG، به جای .text() از کلاس is-loading
+        // استفاده می‌کنیم و فقط در صورت نیاز متن label داخل دکمه را با jQuery .find().last()
+        // به‌روزرسانی می‌کنیم. در این‌جا فقط disabled و is-loading toggle می‌شود.
         $('#ai-agent-reload-settings-btn').on('click', function(e) {
             e.preventDefault();
             var $btn = $(this);
             var $status = $('#ai-agent-reload-settings-status');
             var token = $('#ai_agent_reload_settings_nonce_field').val();
 
-            $btn.prop('disabled', true).text('در حال بارگذاری...');
-            $status.css('color', '#16a34a').text('در حال دریافت آخرین مقادیر از سرور...');
+            $btn.prop('disabled', true).addClass('is-loading');
+            $status.text('در حال دریافت آخرین مقادیر از سرور...');
 
             $.ajax({
                 url: ajaxurl,
@@ -260,18 +294,18 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        $status.css('color', 'green').text('با موفقیت بازخوانی شد؛ در حال بارگذاری مجدد صفحه...');
+                        $status.text('با موفقیت بازخوانی شد؛ در حال بارگذاری مجدد صفحه...');
                         // بارگذاری مجدد صفحه تا تمام فیلدهای فرم (از جمله بخش‌های فقط‌خواندنی
                         // مثل سقف پیام روزانه و وضعیت‌های مجاز) با مقادیر تازه از سرور نمایش داده شوند
                         setTimeout(function(){ window.location.reload(); }, 700);
                     } else {
-                        $btn.prop('disabled', false).text('بارگذاری اطلاعات از سرور');
-                        $status.css('color', '#b91c1c').text((response.data && response.data.message) ? response.data.message : 'خطا در بازخوانی تنظیمات از سرور.');
+                        $btn.prop('disabled', false).removeClass('is-loading');
+                        $status.text((response.data && response.data.message) ? response.data.message : 'خطا در بازخوانی تنظیمات از سرور.');
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).text('بارگذاری اطلاعات از سرور');
-                    $status.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $status.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
                 }
             });
         });
@@ -282,8 +316,8 @@
             var $status = $('#ai-agent-sync-status');
             var token = $('#ai_agent_sync_nonce_field').val();
 
-            $btn.prop('disabled', true).text('در حال همگام‌سازی...');
-            $status.css('color', '#dc2626').text('لطفاً شکیبا باشید؛ در حال بررسی محتوای جدید و ارسال به سرور همگام‌سازی...');
+            $btn.prop('disabled', true).addClass('is-loading');
+            $status.text('در حال بررسی محتوای جدید و ارسال به سرور...');
 
             $.ajax({
                 url: ajaxurl,
@@ -293,7 +327,7 @@
                     nonce: token
                 },
                 success: function(response) {
-                    $btn.prop('disabled', false).text('همگام‌سازی اطلاعات (Sync Now)');
+                    $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         var d = response.data;
                         // ساخت پیام خلاصه با جزئیات دقیق
@@ -310,20 +344,24 @@
                         if (d.total_count) {
                             summary += ' (مجموع محتوای فعلی: ' + d.total_count + ' مورد)';
                         }
-                        $status.css('color', 'green').html('<strong>' + summary + '</strong><br><small style="color:#666;font-weight:normal;">' + d.message + '</small>');
+                        $status.html('<strong>' + summary + '</strong><br><small style="color:#666;font-weight:normal;">' + d.message + '</small>');
                         // به‌روزرسانی تاریخ آخرین سینک در صفحه بدون رفرش
                         if (d.last_sync_time) {
                             // فقط نمایش را به‌روز می‌کنیم؛ برای اطمینان کامل کاربر می‌تواند صفحه را رفرش کند
                             $status.append('<br><small style="color:#888;font-weight:normal;">زمان سینک: ' + d.last_sync_time + '</small>');
                         }
+                        // به‌روزرسانی فیلد «آخرین سینک افزایشی» در بلوک آخرین همگام‌سازی
+                        if (d.last_sync_time) {
+                            $('.ai-agent-last-sync-item').first().find('.ai-agent-last-sync-value').text(d.last_sync_time);
+                        }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در همگام‌سازی.';
-                        $status.css('color', '#b91c1c').text(msg);
+                        $status.text(msg);
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).text('همگام‌سازی اطلاعات (Sync Now)');
-                    $status.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $status.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
                 }
             });
         });
@@ -341,8 +379,8 @@
             var $status = $('#ai-agent-sync-all-status');
             var token = $('#ai_agent_sync_all_nonce_field').val();
 
-            $btn.prop('disabled', true).text('در حال سینک کامل...');
-            $status.css('color', '#dc2626').text('لطفاً شکیبا باشید؛ در حال ارسال تمام محتوا به سرور همگام‌سازی...');
+            $btn.prop('disabled', true).addClass('is-loading');
+            $status.text('در حال ارسال تمام محتوا به سرور...');
 
             $.ajax({
                 url: ajaxurl,
@@ -352,25 +390,27 @@
                     nonce: token
                 },
                 success: function(response) {
-                    $btn.prop('disabled', false).text('سینک تمامی محتوا');
+                    $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         var d = response.data;
                         var summary = d.new_count + ' مورد با موفقیت به سرور ارسال شد';
                         if (d.total_count) {
                             summary += ' (از مجموع ' + d.total_count + ' مورد)';
                         }
-                        $status.css('color', 'green').html('<strong>' + summary + '</strong><br><small style="color:#666;font-weight:normal;">' + d.message + '</small>');
+                        $status.html('<strong>' + summary + '</strong><br><small style="color:#666;font-weight:normal;">' + d.message + '</small>');
                         if (d.last_sync_time) {
                             $status.append('<br><small style="color:#888;font-weight:normal;">زمان سینک کامل: ' + d.last_sync_time + '</small>');
+                            // به‌روزرسانی فیلد «آخرین سینک کامل» در بلوک آخرین همگام‌سازی
+                            $('.ai-agent-last-sync-item').last().find('.ai-agent-last-sync-value').text(d.last_sync_time);
                         }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در سینک کامل.';
-                        $status.css('color', '#b91c1c').text(msg);
+                        $status.text(msg);
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).text('سینک تمامی محتوا');
-                    $status.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $status.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
                 }
             });
         });
@@ -389,14 +429,14 @@
                 summary.failed || 0,
                 summary.not_found || 0
             ];
-            var colors = ['#f59e0b', '#3b82f6', '#16a34a', '#dc2626', '#6b7280'];
+            var colors = ['#f59e0b', '#3b82f6', '#16a34a', '#dc2626', '#9ca3af'];
 
             var ctx = document.getElementById('ai-agent-status-chart');
             if (!ctx) return;
 
             if (aiAgentStatusChart) {
                 aiAgentStatusChart.data.datasets[0].data = dataVals;
-                aiAgentStatusChart.options.plugins.title.text = 'وضعیت ارسال‌های سینک‌شده (مجموع: ' + (summary.total || 0) + ')';
+                aiAgentStatusChart.options.plugins.title.text = 'وضعیت ارسال‌ها (مجموع: ' + (summary.total || 0) + ')';
                 aiAgentStatusChart.update();
                 return;
             }
@@ -408,21 +448,30 @@
                     datasets: [{
                         data: dataVals,
                         backgroundColor: colors,
-                        borderWidth: 1
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                        hoverOffset: 8
                     }]
                 },
                 options: {
                     responsive: true,
+                    cutout: '62%',
                     plugins: {
                         legend: {
                             position: 'bottom',
                             rtl: true,
-                            labels: { font: { family: 'Tahoma', size: 12 } }
+                            labels: {
+                                font: { family: 'Tahoma, sans-serif', size: 11 },
+                                padding: 10,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
                         },
                         title: {
                             display: true,
-                            text: 'وضعیت ارسال‌های سینک‌شده (مجموع: ' + (summary.total || 0) + ')',
-                            font: { family: 'Tahoma', size: 13 }
+                            text: 'وضعیت ارسال‌ها (مجموع: ' + (summary.total || 0) + ')',
+                            font: { family: 'Tahoma, sans-serif', size: 12, weight: 'bold' },
+                            padding: { top: 4, bottom: 8 }
                         }
                     }
                 }
@@ -437,9 +486,9 @@
             if (!token) return; // یعنی دکمه/فیلد در صفحه وجود ندارد
 
             if (showLoadingUI) {
-                $btn.prop('disabled', true).text('در حال استعلام...');
+                $btn.prop('disabled', true).addClass('is-loading');
             }
-            $statusEl.css('color', '#7c3aed').text('در حال دریافت وضعیت از سرور...');
+            $statusEl.text('در حال دریافت وضعیت از سرور...');
 
             $.ajax({
                 url: ajaxurl,
@@ -449,21 +498,21 @@
                     nonce: token
                 },
                 success: function(response) {
-                    $btn.prop('disabled', false).text('استعلام وضعیت');
+                    $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         var d = response.data;
-                        $statusEl.css('color', 'green').text('وضعیت با موفقیت به‌روزرسانی شد.');
+                        $statusEl.text('وضعیت با موفقیت به‌روزرسانی شد.');
                         if (d.summary) {
                             aiAgentRenderStatusChart(d.summary);
                         }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت وضعیت.';
-                        $statusEl.css('color', '#b91c1c').text(msg);
+                        $statusEl.text(msg);
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).text('استعلام وضعیت');
-                    $statusEl.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $statusEl.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
                 }
             });
         }
@@ -633,7 +682,7 @@
                 var $list = $('#ai-agent-sessions-list');
 
                 if (!items || items.length === 0) {
-                    $list.html('<div class="ai-agent-sessions-empty" style="padding:20px;text-align:center;color:#888;">هیچ جلسه‌ای یافت نشد.</div>');
+                    $list.html('<div class="ai-agent-sessions-empty">هیچ جلسه‌ای یافت نشد.</div>');
                     return;
                 }
 
@@ -654,29 +703,14 @@
                         var statusLabel = self.getStatusLabel(item.status);
 
                         var $item = $('<div class="ai-agent-session-item"></div>');
-                        var $header = $('<div class="ai-agent-session-header" style="cursor:pointer;"></div>');
+                        var $header = $('<div class="ai-agent-session-header"></div>');
                         var $arrow = $('<span class="ai-agent-session-arrow">&#9654;</span>');
                         var $idSpan = $('<code class="ai-agent-session-id"></code>').text(item.id);
                         var $dateSpan = $('<span class="ai-agent-session-date"></span>').text(created);
-                        var $statusBadge = $('<span class="ai-agent-session-status-badge"></span>').text(statusLabel);
-
-                        // رنگ بج وضعیت — inline
-                        switch (item.status) {
-                            case 'pending_human':
-                                $statusBadge.css({background:'#fff3cd', color:'#856404'});
-                                break;
-                            case 'bot':
-                                $statusBadge.css({background:'#dbeafe', color:'#1e40af'});
-                                break;
-                            case 'human':
-                                $statusBadge.css({background:'#d4edda', color:'#155724'});
-                                break;
-                            case 'closed':
-                                $statusBadge.css({background:'#f3f4f6', color:'#6b7280'});
-                                break;
-                            default:
-                                $statusBadge.css({background:'#f3f4f6', color:'#6b7280'});
-                        }
+                        // رنگ بج وضعیت اکنون از طریق CSS و ویژگی data-status اعمال می‌شود
+                        var $statusBadge = $('<span class="ai-agent-session-status-badge"></span>')
+                            .attr('data-status', item.status || '')
+                            .text(statusLabel);
 
                         $header.append($arrow).append(' ').append($idSpan).append(' ').append($dateSpan).append(' ').append($statusBadge);
 
@@ -716,7 +750,7 @@
                 self.msgLoading = true;
                 self.msgPage = 1;
 
-                $container.html('<div class="ai-agent-msg-loading" style="padding:12px;text-align:center;color:#666;">در حال بارگذاری پیام‌ها...</div>');
+                $container.html('<div class="ai-agent-msg-loading">در حال بارگذاری پیام‌ها...</div>');
 
                 $.ajax({
                     url: ajaxurl,
@@ -737,12 +771,12 @@
                             self.renderMessages($container, d.items || [], sessionId, sessionStatus);
                         } else {
                             var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت پیام‌ها.';
-                            $container.html('<div style="padding:12px;color:#b91c1c;">' + msg + '</div>');
+                            $container.html('<div class="ai-agent-sessions-error">' + msg + '</div>');
                         }
                     },
                     error: function() {
                         self.msgLoading = false;
-                        $container.html('<div style="padding:12px;color:#b91c1c;">خطای غیرمنتظره در ارتباط با سرور.</div>');
+                        $container.html('<div class="ai-agent-sessions-error">خطای غیرمنتظره در ارتباط با سرور.</div>');
                     }
                 });
             },
@@ -752,7 +786,7 @@
                 $container.empty();
 
                 if (!messages || messages.length === 0) {
-                    $container.html('<div style="padding:12px;text-align:center;color:#888;">پیامی یافت نشد.</div>');
+                    $container.html('<div class="ai-agent-sessions-empty">پیامی یافت نشد.</div>');
                     if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
                         $container.append(self.buildReplyBox(sessionId));
                     }
@@ -1068,7 +1102,7 @@
                     }
 
                     $sendBtn.prop('disabled', true).text('در حال ارسال...');
-                    $statusSpan.css('color', '#666').text('');
+                    $statusSpan.text('');
 
                     $.ajax({
                         url: ajaxurl,
@@ -1102,15 +1136,15 @@
                                 }
 
                                 $textarea.val('');
-                                $statusSpan.css('color', 'green').text('پاسخ با موفقیت ارسال شد.');
+                                $statusSpan.text('پاسخ با موفقیت ارسال شد.');
                             } else {
                                 var msg = (response.data && response.data.message) ? response.data.message : 'خطا در ارسال پاسخ.';
-                                $statusSpan.css('color', '#b91c1c').text(msg);
+                                $statusSpan.text(msg);
                             }
                         },
                         error: function() {
                             $sendBtn.prop('disabled', false).text('ارسال پاسخ');
-                            $statusSpan.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با سرور.');
+                            $statusSpan.text('خطای غیرمنتظره در ارتباط با سرور.');
                         }
                     });
                 }
@@ -1132,7 +1166,7 @@
 
                     $closeBtn.prop('disabled', true).text('در حال بستن...');
                     $sendBtn.prop('disabled', true);
-                    $statusSpan.css('color', '#666').text('');
+                    $statusSpan.text('');
 
                     $.ajax({
                         url: ajaxurl,
@@ -1144,25 +1178,26 @@
                         },
                         success: function(response) {
                             if (response.success) {
-                                $statusSpan.css('color', 'green').text('چت با موفقیت بسته شد.');
+                                $statusSpan.text('چت با موفقیت بسته شد.');
                                 $textarea.prop('disabled', true);
                                 $closeBtn.text('چت بسته شد');
                                 $sendBtn.prop('disabled', true);
 
                                 // به‌روزرسانی بج وضعیت در هدر آکاردئون بدون نیاز به رفرش کل لیست
+                                // رنگ‌ها اکنون از طریق CSS و ویژگی data-status اعمال می‌شوند
                                 var $badge = $wrap.closest('.ai-agent-session-item').find('.ai-agent-session-status-badge');
-                                $badge.text(self.getStatusLabel('closed')).css({background:'#f3f4f6', color:'#6b7280'});
+                                $badge.attr('data-status', 'closed').text(self.getStatusLabel('closed'));
                             } else {
                                 $closeBtn.prop('disabled', false).text('پایان چت');
                                 $sendBtn.prop('disabled', false);
                                 var msg = (response.data && response.data.message) ? response.data.message : 'خطا در بستن چت.';
-                                $statusSpan.css('color', '#b91c1c').text(msg);
+                                $statusSpan.text(msg);
                             }
                         },
                         error: function() {
                             $closeBtn.prop('disabled', false).text('پایان چت');
                             $sendBtn.prop('disabled', false);
-                            $statusSpan.css('color', '#b91c1c').text('خطای غیرمنتظره در ارتباط با سرور.');
+                            $statusSpan.text('خطای غیرمنتظره در ارتباط با سرور.');
                         }
                     });
                 });
@@ -1179,7 +1214,7 @@
                 $container.find('.ai-agent-msg-nav').remove();
 
                 // indicator
-                var $indicator = $('<div class="ai-agent-msg-loading" style="padding:8px;text-align:center;color:#666;">در حال بارگذاری...</div>');
+                var $indicator = $('<div class="ai-agent-msg-loading">در حال بارگذاری...</div>');
                 $container.find('.ai-agent-msg-total').before($indicator);
 
                 $.ajax({

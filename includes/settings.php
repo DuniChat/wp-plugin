@@ -350,8 +350,44 @@ function ai_agent_reload_settings_handler(){
 }
 add_action('wp_ajax_ai_agent_reload_settings', 'ai_agent_reload_settings_handler');
 
+/*
+==========================================================================
+منوی پیشخوان: یک منوی اصلی «دانیچَت» + دو زیرمنو (تنظیمات افزونه و
+تاریخچه چت‌ها) تا کاربر هم از طریق زیرمنوها و هم از طریق تب‌های درون
+صفحه به هر دو بخش دسترسی داشته باشد. هیچ منطق اصلی تغییری نکرده است —
+فقط ساختار منو توسعه یافته تا هر دو تب به‌صورت زیرگزینه در دسترس باشند.
+==========================================================================
+*/
 function ai_agent_add_menu(){
-    add_menu_page('تنظیمات دانیچَت', 'دانیچَت', 'manage_options', 'ai-agent-settings', 'ai_agent_settings_page', AI_AGENT_URL . 'assets/images/favicon20x20.png', 80);
+    // منوی اصلی (پدر)
+    add_menu_page(
+        'دانیچَت',
+        'دانیچَت',
+        'manage_options',
+        'ai-agent-settings',
+        'ai_agent_settings_page',
+        AI_AGENT_URL . 'assets/images/favicon20x20.png',
+        80
+    );
+    // زیرمنوی اول: تنظیمات افزونه (همان صفحه اصلی، تب general)
+    add_submenu_page(
+        'ai-agent-settings',
+        'تنظیمات افزونه',
+        'تنظیمات افزونه',
+        'manage_options',
+        'ai-agent-settings',
+        'ai_agent_settings_page'
+    );
+    // زیرمنوی دوم: تاریخچه چت‌ها (همان callback، اما با slug مجزا تا
+    // در منوی پیشخوان به‌صورت یک آیتم جداگانه نمایش داده شود)
+    add_submenu_page(
+        'ai-agent-settings',
+        'تاریخچه چت‌ها',
+        'تاریخچه چت‌ها',
+        'manage_options',
+        'ai-agent-settings-history',
+        'ai_agent_settings_page'
+    );
 }
 add_action('admin_menu', 'ai_agent_add_menu');
 
@@ -359,7 +395,9 @@ function ai_agent_settings_page(){
     if (!current_user_can('manage_options')) return;
 
     $settings = ai_agent_get_settings();
-    $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
+    $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : 'ai-agent-settings';
+    // اگر کاربر از زیرمنوی «تاریخچه چت‌ها» وارد شده باشد، تب پیش‌فرض history است
+    $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : (($current_page === 'ai-agent-settings-history') ? 'history' : 'general');
 
     /*
     ============================================
@@ -398,281 +436,432 @@ function ai_agent_settings_page(){
 
         if ($save_result['status'] === 'success') {
             $settings     = $save_result['data'];
-            $sync_notice  = '<div class="notice notice-success inline ai-agent-notice-mb"><p><strong>آخرین مقادیر با موفقیت از سرور همگام‌سازی دریافت شد.</strong> مقادیر مدل، پرامت سیستم، منابع داده و سایر فیلدها از سرور بارگذاری شده‌اند.</p></div>';
+            $sync_notice  = '<div class="ai-agent-notice ai-agent-notice-success"><p>آخرین مقادیر با موفقیت از سرور همگام‌سازی دریافت شد.</p></div>';
         } elseif ($save_result['status'] === 'skipped') {
-            $sync_notice = '<div class="notice notice-warning inline ai-agent-notice-mb"><p><strong>' . esc_html($save_result['message']) . '</strong></p></div>';
+            $sync_notice = '<div class="ai-agent-notice ai-agent-notice-warning"><p>' . esc_html($save_result['message']) . '</p></div>';
         } else { // error
-            $sync_notice = '<div class="notice notice-error inline ai-agent-notice-mb"><p><strong>خطا در همگام‌سازی:</strong> ' . esc_html($save_result['message']) . '</p></div>';
+            $sync_notice = '<div class="ai-agent-notice ai-agent-notice-error"><p>خطا در همگام‌سازی: ' . esc_html($save_result['message']) . '</p></div>';
         }
     }
     ?>
-    <div class="wrap">
-        <h1>تنظیمات و مدیریت دستیار هوش مصنوعی</h1>
+    <div class="ai-agent-app" dir="rtl">
 
-        <h2 class="nav-tab-wrapper ai-agent-tabs-wrap">
-            <a href="?page=ai-agent-settings&tab=general" class="nav-tab <?php echo $current_tab === 'general' ? 'nav-tab-active' : ''; ?>">تنظیمات افزونه</a>
-            <a href="?page=ai-agent-settings&tab=history" class="nav-tab <?php echo $current_tab === 'history' ? 'nav-tab-active' : ''; ?>">تاریخچه چت‌ها</a>
-        </h2>
+        <!-- ====== Top App Bar ====== -->
+        <header class="ai-agent-topbar">
+            <div class="ai-agent-topbar-brand">
+                <div class="ai-agent-brand-mark" aria-hidden="true">
+                    <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/favicon46x46.png'); ?>" alt="" />
+                </div>
+                <div class="ai-agent-brand-text">
+                    <h1>دانیچَت</h1>
+                    <span>پنل مدیریت دستیار هوش مصنوعی</span>
+                </div>
+            </div>
+            <div class="ai-agent-topbar-tools">
+                <!-- موجودی کیف پول (سمت چپ بالا) -->
+                <div class="ai-agent-wallet-card">
+                    <div class="ai-agent-wallet-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 1-1 1v0a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/>
+                        </svg>
+                    </div>
+                    <div class="ai-agent-wallet-info">
+                        <span class="ai-agent-wallet-label">موجودی کیف پول</span>
+                        <span id="ai-agent-wallet-balance-value" class="ai-agent-wallet-amount">—</span>
+                    </div>
+                    <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="ai-agent-sync-icon-btn" aria-label="به‌روزرسانی موجودی" title="به‌روزرسانی موجودی">
+                        <svg class="ai-agent-sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
+                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                            <path d="M16 16h5v5"/>
+                        </svg>
+                    </button>
+                    <span id="ai-agent-wallet-balance-status" class="ai-agent-wallet-status"></span>
+                    <?php wp_nonce_field('ai_agent_wallet_balance_nonce_action', 'ai_agent_wallet_balance_nonce_field'); ?>
+                </div>
+            </div>
+        </header>
 
-        <?php if ($current_tab === 'general') :
-            echo $sync_notice;
-        ?>
-            <form method="post" action="options.php">
-                <?php settings_fields('ai_agent_settings_group'); ?>
-                <table class="form-table" role="presentation">
+        <!-- ====== Tabs (تب تاریخچه چت‌ها اول آمده است) ====== -->
+        <nav class="ai-agent-tabs">
+            <a href="?page=ai-agent-settings&tab=history" class="ai-agent-tab <?php echo $current_tab === 'history' ? 'is-active' : ''; ?>">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                تاریخچه چت‌ها
+            </a>
+            <a href="?page=ai-agent-settings&tab=general" class="ai-agent-tab <?php echo $current_tab === 'general' ? 'is-active' : ''; ?>">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                تنظیمات افزونه
+            </a>
+        </nav>
 
-                    <!-- ====== API Key (احراز هویت با سرور همگام‌سازی) ====== -->
-                    <tr>
-                        <th scope="row"><label for="ai_agent_api_key">کلید API (API Key)</label></th>
-                        <td>
-                            <input type="password" name="ai_agent_settings[api_key]" id="ai_agent_api_key" value="<?php echo esc_attr($settings['api_key']); ?>" class="regular-text" autocomplete="off" />
-                            <button type="button" class="button button-secondary button-small" id="ai-agent-toggle-api-key" class="ai-agent-toggle-key-btn">نمایش</button>
-                             <p class="description">کلید دریافت شده از سایت (<code>dunichat.ir</code>) را وارد کنید.</p>
-                        </td>
-                    </tr>
+        <!-- ====== Tab Content ====== -->
+        <main class="ai-agent-content">
+            <?php if ($current_tab === 'general') :
+                echo $sync_notice;
+            ?>
+                <form method="post" action="options.php">
+                    <?php settings_fields('ai_agent_settings_group'); ?>
 
-                    <!-- ====== موجودی کیف پول ====== -->
-                    <tr>
-                        <th scope="row">موجودی کیف پول</th>
-                        <td>
-                            <span id="ai-agent-wallet-balance-value" class="ai-agent-wallet-balance-value">—</span>
-                            <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="button button-secondary button-small ai-agent-action-btn is-green">به‌روزرسانی موجودی</button>
-                            <span id="ai-agent-wallet-balance-status" class="ai-agent-status-text"></span>
-                            <?php wp_nonce_field('ai_agent_wallet_balance_nonce_action', 'ai_agent_wallet_balance_nonce_field'); ?>
-                            <p class="description">موجودی فعلی کیف پول شما در سرور دانیچَت (بر حسب ریال). این مقدار هر بار که این صفحه باز شود، به‌صورت خودکار به‌روزرسانی می‌شود.</p>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row"><label for="ai_agent_model_search">مدل هوش مصنوعی</label></th>
-                        <td>
-                            <div class="ai-agent-model-search-wrap">
-                                <input type="text" id="ai_agent_model_search" autocomplete="off" placeholder="جستجوی مدل..." value="<?php echo esc_attr($settings['model']); ?>" class="regular-text" />
-                                <input type="hidden" name="ai_agent_settings[model]" id="ai_agent_model" value="<?php echo esc_attr($settings['model']); ?>" />
-                                <?php wp_nonce_field('ai_agent_models_nonce_action', 'ai_agent_models_nonce_field'); ?>
-
-                                <div id="ai-agent-models-list" class="ai-agent-models-list" role="listbox"></div>
-                                <p class="description">مدل موردنظر را تایپ/جستجو کنید یا از لیست انتخاب کنید. قیمت ورودی و خروجی هر مدل (به ازای هر ۱ میلیون توکن) کنار آن نمایش داده می‌شود. مقدار فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></p>
+                    <!-- ====== API Key ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                کلید API
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <div class="ai-agent-field-row">
+                                <label for="ai_agent_api_key" class="ai-agent-field-label">API Key</label>
+                                <div class="ai-agent-input-group">
+                                    <input type="password" name="ai_agent_settings[api_key]" id="ai_agent_api_key" value="<?php echo esc_attr($settings['api_key']); ?>" class="ai-agent-input" autocomplete="off" />
+                                    <button type="button" id="ai-agent-toggle-api-key">نمایش</button>
+                                </div>
                             </div>
-                        </td>
-                    </tr>
+                        </div>
+                    </section>
 
-                    <!-- ====== پرامت سیستم (System Prompt) ====== -->
-                    <tr>
-                        <th scope="row"><label for="ai_agent_system_prompt">پرامت سیستم (System Prompt)</label></th>
-                        <td>
-                            <textarea name="ai_agent_settings[system_prompt]" id="ai_agent_system_prompt" rows="5" class="large-text" placeholder="مثال: You are a helpful customer support assistant."><?php echo esc_textarea($settings['system_prompt']); ?></textarea>
-                            <p class="description">این پرامت به‌عنوان دستورالعمل پایه‌ی سیستم به مدل هوش مصنوعی ارسال می‌شود. مقدار این فیلد پس از ذخیره‌ی تنظیمات، در صورت موفقیت، از سرور همگام‌سازی دریافت و جایگزین می‌شود.</p>
-                        </td>
-                    </tr>
+                    <!-- ====== AI Model (Combobox) ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                مدل هوش مصنوعی
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <div class="ai-agent-field-row">
+                                <label for="ai_agent_model_search" class="ai-agent-field-label">انتخاب مدل</label>
+                                <div class="ai-agent-combobox" id="ai-agent-combobox">
+                                    <div class="ai-agent-combobox-control">
+                                        <span class="ai-agent-combobox-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                        </span>
+                                        <input type="text" id="ai_agent_model_search" autocomplete="off" placeholder="جستجو یا انتخاب مدل..." value="<?php echo esc_attr($settings['model']); ?>" class="ai-agent-combobox-input" />
+                                        <button type="button" class="ai-agent-combobox-toggle" id="ai-agent-combobox-toggle" aria-label="نمایش لیست مدل‌ها">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                        </button>
+                                    </div>
+                                    <input type="hidden" name="ai_agent_settings[model]" id="ai_agent_model" value="<?php echo esc_attr($settings['model']); ?>" />
+                                    <?php wp_nonce_field('ai_agent_models_nonce_action', 'ai_agent_models_nonce_field'); ?>
+                                    <div id="ai-agent-models-list" class="ai-agent-combobox-list" role="listbox"></div>
+                                    <div class="ai-agent-combobox-foot">مدل فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
-                    <tr>
-                        <th scope="row"><label for="ai_agent_color">رنگ دستیار</label></th>
-                        <td>
-                            <input type="text" name="ai_agent_settings[color]" id="ai_agent_color" value="<?php echo esc_attr($settings['color']); ?>" class="ai-agent-color-field" />
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="ai_agent_timeout">Timeout (ثانیه)</label></th>
-                        <td>
-                            <input type="number" min="1" step="1" name="ai_agent_settings[timeout]" id="ai_agent_timeout" value="<?php echo esc_attr($settings['timeout']); ?>" />
-                        </td>
-                    </tr>
+                    <!-- ====== System Prompt ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                                پرامت سیستم
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <div class="ai-agent-field-row">
+                                <label for="ai_agent_system_prompt" class="ai-agent-field-label">System Prompt</label>
+                                <textarea name="ai_agent_settings[system_prompt]" id="ai_agent_system_prompt" rows="5" class="ai-agent-textarea" placeholder="مثال: You are a helpful customer support assistant."><?php echo esc_textarea($settings['system_prompt']); ?></textarea>
+                            </div>
+                        </div>
+                    </section>
 
-                    <tr class="ai-agent-section-divider">
-                        <th scope="row">انتخاب منابع داده جهت همگام‌سازی (Sync)</th>
-                        <td>
-                            <fieldset>
-                                <label class="ai-agent-checkbox-label">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="posts" <?php checked(in_array('posts', $settings['sync_types'])); ?>> نوشته‌ها (Posts)
+                    <!-- ====== Appearance (Color + Timeout) ====== -->
+                    <section class="ai-agent-card ai-agent-grid-2">
+                        <div class="ai-agent-card-cell">
+                            <header class="ai-agent-card-header">
+                                <h2>
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+                                    رنگ دستیار
+                                </h2>
+                            </header>
+                            <div class="ai-agent-card-body">
+                                <input type="text" name="ai_agent_settings[color]" id="ai_agent_color" value="<?php echo esc_attr($settings['color']); ?>" class="ai-agent-color-field" />
+                            </div>
+                        </div>
+                        <div class="ai-agent-card-cell">
+                            <header class="ai-agent-card-header">
+                                <h2>
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    مدت پاسخ‌گویی
+                                </h2>
+                            </header>
+                            <div class="ai-agent-card-body">
+                                <div class="ai-agent-number-input">
+                                    <input type="number" min="1" step="1" name="ai_agent_settings[timeout]" id="ai_agent_timeout" value="<?php echo esc_attr($settings['timeout']); ?>" />
+                                    <span class="ai-agent-number-suffix">ثانیه</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ====== Data Sources ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                                منابع داده جهت همگام‌سازی
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <div class="ai-agent-checkbox-grid">
+                                <label class="ai-agent-check-card">
+                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="posts" <?php checked(in_array('posts', $settings['sync_types'])); ?>>
+                                    <span class="ai-agent-check-card-body">
+                                        <span class="ai-agent-check-card-title">نوشته‌ها</span>
+                                        <span class="ai-agent-check-card-sub">Posts</span>
+                                    </span>
                                 </label>
-                                <label class="ai-agent-checkbox-label">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="pages" <?php checked(in_array('pages', $settings['sync_types'])); ?>> برگه‌ها (Pages)
+                                <label class="ai-agent-check-card">
+                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="pages" <?php checked(in_array('pages', $settings['sync_types'])); ?>>
+                                    <span class="ai-agent-check-card-body">
+                                        <span class="ai-agent-check-card-title">برگه‌ها</span>
+                                        <span class="ai-agent-check-card-sub">Pages</span>
+                                    </span>
                                 </label>
-                                <label class="ai-agent-checkbox-label">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="products" <?php checked(in_array('products', $settings['sync_types'])); ?>> محصولات فروشگاه (WooCommerce Products)
+                                <label class="ai-agent-check-card">
+                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="products" <?php checked(in_array('products', $settings['sync_types'])); ?>>
+                                    <span class="ai-agent-check-card-body">
+                                        <span class="ai-agent-check-card-title">محصولات فروشگاه</span>
+                                        <span class="ai-agent-check-card-sub">WooCommerce Products</span>
+                                    </span>
                                 </label>
-                                <label class="ai-agent-checkbox-label">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="product_cats" <?php checked(in_array('product_cats', $settings['sync_types'])); ?>> دسته‌بندی محصولات (Product Categories)
+                                <label class="ai-agent-check-card">
+                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="product_cats" <?php checked(in_array('product_cats', $settings['sync_types'])); ?>>
+                                    <span class="ai-agent-check-card-body">
+                                        <span class="ai-agent-check-card-title">دسته‌بندی محصولات</span>
+                                        <span class="ai-agent-check-card-sub">Product Categories</span>
+                                    </span>
                                 </label>
-                            </fieldset>
-                            <p class="description">تیک‌خوردن هر کدام از این منابع، بر اساس مقدار <code>allowed_content_types</code> دریافتی از سرور همگام‌سازی به‌صورت خودکار انجام می‌شود. مواردی که می‌خواهید مدل هوش مصنوعی برای پاسخ به مشتریان به آن‌ها دسترسی داشته باشد در اینجا مشخص می‌شوند.</p>
-                        </td>
-                    </tr>
-
-                    <!-- ====== سینک تصاویر (sync_images) ====== -->
-                    <tr>
-                        <th scope="row">سینک تصاویر (Image Sync)</th>
-                        <td>
-                            <label class="ai-agent-checkbox-label">
-                                <input type="checkbox" name="ai_agent_settings[sync_images]" value="1" id="ai_agent_sync_images" <?php checked(!empty($settings['sync_images'])); ?>>
-                                ارسال تصاویر محتوا هنگام همگام‌سازی (Send Images with Content)
-                            </label>
-                            <p class="description">اگر این گزینه تیک بخورد، هنگام کلیک روی دکمه‌های «همگام‌سازی اطلاعات» و «سینک تمامی محتوا»، تصاویر هر پست/محصول/دسته (حداکثر ۴ عکس به‌صورت base64) نیز به سرور ارسال می‌شوند. اگر تیک برداشته شود، فقط محتوای متنی ارسال می‌گردد. این مقدار در سرور به‌صورت <code>allow-image</code> (تیک خورده) یا <code>deny-image</code> (تیک نخورده) در فیلد <code>allowed_statuses</code> ذخیره می‌شود.</p>
-                        </td>
-                    </tr>
-
-                    <!-- ====== حداکثر پیام روزانه (daily_message_limit) ====== -->
-                    <tr>
-                        <th scope="row"><label for="ai_agent_daily_message_limit">حداکثر پیام روزانه (Daily Message Limit)</label></th>
-                        <td>
-                            <input type="number" min="0" step="1" name="ai_agent_settings[daily_message_limit]" id="ai_agent_daily_message_limit" value="<?php echo esc_attr(intval($settings['daily_message_limit'])); ?>" class="small-text" />
-                            <p class="description">این مقدار سقف تعداد پیام روزانه‌ی کاربران را مشخص می‌کند و پس از ذخیره‌ی تنظیمات به‌صورت <code>daily_message_limit</code> در اندپوینت <code>/api/v1/sync/settings</code> ارسال می‌شود. مقدار ۰ یعنی بدون محدودیت.</p>
-                        </td>
-                    </tr>
+                                <label class="ai-agent-check-card ai-agent-check-card-wide">
+                                    <input type="checkbox" name="ai_agent_settings[sync_images]" value="1" id="ai_agent_sync_images" <?php checked(!empty($settings['sync_images'])); ?>>
+                                    <span class="ai-agent-check-card-body">
+                                        <span class="ai-agent-check-card-title">سینک تصاویر</span>
+                                        <span class="ai-agent-check-card-sub">ارسال تصاویر محتوا هنگام همگام‌سازی</span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div class="ai-agent-field-row ai-agent-mt">
+                                <label for="ai_agent_daily_message_limit" class="ai-agent-field-label">حداکثر پیام روزانه</label>
+                                <div class="ai-agent-number-input">
+                                    <input type="number" min="0" step="1" name="ai_agent_settings[daily_message_limit]" id="ai_agent_daily_message_limit" value="<?php echo esc_attr(intval($settings['daily_message_limit'])); ?>" class="small-text" />
+                                    <span class="ai-agent-number-suffix">پیام / روز (۰ = نامحدود)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
                     <?php if (!empty($settings['allowed_statuses'])) : ?>
-                    <tr>
-                        <th scope="row">اطلاعات دریافتی از سرور همگام‌سازی</th>
-                        <td>
-                            <?php if (!empty($settings['allowed_statuses'])) : ?>
-                                <p class="description"><strong>وضعیت‌های مجاز:</strong></p>
-                                <ul class="ai-agent-status-list">
-                                    <?php foreach ($settings['allowed_statuses'] as $type => $statuses) :
-                                        if (!is_array($statuses)) continue;
-                                    ?>
-                                        <li class="description"><code><?php echo esc_html($type); ?></code>: <?php echo esc_html(implode(', ', $statuses)); ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            <?php endif; ?>
-                            <p class="description ai-agent-readonly-note">این مقادیر فقط از سرور همگام‌سازی دریافت می‌شوند و قابل ویرایش نیستند. (مقدار <code>image</code> توسط تیک «سینک تصاویر» کنترل می‌شود.)</p>
-                        </td>
-                    </tr>
+                    <!-- ====== Server Info (read-only) ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2" ry="2"/><rect x="2" y="13" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg>
+                                اطلاعات دریافتی از سرور
+                            </h2>
+                            <span class="ai-agent-badge ai-agent-badge-muted">فقط‌خواندنی</span>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <ul class="ai-agent-status-list">
+                                <?php foreach ($settings['allowed_statuses'] as $type => $statuses) :
+                                    if (!is_array($statuses)) continue;
+                                ?>
+                                    <li><code><?php echo esc_html($type); ?></code><span><?php echo esc_html(implode('، ', $statuses)); ?></span></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </section>
                     <?php endif; ?>
 
-                    <tr>
-                        <th scope="row">بازخوانی تنظیمات از سرور</th>
-                        <td>
-                            <button type="button" id="ai-agent-reload-settings-btn" class="button button-secondary ai-agent-action-btn is-green">بارگذاری اطلاعات از سرور</button>
-                            <span id="ai-agent-reload-settings-status" class="ai-agent-status-text"></span>
-                            <?php wp_nonce_field('ai_agent_reload_settings_nonce_action', 'ai_agent_reload_settings_nonce_field'); ?>
-                            <p class="description">با کلیک روی این دکمه، بدون نیاز به ذخیره‌ی فرم، آخرین مقادیر مدل، پرامت سیستم، منابع مجاز، وضعیت‌های مجاز و سقف پیام روزانه از سرور خوانده و روی فیلدهای پایین اعمال می‌شود.</p>
-                        </td>
-                    </tr>
+                    <!-- ====== Job Status + Sync Operations (chart on LEFT) ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                استعلام وضعیت و عملیات همگام‌سازی
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body ai-agent-sync-layout">
 
-                    <tr>
-                        <th scope="row">آخرین همگام‌سازی انجام‌شده</th>
-                        <td>
-                            <?php
-                                $last_sync_time = ai_agent_get_last_sync_time();
-                                $last_sync_all_time = ai_agent_get_last_sync_all_time();
-                            ?>
-                            <p class="description ai-agent-sync-time-note">
-                                <strong>آخرین سینک افزایشی (Sync Now):</strong>
-                                <?php echo !empty($last_sync_time) ? esc_html($last_sync_time) : '<span class="ai-agent-muted-placeholder">هنوز سینکی انجام نشده است.</span>'; ?>
-                            </p>
-                            <p class="description ai-agent-sync-time-note-sm">
-                                <strong>آخرین سینک کامل (Sync All):</strong>
-                                <?php echo !empty($last_sync_all_time) ? esc_html($last_sync_all_time) : '<span class="ai-agent-muted-placeholder">هنوز سینک کاملی انجام نشده است.</span>'; ?>
-                            </p>
-                            <p class="description ai-agent-mt4">این تاریخ‌ها پس از هر همگام‌سازی موفق، به‌صورت خودکار به‌روزرسانی می‌شوند.</p>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <th scope="row">استعلام وضعیت ارسال‌ها (Job Status)</th>
-                        <td>
-                            <button type="button" id="ai-agent-check-status-btn" class="button button-secondary ai-agent-action-btn is-purple">استعلام وضعیت</button>
-                            <span id="ai-agent-check-status-status" class="ai-agent-status-text"></span>
-                            <?php wp_nonce_field('ai_agent_sync_status_nonce_action', 'ai_agent_sync_status_nonce_field'); ?>
-                            <p class="description ai-agent-mt6">وضعیت پردازش تمام آیتم‌های سینک‌شده در سرور (در صف، در حال پردازش، تکمیل‌شده، ناموفق، یافت‌نشده) را بررسی می‌کند. این استعلام هربار که این صفحه باز شود، به‌صورت خودکار هم انجام می‌شود.</p>
-                            <div class="ai-agent-chart-wrap">
-                                <canvas id="ai-agent-status-chart" height="220"></canvas>
+                            <!-- RIGHT column: controls & status -->
+                            <div class="ai-agent-sync-actions">
+
+                                <div class="ai-agent-sync-block">
+                                    <div class="ai-agent-sync-block-title">بازخوانی تنظیمات</div>
+                                    <div class="ai-agent-sync-block-actions">
+                                        <button type="button" id="ai-agent-reload-settings-btn" class="ai-agent-btn ai-agent-btn-primary">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                                            بارگذاری از سرور
+                                        </button>
+                                        <span id="ai-agent-reload-settings-status" class="ai-agent-status-text"></span>
+                                        <?php wp_nonce_field('ai_agent_reload_settings_nonce_action', 'ai_agent_reload_settings_nonce_field'); ?>
+                                    </div>
+                                </div>
+
+                                <div class="ai-agent-sync-block">
+                                    <div class="ai-agent-sync-block-title">آخرین همگام‌سازی</div>
+                                    <?php
+                                        $last_sync_time = ai_agent_get_last_sync_time();
+                                        $last_sync_all_time = ai_agent_get_last_sync_all_time();
+                                    ?>
+                                    <div class="ai-agent-last-sync-grid">
+                                        <div class="ai-agent-last-sync-item">
+                                            <span class="ai-agent-last-sync-label">سینک افزایشی</span>
+                                            <span class="ai-agent-last-sync-value"><?php echo !empty($last_sync_time) ? esc_html($last_sync_time) : '<span class="ai-agent-muted-placeholder">ثبت نشده</span>'; ?></span>
+                                        </div>
+                                        <div class="ai-agent-last-sync-item">
+                                            <span class="ai-agent-last-sync-label">سینک کامل</span>
+                                            <span class="ai-agent-last-sync-value"><?php echo !empty($last_sync_all_time) ? esc_html($last_sync_all_time) : '<span class="ai-agent-muted-placeholder">ثبت نشده</span>'; ?></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ai-agent-sync-block">
+                                    <div class="ai-agent-sync-block-title">عملیات نهایی داده‌ها</div>
+                                    <div class="ai-agent-sync-block-actions">
+                                        <button type="button" id="ai-agent-sync-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-blue">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                            همگام‌سازی اطلاعات
+                                        </button>
+                                        <span id="ai-agent-sync-status" class="ai-agent-status-text"></span>
+                                        <?php wp_nonce_field('ai_agent_sync_nonce_action', 'ai_agent_sync_nonce_field'); ?>
+                                    </div>
+                                    <div class="ai-agent-sync-block-actions ai-agent-mt">
+                                        <button type="button" id="ai-agent-sync-all-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-red">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                                            سینک تمامی محتوا
+                                        </button>
+                                        <span id="ai-agent-sync-all-status" class="ai-agent-status-text"></span>
+                                        <?php wp_nonce_field('ai_agent_sync_all_nonce_action', 'ai_agent_sync_all_nonce_field'); ?>
+                                    </div>
+                                </div>
+
                             </div>
-                        </td>
-                    </tr>
 
-                    <tr>
-                        <th scope="row">عملیات همگام‌سازی نهایی داده‌ها</th>
-                        <td>
-                            <div class="ai-agent-mb10">
-                                <button type="button" id="ai-agent-sync-btn" class="button button-secondary ai-agent-action-btn is-blue">همگام‌سازی اطلاعات (Sync Now)</button>
-                                <span id="ai-agent-sync-status" class="ai-agent-status-text"></span>
-                                <?php wp_nonce_field('ai_agent_sync_nonce_action', 'ai_agent_sync_nonce_field'); ?>
-                                <p class="description ai-agent-mt6">این دکمه فقط محتوای جدید (آی‌دی‌هایی که قبلاً سینک نشده‌اند) را به سرور می‌فرستد و محتوای حذف‌شده را به‌عنوان حذف به سرور اطلاع می‌دهد. ارسال تصاویر بستگی به تیک «سینک تصاویر» دارد.</p>
+                            <!-- LEFT column: chart + status query button -->
+                            <div class="ai-agent-sync-chart">
+                                <div class="ai-agent-chart-wrap">
+                                    <canvas id="ai-agent-status-chart" height="220"></canvas>
+                                </div>
+                                <button type="button" id="ai-agent-check-status-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-purple">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                    استعلام وضعیت
+                                </button>
+                                <span id="ai-agent-check-status-status" class="ai-agent-status-text"></span>
+                                <?php wp_nonce_field('ai_agent_sync_status_nonce_action', 'ai_agent_sync_status_nonce_field'); ?>
                             </div>
 
-                            <div class="ai-agent-sync-all-wrap">
-                                <button type="button" id="ai-agent-sync-all-btn" class="button button-secondary ai-agent-action-btn is-red">سینک تمامی محتوا</button>
-                                <span id="ai-agent-sync-all-status" class="ai-agent-status-text"></span>
-                                <?php wp_nonce_field('ai_agent_sync_all_nonce_action', 'ai_agent_sync_all_nonce_field'); ?>
-                                <p class="description ai-agent-mt6">این دکمه بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا به سرور ارسال می‌کند. از این گزینه در صورت بروز مشکل یا نیاز به ارسال مجدد تمام داده‌ها استفاده کنید. ارسال تصاویر بستگی به تیک «سینک تصاویر» دارد.</p>
+                        </div>
+                    </section>
+
+                    <div class="ai-agent-form-actions">
+                        <?php submit_button('ذخیره تنظیمات افزونه'); ?>
+                    </div>
+                </form>
+
+            <?php elseif ($current_tab === 'history') : ?>
+                <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
+
+                <section class="ai-agent-card">
+                    <header class="ai-agent-card-header">
+                        <h2>
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            تاریخچه جلسات چت
+                        </h2>
+                    </header>
+                    <div class="ai-agent-card-body">
+
+                        <!-- فیلترهای وضعیت -->
+                        <div class="ai-agent-status-filters" id="ai-agent-status-filters">
+                            <button type="button" class="ai-agent-filter-btn is-active" data-status="">همه</button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="closed">بسته‌شده</button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="human">پشتیبان</button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="pending_human">در انتظار پشتیبان</button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="bot">ربات</button>
+                        </div>
+
+                        <!-- نوار ابزار بالا -->
+                        <div class="ai-agent-sessions-toolbar">
+                            <div class="ai-agent-sessions-page-size">
+                                <label for="ai-agent-sessions-per-page">نمایش در صفحه:</label>
+                                <select id="ai-agent-sessions-per-page">
+                                    <option value="5">5</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
                             </div>
+                            <div class="ai-agent-sessions-page-nav">
+                                <span id="ai-agent-sessions-page-info" class="ai-agent-muted-small"></span>
+                                <button type="button" id="ai-agent-sessions-prev-btn" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه قبلی">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                                <button type="button" id="ai-agent-sessions-next-btn" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه بعدی">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                </button>
+                            </div>
+                            <div class="ai-agent-sessions-total">
+                                <span id="ai-agent-sessions-total-info" class="ai-agent-muted-small"></span>
+                            </div>
+                        </div>
 
-                        </td>
-                    </tr>
-                </table>
-                <?php submit_button('ذخیره تنظیمات افزونه'); ?>
-            </form>
+                        <!-- وضعیت بارگذاری -->
+                        <div id="ai-agent-sessions-loading" class="ai-agent-sessions-loading" style="display:none;">در حال بارگذاری...</div>
+                        <div id="ai-agent-sessions-error" class="ai-agent-sessions-error" style="display:none;"></div>
 
-        <?php elseif ($current_tab === 'history') : ?>
-            <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
-            <h3>تاریخچه جلسات چت</h3>
-            <p class="description" style="margin-bottom:12px;">لیست تمام جلسات چت ثبت‌شده در سرور. روی هر شناسه کلیک کنید تا پیام‌های آن جلسه نمایش داده شود.</p>
+                        <!-- لیست آکاردئونی جلسات -->
+                        <div id="ai-agent-sessions-list" class="ai-agent-sessions-list"></div>
 
-            <!-- دکمه‌های شناور فیلتر وضعیت جلسات -->
-            <div class="ai-agent-status-filters" id="ai-agent-status-filters">
-                <button type="button" class="ai-agent-filter-btn is-active" data-status="">همه</button>
-                <button type="button" class="ai-agent-filter-btn" data-status="closed">مکالمات بسته‌شده</button>
-                <button type="button" class="ai-agent-filter-btn" data-status="human">پشتیبان</button>
-                <button type="button" class="ai-agent-filter-btn" data-status="pending_human">در انتظار پشتیبان</button>
-                <button type="button" class="ai-agent-filter-btn" data-status="bot">ربات</button>
-            </div>
+                        <!-- نوار ابزار پایین -->
+                        <div class="ai-agent-sessions-toolbar ai-agent-sessions-toolbar-bottom">
+                            <div class="ai-agent-sessions-page-size">
+                                <label for="ai-agent-sessions-per-page-bottom">نمایش در صفحه:</label>
+                                <select id="ai-agent-sessions-per-page-bottom">
+                                    <option value="5">5</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                            <div class="ai-agent-sessions-page-nav">
+                                <button type="button" id="ai-agent-sessions-prev-btn-bottom" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه قبلی">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                                <button type="button" id="ai-agent-sessions-next-btn-bottom" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه بعدی">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                </button>
+                            </div>
+                        </div>
 
-            <!-- نوار ابزار: صفحه‌بندی و تعداد نمایش -->
-            <div class="ai-agent-sessions-toolbar" style="margin-bottom:14px;">
-                <div class="ai-agent-sessions-page-size" style="display:inline-block;vertical-align:middle;">
-                    <label for="ai-agent-sessions-per-page" style="margin-left:6px;">تعداد در هر صفحه:</label>
-                    <select id="ai-agent-sessions-per-page" style="width:auto;">
-                        <option value="5">5</option>
-                        <option value="10" selected>10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-                <div class="ai-agent-sessions-page-nav" style="display:inline-block;vertical-align:middle;margin-right:16px;">
-                    <span id="ai-agent-sessions-page-info" class="ai-agent-muted-small"></span>
-                    <button type="button" id="ai-agent-sessions-prev-btn" class="button button-secondary button-small" disabled>صفحه قبلی</button>
-                    <button type="button" id="ai-agent-sessions-next-btn" class="button button-secondary button-small" disabled>صفحه بعدی</button>
-                </div>
-                <div style="display:inline-block;vertical-align:middle;margin-right:16px;">
-                    <span id="ai-agent-sessions-total-info" class="ai-agent-muted-small"></span>
-                </div>
-            </div>
+                    </div>
+                </section>
 
-            <!-- وضعیت بارگذاری -->
-            <div id="ai-agent-sessions-loading" class="ai-agent-sessions-loading" style="display:none;">در حال بارگذاری...</div>
-            <div id="ai-agent-sessions-error" class="ai-agent-sessions-error" style="display:none;"></div>
-
-            <!-- لیست آکاردئونی جلسات -->
-            <div id="ai-agent-sessions-list" class="ai-agent-sessions-list"></div>
-
-            <!-- نوار صفحه‌بندی پایین -->
-            <div class="ai-agent-sessions-toolbar" style="margin-top:14px;">
-                <div class="ai-agent-sessions-page-size" style="display:inline-block;vertical-align:middle;">
-                    <label for="ai-agent-sessions-per-page-bottom" style="margin-left:6px;">تعداد در هر صفحه:</label>
-                    <select id="ai-agent-sessions-per-page-bottom" style="width:auto;">
-                        <option value="5">5</option>
-                        <option value="10" selected>10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-                <div class="ai-agent-sessions-page-nav" style="display:inline-block;vertical-align:middle;margin-right:16px;">
-                    <button type="button" id="ai-agent-sessions-prev-btn-bottom" class="button button-secondary button-small" disabled>صفحه قبلی</button>
-                    <button type="button" id="ai-agent-sessions-next-btn-bottom" class="button button-secondary button-small" disabled>صفحه بعدی</button>
-                </div>
-            </div>
-
-        <?php endif; ?>
+            <?php endif; ?>
+        </main>
     </div>
     <?php
 }
 
+/*
+==========================================================================
+بارگذاری استایل/اسکریپت صفحه‌ی تنظیمات — اکنون هم برای صفحه‌ی اصلی
+(ai-agent-settings) و هم برای زیرمنوی تاریخچه چت‌ها
+(ai-agent-settings-history) اجرا می‌شود تا استایل‌های جدید روی هر دو
+صفحه اعمال گردند.
+==========================================================================
+*/
 function ai_agent_admin_enqueue($hook){
-    if ($hook !== 'toplevel_page_ai-agent-settings') return;
+    $page = isset($_GET['page']) ? $_GET['page'] : '';
+    if (!in_array($page, array('ai-agent-settings', 'ai-agent-settings-history'), true)) return;
 
     wp_enqueue_style('wp-color-picker');
     wp_enqueue_script('wp-color-picker');
