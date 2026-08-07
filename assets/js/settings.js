@@ -538,11 +538,10 @@
             loading: false,
             statusFilter: '',      // فیلتر وضعیت فعلی ('' یعنی همه)
             openSessionId: null,   // شناسه‌ی جلسه‌ای که آکاردئونش باز است
-            msgPage: 1,
-            msgPageSize: 10,
-            msgTotal: 0,
-            msgHasNext: false,
+            // پیام‌ها دیگر صفحه‌بندی نمی‌شوند؛ همه‌ی پیام‌های یک جلسه یکجا بارگذاری می‌شوند.
             msgLoading: false,
+            countsLoading: false,
+            countsTimer: null,
 
             init: function() {
                 var self = this;
@@ -607,6 +606,49 @@
 
                 // بارگذاری اولیه
                 self.loadSessions();
+                self.loadStatusCounts();
+            },
+
+            /*
+            ============================================
+            بارگذاری تعداد جلسات به تفکیک وضعیت برای به‌روزرسانی
+            badge‌های قرمز کوچک بالای هر دکمه‌ی فیلتر.
+            ============================================
+            */
+            loadStatusCounts: function() {
+                var self = this;
+                if (self.countsLoading) return;
+                self.countsLoading = true;
+
+                // نمایش حالت loading روی همه‌ی badge‌ها
+                $('#ai-agent-status-filters .ai-agent-filter-count').addClass('is-loading');
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'GET',
+                    data: {
+                        action: 'ai_agent_get_session_status_counts',
+                        nonce: $('#ai_agent_chat_sessions_nonce_field').val()
+                    },
+                    success: function(response) {
+                        self.countsLoading = false;
+                        $('#ai-agent-status-filters .ai-agent-filter-count').removeClass('is-loading');
+
+                        if (response.success) {
+                            var counts = (response.data && response.data.counts) ? response.data.counts : {};
+                            $('#ai-agent-status-filters .ai-agent-filter-count').each(function() {
+                                var st = $(this).attr('data-count-status');
+                                if (typeof st === 'undefined') return;
+                                var c = (typeof counts[st] !== 'undefined') ? counts[st] : 0;
+                                $(this).text(c);
+                            });
+                        }
+                    },
+                    error: function() {
+                        self.countsLoading = false;
+                        $('#ai-agent-status-filters .ai-agent-filter-count').removeClass('is-loading');
+                    }
+                });
             },
 
             syncPageUI: function() {
@@ -664,6 +706,8 @@
                             self.currentPage = d.page || 1;
                             self.syncPageUI();
                             self.renderSessions(d.items || []);
+                            // به‌روزرسانی badge‌های شمارش پس از هر بارگذاری
+                            self.loadStatusCounts();
                         } else {
                             var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت لیست جلسات.';
                             $error.text(msg).css('color', '#b91c1c').show();
@@ -744,11 +788,18 @@
                 }
             },
 
+            /*
+            ============================================
+            بارگذاری تمام پیام‌های یک جلسه در یک درخواست.
+
+            منطق دکمه‌ی «مشاهده پیام‌های قدیمی‌تر» حذف شده است و
+            همه‌ی پیام‌ها با page_size بزرگی (۱۰۰۰۰) یکجا بارگذاری می‌شوند.
+            ============================================
+            */
             loadMessages: function(sessionId, $container, sessionStatus) {
                 var self = this;
                 if (self.msgLoading) return;
                 self.msgLoading = true;
-                self.msgPage = 1;
 
                 $container.html('<div class="ai-agent-msg-loading">در حال بارگذاری پیام‌ها...</div>');
 
@@ -759,16 +810,21 @@
                         action: 'ai_agent_get_session_messages',
                         nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
                         session_id: sessionId,
-                        page: self.msgPage,
-                        page_size: self.msgPageSize
+                        page: 1,
+                        page_size: 10000  // بارگذاری همه‌ی پیام‌ها در یک درخواست
                     },
                     success: function(response) {
                         self.msgLoading = false;
                         if (response.success) {
                             var d = response.data;
-                            self.msgTotal = d.total || 0;
-                            self.msgHasNext = d.has_next || false;
-                            self.renderMessages($container, d.items || [], sessionId, sessionStatus);
+                            var allMessages = d.items || [];
+                            // مرتب‌سازی پیام‌ها از قدیم به جدید بر اساس created_at
+                            allMessages.sort(function(a, b) {
+                                var ta = a && a.created_at ? new Date(a.created_at).getTime() : 0;
+                                var tb = b && b.created_at ? new Date(b.created_at).getTime() : 0;
+                                return ta - tb;
+                            });
+                            self.renderMessages($container, allMessages, sessionId, sessionStatus);
                         } else {
                             var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت پیام‌ها.';
                             $container.html('<div class="ai-agent-sessions-error">' + msg + '</div>');
@@ -803,20 +859,9 @@
 
                 $container.append($chatArea);
 
-                // صفحه‌بندی پیام‌ها
-                if (self.msgHasNext) {
-                    var $msgNav = $('<div class="ai-agent-msg-nav" style="margin-top:10px;text-align:center;"></div>');
-                    var $nextBtn = $('<button type="button" class="button button-secondary button-small"></button>').text('مشاهده پیام‌های قدیمی‌تر');
-                    $nextBtn.on('click', function() {
-                        self.msgPage++;
-                        self.loadMoreMessages(sessionId, $container);
-                    });
-                    $msgNav.append($nextBtn);
-                    $container.append($msgNav);
-                }
-
+                // نمایش تعداد کل پیام‌ها در پایین (بدون دکمه‌ی بارگذاری بیشتر)
                 var $totalInfo = $('<div class="ai-agent-msg-total" style="margin-top:6px;text-align:center;"></div>');
-                $totalInfo.text(self.msgTotal + ' پیام');
+                $totalInfo.text(messages.length + ' پیام');
                 $container.append($totalInfo);
 
                 // باکس پاسخ پشتیبان + دکمه‌ی پایان چت
@@ -833,7 +878,7 @@
             ============================================
             ساخت حباب پیام یکتا بر اساس msg
 
-            این متد از هر دو renderMessages و loadMoreMessages استفاده می‌شود
+            این متد از renderMessages استفاده می‌شود
             تا منطق ساخت پیام تکرار نشود. هر حباب شامل:
               - هدر (نقش + زمان)
               - محتوای متنی
@@ -1272,73 +1317,6 @@
                 });
 
                 return $wrap;
-            },
-
-            loadMoreMessages: function(sessionId, $container) {
-                var self = this;
-                if (self.msgLoading) return;
-                self.msgLoading = true;
-
-                // حذف دکمه‌ی صفحه‌بندی قبلی
-                $container.find('.ai-agent-msg-nav').remove();
-
-                // indicator
-                var $indicator = $('<div class="ai-agent-msg-loading">در حال بارگذاری...</div>');
-                $container.find('.ai-agent-msg-total').before($indicator);
-
-                $.ajax({
-                    url: ajaxurl,
-                    method: 'GET',
-                    data: {
-                        action: 'ai_agent_get_session_messages',
-                        nonce: $('#ai_agent_chat_sessions_nonce_field').val(),
-                        session_id: sessionId,
-                        page: self.msgPage,
-                        page_size: self.msgPageSize
-                    },
-                    success: function(response) {
-                        self.msgLoading = false;
-                        $indicator.remove();
-                        if (response.success) {
-                            var d = response.data;
-                            self.msgHasNext = d.has_next || false;
-                            var newMessages = d.items || [];
-                            var $chatArea = $container.find('.ai-agent-chat-messages');
-
-                            // جمع‌آوری placeholderهای جدید برای lazy load بعدی
-                            var $newPlaceholders = $();
-
-                            // اضافه کردن پیام‌های جدید به ابتدا (پیام‌های قدیمی‌تر)
-                            for (var i = newMessages.length - 1; i >= 0; i--) {
-                                var msg = newMessages[i];
-                                var $bubble = self.buildMessageBubble(msg);
-                                $chatArea.prepend($bubble);
-                                $newPlaceholders = $newPlaceholders.add($bubble.find('.ai-agent-msg-image-placeholder.is-loading'));
-                            }
-
-                            // راه‌اندازی lazy load برای placeholderهای تازه‌اضافه‌شده
-                            if ($newPlaceholders.length > 0) {
-                                self.startLazyImageLoadingFor($newPlaceholders, $chatArea);
-                            }
-
-                            // صفحه‌بندی جدید اگر.hasNext
-                            if (self.msgHasNext) {
-                                var $msgNav = $('<div class="ai-agent-msg-nav" style="margin-top:10px;text-align:center;"></div>');
-                                var $nextBtn = $('<button type="button" class="button button-secondary button-small"></button>').text('مشاهده پیام‌های قدیمی‌تر');
-                                $nextBtn.on('click', function() {
-                                    self.msgPage++;
-                                    self.loadMoreMessages(sessionId, $container);
-                                });
-                                $msgNav.append($nextBtn);
-                                $container.find('.ai-agent-msg-total').before($msgNav);
-                            }
-                        }
-                    },
-                    error: function() {
-                        self.msgLoading = false;
-                        $indicator.html('<span style="color:#b91c1c;">خطا در بارگذاری.</span>');
-                    }
-                });
             },
 
             /*

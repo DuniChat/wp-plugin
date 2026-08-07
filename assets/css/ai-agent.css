@@ -513,6 +513,59 @@
 #ai-agent-send:active img {
     transform: scale(.95);
 }
+
+/*
+============================================
+حالت غیرفعال فوتر (هنگام بسته شدن گفتگو)
+
+وقتی گفتگو از سمت پشتیبان بسته می‌شود، فیلد متن، دکمه ارسال و دکمه
+سنجاق باید غیرفعال و خاموش شوند تا کاربر نتواند پیام جدیدی ارسال کند.
+کلاس is-disabled روی #ai-agent-footer اعمال می‌شود.
+============================================
+*/
+#ai-agent-footer.is-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+#ai-agent-footer.is-disabled .ai-agent-footer-row {
+    pointer-events: none; /* جلوگیری از کلیک روی دکمه‌ها و فیلد */
+}
+
+#ai-agent-footer.is-disabled #ai-agent-input {
+    cursor: not-allowed !important;
+    background: #f1f5f9 !important;
+    color: #94a3b8 !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
+}
+
+#ai-agent-footer.is-disabled #ai-agent-input::placeholder {
+    color: #94a3b8;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-footer.is-disabled #ai-agent-input {
+    background: #1a2333 !important;
+    color: #64748b !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-footer.is-disabled #ai-agent-input::placeholder {
+    color: #64748b;
+}
+
+#ai-agent-footer.is-disabled #ai-agent-send,
+#ai-agent-footer.is-disabled #ai-agent-attach {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
+#ai-agent-footer.is-disabled #ai-agent-send img {
+    filter: grayscale(1);
+    opacity: 0.6;
+}
+
 /* باکس رفرنس‌ها (محصولات/صفحات مرتبط) — انتهای پیام هوش مصنوعی */
 .ai-references-box {
     margin-top: 10px;
@@ -847,6 +900,95 @@ button.ai-references-title.ai-references-toggle {
 }
 
 /* ============================================
+   دکمه میکروفون (Voice Input) — Web Speech API
+
+   این دکمه گفتار کاربر را به زبان فارسی (fa-IR) به متن تبدیل می‌کند
+   و در لحظه داخل #ai-agent-input می‌نویسد. در مرورگرهای بدون پشتیبانی
+   از SpeechRecognition، دکمه به‌صورت خودکار مخفی می‌شود (توسط JS).
+   ============================================ */
+#ai-agent-voice {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    border: none;
+    outline: none;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #64748b;
+    align-self: center;
+    transition: color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+#ai-agent-voice:hover {
+    color: #2563eb;
+    background: #f1f5f9;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-voice {
+    color: #94a3b8;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-voice:hover {
+    color: #93c5fd;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+#ai-agent-voice svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+    pointer-events: none;
+}
+
+/* حالت فعال (در حال ضبط): رنگ قرمز + انیمیشن پالس */
+#ai-agent-voice.is-recording {
+    color: #fff;
+    background: #ef4444;
+    animation: ai-agent-voice-pulse 1.4s ease-in-out infinite;
+}
+
+#ai-agent-voice.is-recording:hover {
+    background: #dc2626;
+    color: #fff;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-voice.is-recording {
+    color: #fff;
+    background: #ef4444;
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-voice.is-recording:hover {
+    background: #dc2626;
+}
+
+@keyframes ai-agent-voice-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    }
+}
+
+/* وقتی مرورگر از SpeechRecognition پشتیبانی نمی‌کند، دکمه مخفی می‌شود */
+#ai-agent-voice.voice-not-supported {
+    display: none !important;
+}
+
+/* حالت غیرفعال فوتر: دکمه میکروفون هم غیرفعال می‌شود */
+#ai-agent-footer.is-disabled #ai-agent-voice {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* ============================================
    ناحیه پیش‌نمایش عکس‌های انتخاب‌شده (بالای فوتر)
    ============================================ */
 #ai-agent-attachments {
@@ -1052,4 +1194,128 @@ button.ai-references-title.ai-references-toggle {
     border-radius: 8px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     object-fit: contain;
+}
+
+/* ============================================
+   حالت موبایل: ویجت چت تمام‌صفحه می‌شود
+
+   در صفحه‌نمایش‌های کوچک (کمتر از ۷۶۸ پیکسل عرض)، پنجره‌ی چت
+   به‌جای حالت شناور کوچک، کل صفحه را می‌پوشاند تا تجربه‌ی کاربری
+   بهتری در دستگاه‌های لمسی فراهم شود.
+
+   تغییرات:
+     - عرض و ارتفاع پنجره به ۱۰۰vw / ۱۰۰vh
+     - حذف گوشه‌های گرد و سایه (چون تمام صفحه است)
+     - موقعیت از گوشه‌ی راست-پایین به inset:0
+     - حداکثر ارتفاع برای پوشش کامل صفحه (شامل نوار آدرس مرورگر)
+     - دکمه‌ی شناور همچنان در پایین قابل دسترسی است
+   ============================================ */
+@media (max-width: 768px) {
+    #ai-agent-window {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        max-width: 100vw !important;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+    }
+
+    #ai-agent-window.ai-agent-open {
+        transform: none;
+    }
+
+    /* هدر در حالت موبایل: ارتفاع کمی بیشتر برای لمس راحت‌تر */
+    #ai-agent-header {
+        padding: 14px 16px;
+        padding-top: max(14px, env(safe-area-inset-top));
+    }
+
+    /* باکس ورودی پیام: ارتفاع کمی بیشتر برای لمس راحت‌تر */
+    #ai-agent-input {
+        min-height: 44px;
+    }
+
+    /* دکمه‌های هدر: نواحی لمسی بزرگ‌تر */
+    #ai-agent-new-chat,
+    #ai-agent-close {
+        width: 32px;
+        height: 32px;
+    }
+
+    #ai-agent-new-chat svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* فوتر: پدینگ پایین برای iPhoneهای با نوار Home */
+    #ai-agent-footer {
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    /* دکمه‌ی شناور: کمی کوچک‌تر و بالاتر در موبایل تا با نوارها تداخل نکند */
+    #ai-agent-button {
+        right: 20px;
+        bottom: max(20px, env(safe-area-inset-bottom));
+        width: 56px;
+        height: 56px;
+    }
+
+    #ai-agent-button img {
+        width: 28px;
+        height: 28px;
+    }
+
+    /* حباب‌های پیام: عرض بیشتر برای استفاده‌ی بهتر از فضای صفحه */
+    .ai-message-body,
+    .user-message-body,
+    .admin-message-body {
+        max-width: 95%;
+    }
+}
+
+/* صفحه‌های بسیار کوچک (کمتر از ۴۸۰px) — تنظیمات اضافی */
+@media (max-width: 480px) {
+    /* دکمه‌ی شناور کوچک‌تر */
+    #ai-agent-button {
+        width: 52px;
+        height: 52px;
+    }
+
+    #ai-agent-button img {
+        width: 26px;
+        height: 26px;
+    }
+
+    /* هدر: فونت کمی کوچک‌تر */
+    #ai-agent-header {
+        font-size: 14px;
+        padding: 12px 14px;
+    }
+
+    /* باکس ورودی: فونت ۱۶px برای جلوگیری از zoom مرورگر iOS */
+    #ai-agent-input {
+        font-size: 16px;
+    }
+}
+
+/* ============================================
+   قفل اسکرول بدنه هنگام باز بودن چت در موبایل
+
+   کلاس ai-agent-chat-open به تگ <body> اضافه می‌شود وقتی چت
+   باز است. این قانون فقط در موبایل اعمال می‌شود تا اسکرول
+   پس‌زمینه قفل شود (در دسکتاپ نیازی نیست چون چت شناور است).
+   نکته: جاوااسکریپت از position:fixed روی body استفاده می‌کند
+   که خودش اسکرول را قفل می‌کند، اما این قانون اضافی برای
+   پشتیبانی از مرورگرهای قدیمی و حفظ یکپارچگی است.
+   ============================================ */
+@media (max-width: 768px) {
+    body.ai-agent-chat-open {
+        overflow: hidden;
+    }
 }

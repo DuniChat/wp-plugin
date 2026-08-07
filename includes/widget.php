@@ -85,6 +85,25 @@ function ai_agent_widget(){
                     <span class="ai-attach-badge">0</span>
                 </button>
 
+                <?php
+                /*
+                دکمه میکروفون (Voice Input): با کلیک روی این دکمه، Web Speech API
+                فعال می‌شود و گفتار کاربر به زبان فارسی (fa-IR) در لحظه به متن تبدیل
+                شده و داخل #ai-agent-input نوشته می‌شود. این دکمه در مرورگرهایی که
+                از SpeechRecognition پشتیبانی نمی‌کنند، به‌صورت خودکار مخفی می‌شود.
+                */ ?>
+                <button id="ai-agent-voice" title="ورودی صوتی" type="button" aria-label="ورودی صوتی">
+                    <svg class="ai-voice-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                    <svg class="ai-voice-icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none;">
+                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                    </svg>
+                </button>
+
                 <textarea id="ai-agent-input" placeholder="پیام خود را بنویسید..."></textarea>
 
                 <button id="ai-agent-send" title="ارسال پیام" type="button">

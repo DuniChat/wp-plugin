@@ -778,13 +778,30 @@ function ai_agent_settings_page(){
                     </header>
                     <div class="ai-agent-card-body">
 
-                        <!-- فیلترهای وضعیت -->
+                        <!-- فیلترهای وضعیت — دکمه «همه» اول می‌آید تا در چیدمان RTL
+                             سمت راست‌ترین مورد باشد. هر دکمه شامل یک badge قرمز کوچک
+                             بالای خود است که تعداد جلسات در آن وضعیت را نشان می‌دهد. -->
                         <div class="ai-agent-status-filters" id="ai-agent-status-filters">
-                            <button type="button" class="ai-agent-filter-btn is-active" data-status="">همه</button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="closed">بسته‌شده</button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="human">پشتیبان</button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="pending_human">در انتظار پشتیبان</button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="bot">ربات</button>
+                            <button type="button" class="ai-agent-filter-btn is-active" data-status="">
+                                <span class="ai-agent-filter-count" data-count-status="">0</span>
+                                همه
+                            </button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="closed">
+                                <span class="ai-agent-filter-count" data-count-status="closed">0</span>
+                                بسته‌شده
+                            </button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="human">
+                                <span class="ai-agent-filter-count" data-count-status="human">0</span>
+                                پشتیبان
+                            </button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="pending_human">
+                                <span class="ai-agent-filter-count" data-count-status="pending_human">0</span>
+                                در انتظار پشتیبان
+                            </button>
+                            <button type="button" class="ai-agent-filter-btn" data-status="bot">
+                                <span class="ai-agent-filter-count" data-count-status="bot">0</span>
+                                ربات
+                            </button>
                         </div>
 
                         <!-- نوار ابزار بالا -->

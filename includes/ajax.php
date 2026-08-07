@@ -82,8 +82,9 @@ function ai_agent_chat() {
     }
 
     // بررسی اینکه آیا این session قبلاً به پشتیبان انسانی منتقل شده
-    $escalated_cookie_session = isset($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) ? sanitize_text_field($_COOKIE[AI_AGENT_ESCALATED_COOKIE]) : '';
-    $is_already_escalated = (!empty($session_id) && !empty($escalated_cookie_session) && hash_equals($escalated_cookie_session, $session_id));
+    // نکته: کوکی ai_agent_escalated_session حذف شد — وضعیت جلسه از سرور
+    // (اندپوینت /api/v1/chat/sessions/{session_id}/messages) استعلام می‌شود.
+    $is_already_escalated = (!empty($session_id) && ai_agent_is_session_escalated($session_id));
     // اگر نه متن داریم و نه عکس، پیام خالی محسوب می‌شود
     if (empty($message) && empty($images)) {
         ai_agent_sse_send(array(
@@ -118,22 +119,9 @@ function ai_agent_chat() {
     // ۹.۵) Callback برای حالت انتقال به پشتیبان انسانی (رویداد escalate)
     // در این حالت مدل هیچ متنی تولید نمی‌کند؛ فقط دلیل انتقال اعلام می‌شود
     // و بلافاصله (بدون منتظر ماندن برای done) به مرورگر اطلاع‌رسانی می‌کنیم.
+    // نکته: کوکی escalated_session حذف شد — کلاینت از همان session_id استفاده می‌کند
+    // و وضعیت پشتیبانی را از طریق checkSessionStatus و polling بررسی می‌کند.
     $on_escalate = function($reason, $conversation_id, $api_session_id = null) use (&$session_id) {
-        // به‌محض دریافت رویداد escalate، کوکی را (در صورت امکان) ست می‌کنیم
-        $sid_to_store = !empty($api_session_id) ? $api_session_id : $session_id;
-        if (!empty($sid_to_store) && !headers_sent()) {
-            setcookie(
-                AI_AGENT_ESCALATED_COOKIE,
-                $sid_to_store,
-                array(
-                    'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
-                    'path'     => '/',
-                    'httponly' => false,
-                    'samesite' => 'Lax',
-                )
-            );
-        }
-
         ai_agent_sse_send(array(
             'type'            => 'escalate',
             'reason'          => $reason,
@@ -198,20 +186,6 @@ function ai_agent_chat() {
             ));
             @flush();
             die();
-        }
-
-        // تلاش مجدد برای ست‌کردن کوکی escalate اگر هنوز ست نشده باشد
-        if (($is_escalate || $is_already_escalated) && !empty($session_id) && !headers_sent()) {
-            setcookie(
-                AI_AGENT_ESCALATED_COOKIE,
-                $session_id,
-                array(
-                    'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
-                    'path'     => '/',
-                    'httponly' => false,
-                    'samesite' => 'Lax',
-                )
-            );
         }
 
         ai_agent_sse_send(array(
@@ -458,6 +432,35 @@ function ai_agent_get_chat_sessions_handler() {
     }
 }
 add_action('wp_ajax_ai_agent_get_chat_sessions', 'ai_agent_get_chat_sessions_handler');
+
+/*
+============================================
+هندلر AJAX: دریافت تعداد جلسات به تفکیک وضعیت
+
+این هندلر برای به‌روزرسانی badge‌های قرمز کوچک بالای هر دکمه‌ی فیلتر
+در تب تاریخچه چت‌ها استفاده می‌شود. خروجی شامل آرایه‌ای از وضعیت‌ها
+و تعداد متناظر با هرکدام است.
+============================================
+*/
+function ai_agent_get_session_status_counts_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $result = ai_agent_fetch_session_status_counts();
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_get_session_status_counts', 'ai_agent_get_session_status_counts_handler');
 
 /*
 ============================================

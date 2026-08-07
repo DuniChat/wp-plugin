@@ -92,11 +92,10 @@ if (!defined('AI_AGENT_SESSION_COOKIE')) {
 if (!defined('AI_AGENT_SESSION_COOKIE_EXPIRE')) {
     define('AI_AGENT_SESSION_COOKIE_EXPIRE', defined('WEEK_IN_SECONDS') ? WEEK_IN_SECONDS : 7 * DAY_IN_SECONDS);
 }
-// نام کوکی‌ای که نشان می‌دهد این session به پشتیبان انسانی منتقل شده است
-// (تا در پیام‌های بعدی کاربر، خالی بودن پاسخ API خطا محسوب نشود)
-if (!defined('AI_AGENT_ESCALATED_COOKIE')) {
-    define('AI_AGENT_ESCALATED_COOKIE', 'ai_agent_escalated_session');
-}
+// نکته: ثابت AI_AGENT_ESCALATED_COOKIE و کوکی ai_agent_escalated_session حذف شدند.
+// از این پس از همان AI_AGENT_SESSION_COOKIE (ai_agent_session_id) استفاده می‌شود،
+// چون مقدار هر دو یکسان بود. وضعیت پشتیبانی جلسه از طریق استعلام سرور
+// (ai_agent_fetch_session_status) بررسی می‌شود، نه از طریق کوکی.
 
 /*
 حداکثر تعداد عکس‌های مجاز در هر پیام چت (قابلیت سنجاق).

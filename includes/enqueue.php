@@ -33,7 +33,6 @@ function ai_agent_enqueue(){
         'timeout'          => intval($settings['timeout']) * 1000,
         'color'            => $settings['color'],
         'session_cookie'   => AI_AGENT_SESSION_COOKIE,
-        'escalated_cookie' => AI_AGENT_ESCALATED_COOKIE,
         // حداکثر تعداد عکس‌های مجاز در هر پیام چت (سنجاق)
         'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 4,
     )

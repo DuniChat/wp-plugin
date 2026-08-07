@@ -845,6 +845,39 @@ function ai_agent_fetch_session_status($session_id) {
 
 /*
 ============================================
+بررسی اینکه آیا یک جلسه‌ی چت در حالت پشتیبانی انسانی است یا خیر
+
+این تابع جایگزین بررسی کوکی ai_agent_escalated_session شده است.
+بدون نیاز به کوکی اضافی، وضعیت جلسه از سرور استعلام می‌شود و اگر
+در یکی از حالت‌های pending_human یا human باشد، یعنی جلسه به پشتیبان
+انسانی منتقل شده است.
+
+کاربرد: در هندلر ai_agent_chat برای تشخیص اینکه خالی بودن پاسخ API
+دلیل legitimate escalte است و نباید به‌عنوان خطا نمایش داده شود.
+
+خروجی: true اگر جلسه در حالت پشتیبانی باشد، false در غیر این‌صورت
+(شامل حالت bot، closed، نامعتبر، یا خطای ارتباطی)
+============================================
+*/
+function ai_agent_is_session_escalated($session_id) {
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return false;
+    }
+
+    $result = ai_agent_fetch_session_status($session_id);
+
+    if (!is_array($result) || !isset($result['status']) || $result['status'] !== 'success') {
+        return false;
+    }
+
+    $session_status = isset($result['session_status']) ? (string) $result['session_status'] : '';
+
+    return ($session_status === 'pending_human' || $session_status === 'human');
+}
+
+/*
+============================================
 واکشی یک عکس از سرور با استفاده از image_key
 اندپوینت: GET https://dunichat.ir/api/v1/media/site/{key}
 
@@ -885,8 +918,7 @@ function ai_agent_fetch_media($key) {
     }
     // جلوگیری از تزریق مسیر (path traversal) — فقط کاراکترهای رایج مجازند
     // توجه: کاراکتر «/» در کلید عکس‌ها کاملاً مجاز است چون API کلید را
-    // به‌صورت یک مسیر چندبخشی برمی‌گرداند، مثلاً:
-    //   site_cd798a30949c4d239ee9bb7ebbf2cb37/chat/5b346f4088dc481fa221466945165955.jpg
+    // به‌صورت یک مسیر چندبخشی برمی‌گرداند، 
     // بنابراین نباید کل کلید را با rawurlencode کد‌گذاری کرد، چون در آن صورت
     // «/» به «%2F» تبدیل شده و سرور مسیر را به‌درستی تشخیص نمی‌دهد.
     if (preg_match('#[^A-Za-z0-9\-_.~/]#', $key)) {
@@ -1746,6 +1778,100 @@ function ai_agent_fetch_chat_sessions($page = 1, $page_size = 10, $status_filter
         'page'      => isset($data['page']) ? intval($data['page']) : 1,
         'page_size' => isset($data['page_size']) ? intval($data['page_size']) : $page_size,
         'has_next'  => isset($data['has_next']) ? (bool) $data['has_next'] : false,
+    );
+}
+
+/*
+============================================
+واکشی تعداد جلسات به تفکیک وضعیت
+
+این تابع برای هر یک از وضعیت‌های تعریف‌شده ('', closed, human,
+pending_human, bot) یک درخواست جداگانه به اندپوینت sessions می‌فرستد
+و با page_size=1 فقط فیلد total را می‌خواند تا تعداد جلسات در آن
+وضعیت را به‌دست آورد. خروجی یک آرایه‌ی انجمنی با کلیدهای وضعیت
+و مقدار عددی (int) است.
+
+خروجی:
+    array(
+        'status'  => 'success' | 'error',
+        'message' => string,
+        'counts'  => array(
+            ''             => int,   // همه
+            'closed'       => int,
+            'human'        => int,
+            'pending_human'=> int,
+            'bot'          => int,
+        ),
+    )
+============================================
+*/
+function ai_agent_fetch_session_status_counts() {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'API Key تنظیم نشده است.',
+            'counts'  => array(
+                ''              => 0,
+                'closed'        => 0,
+                'human'         => 0,
+                'pending_human' => 0,
+                'bot'           => 0,
+            ),
+        );
+    }
+
+    // لیست وضعیت‌هایی که برایشان شمارش انجام می‌شود
+    $statuses = array('', 'closed', 'human', 'pending_human', 'bot');
+    $counts   = array();
+
+    foreach ($statuses as $status) {
+        // برای هر وضعیت یک درخواست با page_size=1 می‌فرستیم تا فقط total را بگیریم
+        $url = 'https://dunichat.ir/api/v1/chat/sessions';
+        $query_params = array(
+            'page'      => 1,
+            'page_size' => 1,
+        );
+        if ($status !== '') {
+            $query_params['status_filter'] = $status;
+        }
+        $url .= '?' . http_build_query($query_params);
+
+        $response = wp_remote_get($url, array(
+            'timeout' => 20,
+            'headers' => array(
+                'X-API-Key' => $api_key,
+                'Accept'    => 'application/json',
+            ),
+        ));
+
+        if (is_wp_error($response)) {
+            $counts[$status] = 0;
+            continue;
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            $counts[$status] = 0;
+            continue;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (is_array($data) && isset($data['total'])) {
+            $counts[$status] = intval($data['total']);
+        } else {
+            $counts[$status] = 0;
+        }
+    }
+
+    return array(
+        'status'  => 'success',
+        'message' => '',
+        'counts'  => $counts,
     );
 }
 

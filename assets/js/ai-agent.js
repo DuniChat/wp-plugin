@@ -286,15 +286,57 @@ jQuery(function ($) {
         document.cookie = cookieName + '=' + id + '; expires=' + expires + '; path=/; SameSite=Lax';
     }
 
-    // پاک کردن کوکی session_id (برای شروع چت جدید)
-    function clearSessionId() {
-    sessionId = null;
-    const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
-    document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+    /*
+    ============================================
+    مدیریت کوکی تعداد پیام‌های دیده‌شده توسط کاربر (ai_agent_msg_count)
 
-    const escalatedCookieName = (window.ai_agent && ai_agent.escalated_cookie) ? ai_agent.escalated_cookie : 'ai_agent_escalated_session';
-    document.cookie = escalatedCookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
-}
+    این کوکی تعداد کل پیام‌هایی که کاربر تا الان در ویجت دیده/بارگذاری
+    کرده را ذخیره می‌کند. هنگام polling در حالت پشتیبانی، این مقدار با
+    message_count از پاسخ API مقایسه می‌شود:
+        - اگر message_count > cookie: پیام جدید از طرف پشتیبان آمده
+        - اگر message_count <= cookie: پیام جدیدی وجود ندارد
+    ============================================
+    */
+    const MSG_COUNT_COOKIE_NAME = 'ai_agent_msg_count';
+
+    function getMsgCount() {
+        const nameEq = MSG_COUNT_COOKIE_NAME + '=';
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i].trim();
+            if (c.indexOf(nameEq) === 0) {
+                const val = parseInt(c.substring(nameEq.length, c.length), 10);
+                return isNaN(val) ? 0 : val;
+            }
+        }
+        return 0;
+    }
+
+    function setMsgCount(n) {
+        const val = Math.max(0, parseInt(n, 10) || 0);
+        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
+        document.cookie = MSG_COUNT_COOKIE_NAME + '=' + val + '; expires=' + expires + '; path=/; SameSite=Lax';
+    }
+
+    function clearMsgCount() {
+        document.cookie = MSG_COUNT_COOKIE_NAME + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+    }
+
+    function incrementMsgCount(by) {
+        by = by || 1;
+        setMsgCount(getMsgCount() + by);
+    }
+
+    // پاک کردن کوکی session_id (برای شروع چت جدید)
+    // نکته: کوکی ai_agent_escalated_session حذف شد — از همان ai_agent_session_id
+    // استفاده می‌شود چون مقدار هر دو یکسان است.
+    function clearSessionId() {
+        sessionId = null;
+        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
+        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+        // پاک کردن کوکی تعداد پیام‌های دیده‌شده
+        clearMsgCount();
+    }
 
     let sessionId = getSessionId();
 
@@ -315,18 +357,75 @@ jQuery(function ($) {
     /*
     ============================================
     باز و بسته کردن چت همراه با اسکرول خودکار
+
+    نکته‌ی موبایل: هنگام باز شدن چت، کلاس ai-agent-chat-open به
+    تگ <body> اضافه می‌شود تا در حالت تمام‌صفحه (CSS media query)،
+    اسکرول پس‌زمینه‌ی صفحه قفل شود و کاربر نتواند صفحه‌ی پشت ویجت
+    را اسکرول کند. هنگام بستن چت، این کلاس حذف می‌شود.
+
+    این مکانیزم فقط در موبایل (عرض <= 768px) فعال می‌شود. در
+    دسکتاپ، چت شناور است و صفحه‌ی زیرین همچنان قابل اسکرول است.
     ============================================
     */
+    function isMobileViewport() {
+        return window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    function lockBodyScroll() {
+        if (!isMobileViewport()) return;
+        // ذخیره‌ی موقعیت اسکرول فعلی صفحه برای بازگرداندن بعد از بستن چت
+        if (!document.body.dataset.aiAgentScrollY) {
+            document.body.dataset.aiAgentScrollY = String(window.scrollY || 0);
+        }
+        document.body.classList.add('ai-agent-chat-open');
+        document.body.style.top = '-' + (window.scrollY || 0) + 'px';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+    }
+
+    function unlockBodyScroll() {
+        document.body.classList.remove('ai-agent-chat-open');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        // بازگرداندن موقعیت اسکرول
+        var y = parseInt(document.body.dataset.aiAgentScrollY || '0', 10);
+        delete document.body.dataset.aiAgentScrollY;
+        if (!isNaN(y) && y > 0) {
+            window.scrollTo(0, y);
+        }
+    }
+
     button.on("click", function () {
         windowChat.toggleClass("ai-agent-open");
         if (windowChat.hasClass("ai-agent-open")) {
             messages.scrollTop(messages[0].scrollHeight);
             input.focus();
+            lockBodyScroll();
+        } else {
+            unlockBodyScroll();
         }
     });
 
     close.on("click", function () {
         windowChat.removeClass("ai-agent-open");
+        unlockBodyScroll();
+    });
+
+    /*
+    اگر کاربر در حالی چت باز است، اندازه‌ی صفحه را تغییر دهد (مثلاً
+    موبایل → دسکتاپ یا برعکس)، body scroll lock را بر اساس viewport
+    جدید به‌روز می‌کنیم تا در دسکتاپ قفل اسکرول باقی نماند.
+    */
+    $(window).on('resize', function () {
+        if (!windowChat.hasClass('ai-agent-open')) return;
+        if (!isMobileViewport() && document.body.classList.contains('ai-agent-chat-open')) {
+            // از موبایل به دسکتاپ تغییر کرده — قفل را بردار
+            unlockBodyScroll();
+        } else if (isMobileViewport() && !document.body.classList.contains('ai-agent-chat-open')) {
+            // از دسکتاپ به موبایل تغییر کرده — قفل را اضافه کن
+            lockBodyScroll();
+        }
     });
 
     /*
@@ -342,6 +441,12 @@ jQuery(function ($) {
 
         // ریست وضعیت جلسه به حالت نامشخص (در واقع حالت ربات برای جلسه‌ی جدید)
         currentSessionStatus = '';
+
+        // توقف polling (اگر در حال اجرا بود)
+        stopPolling();
+
+        // فعال‌سازی مجدد فوتر (اگر به خاطر بسته شدن چت غیرفعال شده بود)
+        setChatDisabled(false);
 
         // پاک کردن پیام‌های فعلی و بازگرداندن پیام خوش‌آمدگویی پیش‌فرض
         messages.empty();
@@ -664,6 +769,30 @@ jQuery(function ($) {
 
     /*
     ============================================
+    فعال/غیرفعال کردن ناحیه ورودی پیام (فوتر)
+
+    هنگامی که گفتگو بسته می‌شود، فیلد متن، دکمه ارسال و دکمه سنجاق
+    غیرفعال می‌شوند تا کاربر نتواند پیام جدیدی ارسال کند. این تابع
+    هم برای حالت closed (پشتیبان چت را بسته) و هم برای فعال‌سازی مجدد
+    پس از شروع چت جدید استفاده می‌شود.
+    ============================================
+    */
+    function setChatDisabled(disabled) {
+        if (disabled) {
+            input.prop('disabled', true).attr('placeholder', 'این گفتگو بسته شده است...');
+            send.prop('disabled', true);
+            attachBtn.prop('disabled', true).addClass('is-disabled');
+            $('#ai-agent-footer').addClass('is-disabled');
+        } else {
+            input.prop('disabled', false).attr('placeholder', 'پیام خود را بنویسید...');
+            send.prop('disabled', false);
+            attachBtn.prop('disabled', false).removeClass('is-disabled');
+            $('#ai-agent-footer').removeClass('is-disabled');
+        }
+    }
+
+    /*
+    ============================================
     متغیر نگه‌دارنده‌ی وضعیت فعلی جلسه
 
     این مقدار توسط loadChatHistory (هنگام رفرش صفحه) و checkSessionStatus
@@ -686,6 +815,100 @@ jQuery(function ($) {
         // هر چیزی غیر از pending_human / human / closed به‌عنوان حالت ربات
         // تلقی می‌شود (شامل bot، assistant و حالت نامشخص).
         return !isSupportMode(status) && status !== 'closed';
+    }
+
+    /*
+    ============================================
+    Polling برای بررسی پیام‌های جدید از پشتیبان انسانی
+
+    در حالت پشتیبانی (pending_human یا human)، هر ۱ دقیقه یک درخواست
+    به سرور ارسال می‌شود تا بررسی شود آیا پیام جدیدی از طرف پشتیبان
+    رسیده است یا خیر. این درخواست فقط زمانی ارسال می‌شود که:
+        - session_id معتبر وجود داشته باشد
+        - وضعیت جلسه در حالت پشتیبانی باشد (نه ربات و نه بسته‌شده)
+        - کاربر در سایت آنلاین باشد (صفحه visible باشد و اینترنت داشته باشد)
+
+    مکانیزم مقایسه:
+        - تعداد پیام‌های دیده‌شده در کوکی ai_agent_msg_count ذخیره می‌شود
+        - با message_count از پاسخ API مقایسه می‌شود
+        - اگر message_count > cookie: پیام‌های جدید نمایش داده می‌شوند
+        - در غیر این‌صورت، هیچ کاری انجام نمی‌شود
+    ============================================
+    */
+    let pollingTimer = null;
+    const POLLING_INTERVAL_MS = 60000; // ۱ دقیقه
+
+    function shouldPoll() {
+        if (!sessionId) return false;
+        if (!isSupportMode(currentSessionStatus)) return false;
+        if (currentSessionStatus === 'closed') return false;
+        // فقط زمانی که کاربر در سایت آنلاین است (صفحه visible باشد)
+        if (document.visibilityState && document.visibilityState !== 'visible') return false;
+        // بررسی اتصال اینترنت
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+        return true;
+    }
+
+    function startPolling() {
+        // اگر قبلاً timer فعال است، ابتدا آن را متوقف می‌کنیم تا duplicate نباشد
+        stopPolling();
+        pollingTimer = setInterval(pollOnce, POLLING_INTERVAL_MS);
+    }
+
+    function stopPolling() {
+        if (pollingTimer) {
+            clearInterval(pollingTimer);
+            pollingTimer = null;
+        }
+    }
+
+    function pollOnce() {
+        if (!shouldPoll()) return;
+
+        $.ajax({
+            url: ai_agent.ajax_url,
+            method: 'POST',
+            data: {
+                action: 'ai_agent_get_history',
+                session_id: sessionId
+            },
+            dataType: 'json'
+        }).done(function (res) {
+            if (!res || !res.success || !res.data) return;
+
+            const data = res.data;
+            const sessionStatus = data.status || '';
+            const msgs = Array.isArray(data.messages) ? data.messages : [];
+
+            // به‌روزرسانی وضعیت جلسه از سرور
+            currentSessionStatus = sessionStatus;
+
+            // مقایسه تعداد پیام‌ها با کوکی و نمایش پیام‌های جدید
+            const knownCount = getMsgCount();
+            if (msgs.length > knownCount) {
+                // پیام‌های جدید وجود دارند — فقط پیام‌های جدید را نمایش می‌دهیم
+                const newMsgs = msgs.slice(knownCount);
+                newMsgs.forEach(renderHistoryMessage);
+                // به‌روزرسانی کوکی به تعداد کل پیام‌ها
+                setMsgCount(msgs.length);
+            }
+            // اگر msgs.length <= knownCount، هیچ کاری نمی‌کنیم (پیام جدیدی نیست)
+
+            // اقدامات مبتنی بر وضعیت جدید جلسه
+            if (sessionStatus === 'closed') {
+                // گفتگو بسته شده — فوتر را قفل کن و polling را متوقف کن
+                setChatDisabled(true);
+                addClosedMessage();
+                stopPolling();
+            } else if (!isSupportMode(sessionStatus)) {
+                // وضعیت از حالت پشتیبانی خارج شده (مثلاً به bot برگشته)
+                // دیگر نیازی به polling نیست
+                stopPolling();
+            }
+            // اگر همچنان در حالت پشتیبانی است، polling ادامه می‌یابد
+        }).fail(function () {
+            // خطا را بی‌صدا نادیده می‌گیریم — polling در تلاش بعدی دوباره تلاش می‌کند
+        });
     }
 
     /*
@@ -1038,6 +1261,8 @@ function buildReferencesListBox(references) {
             autoResizeInput();
             clearAttachments();
             addClosedMessage();
+            // قفل کردن فوتر برای جلوگیری از ارسال پیام جدید
+            setChatDisabled(true);
             return;
         }
 
@@ -1053,6 +1278,9 @@ function buildReferencesListBox(references) {
         // پاک کردن عکس‌های انتخاب‌شده (نمایش آن‌ها در حباب کاربر کافی است)
         clearAttachments();
 
+        // به‌روزرسانی کوکی تعداد پیام‌های دیده‌شده (پیام کاربر به مکالمه اضافه شد)
+        incrementMsgCount(1);
+
         // -------------------------------------------------------------
         // ۳) در حالت پشتیبانی:
         //    - انیمیشن انتظار ربات (typing dots) نمایش داده نمی‌شود
@@ -1063,6 +1291,9 @@ function buildReferencesListBox(references) {
         if (supportMode) {
             // اندیکاتور حالت پشتیبانی
             addSupportModeIndicator();
+
+            // شروع polling برای بررسی پیام‌های جدید از پشتیبان
+            startPolling();
 
             // ارسال پیام به API (بدون استریم و بدون نمایش خطا)
             // این کار به‌صورت silent انجام می‌شود تا تجربه‌ی کاربر خراب نشود.
@@ -1246,6 +1477,9 @@ function buildReferencesListBox(references) {
             stream.$loading.remove();
             stream.$wrapper.remove();
             addEscalateMessage(data.reason);
+            // به‌روزرسانی وضعیت جلسه به حالت پشتیبانی و شروع polling
+            currentSessionStatus = 'pending_human';
+            startPolling();
         } else if (data.type === 'done') {
             stream.$loading.remove();
 
@@ -1319,6 +1553,163 @@ function buildReferencesListBox(references) {
 
     input.on("input", autoResizeInput);
     autoResizeInput(); // تنظیم ارتفاع اولیه
+
+    /*
+    ============================================
+    ورودی صوتی با Web Speech API (میکروفون)
+
+    با کلیک روی دکمه #ai-agent-voice، تشخیص گفتار با زبان فارسی (fa-IR)
+    آغاز می‌شود. متن تشخیص‌داده‌شده در لحظه (interim + final) داخل
+    #ai-agent-input نوشته می‌شود. کلیک دوباره روی دکمه، ضبط را متوقف می‌کند.
+
+    نکات:
+      - متن نهایی شده (final) به انتهای textarea اضافه می‌شود و حفظ می‌گردد.
+      - متن موقت (interim) در همان لحظه نمایش داده می‌شود ولی جایگزین
+        نشده و با به‌روزرسانی بعدی جای خود را به final می‌دهد.
+      - در مرورگرهای بدون پشتیبانی، دکمه به‌صورت خودکار مخفی می‌شود.
+      - روی مرورگرهای مبتنی بر WebKit (Safari) از webkitSpeechRecognition
+        استفاده می‌شود.
+    ============================================
+    */
+    const voiceBtn = $("#ai-agent-voice");
+    const voiceIconMic = voiceBtn.find(".ai-voice-icon-mic");
+    const voiceIconStop = voiceBtn.find(".ai-voice-icon-stop");
+
+    const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+    if (!SpeechRecognitionImpl) {
+        // مرورگر از Web Speech API پشتیبانی نمی‌کند؛ دکمه را مخفی می‌کنیم
+        voiceBtn.addClass("voice-not-supported");
+    } else {
+        let recognition = null;
+        let isRecording = false;
+        // متن نهایی‌شده‌ی قبلی که در textarea نگه داشته می‌شود
+        let finalTranscript = "";
+        // آیا کاربر از قبل متنی دستی تایپ کرده بود؟ اگر بله، آن را هم حفظ می‌کنیم.
+        let preExistingText = "";
+
+        function buildTranscript() {
+            // ترکیب متن دستی قبلی + متن نهایی‌شده‌ی صوتی
+            // اگر کاربر چیزی دستی تایپ کرده بود، با فاصله از متن صوتی جدا می‌شود.
+            const trimmed = preExistingText.replace(/\s+$/, "");
+            if (trimmed && finalTranscript) {
+                return trimmed + " " + finalTranscript;
+            }
+            return trimmed + finalTranscript;
+        }
+
+        function startRecording() {
+            try {
+                recognition = new SpeechRecognitionImpl();
+            } catch (e) {
+                // در صورت بروز خطا در ساخت instance، دکمه را غیرفعال می‌کنیم
+                voiceBtn.addClass("voice-not-supported");
+                return;
+            }
+
+            recognition.lang = "fa-IR";           // زبان فارسی
+            recognition.continuous = true;         // ضبط پیوسته تا زمان توقف کاربر
+            recognition.interimResults = true;     // بازگرداندن نتایج موقت در لحظه
+
+            // ذخیره‌ی متنی که کاربر پیش از ضبط در textarea داشته
+            preExistingText = input.val() || "";
+            finalTranscript = "";
+
+            recognition.onstart = function () {
+                isRecording = true;
+                voiceBtn.addClass("is-recording");
+                voiceIconMic.hide();
+                voiceIconStop.show();
+            };
+
+            recognition.onresult = function (event) {
+                let interimText = "";
+                // جمع‌آوری همه‌ی نتایج نهایی‌شده از ابتدا تا الان
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimText += transcript;
+                    }
+                }
+
+                // ساخت متن نهایی برای نمایش:
+                // متن دستی قبلی + متن نهایی صوتی + متن موقت (در حال تایپ)
+                const base = buildTranscript();
+                const full = interimText ? (base ? base + " " + interimText : interimText) : base;
+
+                input.val(full);
+                // به‌روزرسانی ارتفاع textarea با توجه به متن جدید
+                autoResizeInput();
+            };
+
+            recognition.onerror = function (event) {
+                // خطاهای رایج: no-speech (سکوت)، not-allowed (دسترسی میکروفون رد شد)
+                if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+                    // دسترسی به میکروفون رد شده؛ ضبط را متوقف می‌کنیم
+                    stopRecording();
+                }
+                // خطاهای دیگر را بی‌صدا نادیده می‌گیریم تا تجربه‌ی کاربر مختل نشود
+            };
+
+            recognition.onend = function () {
+                // وقتی ضبط به پایان می‌رسد (خودکار یا دستی)، متن نهایی را در textarea می‌گذاریم
+                isRecording = false;
+                voiceBtn.removeClass("is-recording");
+                voiceIconMic.show();
+                voiceIconStop.hide();
+
+                // اطمینان از اینکه فقط متن نهایی در textarea باقی مانده است
+                input.val(buildTranscript());
+                autoResizeInput();
+            };
+
+            try {
+                recognition.start();
+            } catch (e) {
+                // اگر start() با خطا مواجه شد (مثلاً قبلاً شروع شده)، وضعیت را ریست می‌کنیم
+                isRecording = false;
+                voiceBtn.removeClass("is-recording");
+                voiceIconMic.show();
+                voiceIconStop.hide();
+            }
+        }
+
+        function stopRecording() {
+            if (recognition && isRecording) {
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    // نادیده گرفتن خطا
+                }
+            }
+        }
+
+        voiceBtn.on("click", function () {
+            // اگر فوتر غیرفعال است (چت بسته شده)، کاری نکن
+            if ($("#ai-agent-footer").hasClass("is-disabled")) return;
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
+
+        // توقف ضبط هنگام ارسال پیام (تا متن پاک‌شده بعد از ارسال،
+        // با نتایج جدید ضبط تداخل پیدا نکند) و هنگام ریست چت.
+        send.on("click", function () {
+            if (isRecording) stopRecording();
+        });
+        input.on("keydown", function (e) {
+            if (e.key === "Enter" && !e.shiftKey && isRecording) {
+                stopRecording();
+            }
+        });
+        $(document).on("ai-agent-chat-reset", function () {
+            if (isRecording) stopRecording();
+        });
+    }
 
     /*
     ============================================
@@ -1425,13 +1816,20 @@ function renderHistoryMessage(msg) {
                     msgs.forEach(renderHistoryMessage);
                 }
 
+                // به‌روزرسانی کوکی تعداد پیام‌های دیده‌شده با تعداد کل پیام‌های جلسه
+                setMsgCount(msgs.length);
+
                 // بر اساس وضعیت جلسه، پیام سیستمی مناسب نمایش می‌دهیم
                 if (sessionStatus === 'closed') {
                     addClosedMessage();
+                    // قفل کردن فوتر چون گفتگو بسته شده است
+                    setChatDisabled(true);
                 } else if (isSupportMode(sessionStatus)) {
                     // در حالت پشتیبانی، اندیکاتور «در حالت پشتیبانی» را نمایش می‌دهیم
                     // (بدون انیمیشن انتظار ربات — پشتیبان قرار است پاسخ دهد)
                     addSupportModeIndicator();
+                    // شروع polling برای بررسی پیام‌های جدید از پشتیبان
+                    startPolling();
                 }
                 // در حالت ربات (bot / assistant / '') هیچ پیام اضافه‌ای نمایش داده نمی‌شود
             }

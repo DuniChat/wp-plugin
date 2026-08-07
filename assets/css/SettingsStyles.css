@@ -993,7 +993,7 @@ A modern, luxurious control panel experience.
    ===================================================================== */
 .ai-agent-status-filters {
     display: flex;
-    flex-direction: row-reverse;
+    flex-direction: row; /* در RTL، اولین فرزند («همه») سمت راست قرار می‌گیرد */
     flex-wrap: wrap;
     gap: 4px;
     padding: 6px;
@@ -1005,6 +1005,7 @@ A modern, luxurious control panel experience.
     max-width: 100%;
 }
 .ai-agent-filter-btn {
+    position: relative; /* برای جای‌گذاری badge به‌صورت absolute بالای دکمه */
     border: none;
     outline: none;
     cursor: pointer;
@@ -1029,6 +1030,41 @@ A modern, luxurious control panel experience.
     box-shadow: 0 4px 12px var(--ai-agent-primary-glow);
 }
 
+/* ===== Badge شمارش جلسات برای هر فیلتر =====
+   یک دایره‌ی کوچک قرمز در بالای هر دکمه که تعداد جلسات
+   متناظر با آن وضعیت را نشان می‌دهد. */
+.ai-agent-filter-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 50%;
+    background: #dc2626; /* قرمز */
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    pointer-events: none; /* کلیک روی badge به دکمه منتقل شود */
+    z-index: 2;
+    font-family: var(--ai-agent-font);
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+
+/* وقتی badge در حال به‌روزرسانی است، کمی پالس می‌زند */
+.ai-agent-filter-count.is-loading {
+    opacity: 0.6;
+}
+
+/* هنگام hover روی دکمه، badge کمی بزرگ‌تر شود */
+.ai-agent-filter-btn:hover .ai-agent-filter-count {
+    transform: scale(1.1);
+}
+
 @media (max-width: 782px) {
     .ai-agent-status-filters {
         width: 100%;
@@ -1038,6 +1074,15 @@ A modern, luxurious control panel experience.
     .ai-agent-filter-btn {
         padding: 7px 12px;
         font-size: 11px;
+    }
+    /* در موبایل، badge کمی کوچک‌تر */
+    .ai-agent-filter-count {
+        min-width: 14px;
+        height: 14px;
+        line-height: 14px;
+        font-size: 8px;
+        top: -5px;
+        right: -5px;
     }
 }
 
