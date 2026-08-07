@@ -174,25 +174,18 @@
     flex-direction: column;
     justify-content: flex-start;
     gap: 14px;
+
+    /* مخفی‌سازی کامل اسکرول‌بار ناحیه‌ی پیام‌ها (اسکرول همچنان کار می‌کند، فقط نوار آن دیده نمی‌شود) */
+    scrollbar-width: none;      /* فایرفاکس */
+    -ms-overflow-style: none;   /* IE/Edge قدیمی */
 }
 
 #ai-agent[data-theme="dark"] #ai-agent-messages {
     background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.6)), var(--ai-agent-bg-dark);
 }
 
-/* سفارشی‌سازی اسکرول‌بار فوق‌العاده ظریف مویرگی */
 #ai-agent-messages::-webkit-scrollbar {
-    width: 5px;
-}
-#ai-agent-messages::-webkit-scrollbar-track {
-    background: transparent;
-}
-#ai-agent-messages::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-}
-#ai-agent-messages::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    display: none;              /* کروم/سافاری/اج جدید */
 }
 
 /* استایل مشترک حباب پیام‌ها */
@@ -439,13 +432,6 @@
 #ai-agent-send:active img {
     transform: scale(.95);
 }
-/* ساختار بخش فیدبک پیام‌ها */
-.ai-feedback-wrapper {
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px dashed #e2e8f0;
-}
-
 /* باکس رفرنس‌ها (محصولات/صفحات مرتبط) — انتهای پیام هوش مصنوعی */
 .ai-references-box {
     margin-top: 10px;
@@ -646,21 +632,6 @@ button.ai-references-title.ai-references-toggle {
 .ai-references-gallery-wrap .ai-references-gallery.ai-gallery-dragging * {
     pointer-events: none; /* جلوگیری از فعال شدن لینک زیر انگشت هنگام کشیدن */
 }
-.ai-feedback-buttons {
-    display: flex;
-    gap: 10px;
-}
-
-.ai-feedback-btn {
-    cursor: pointer;
-    font-size: 14px;
-    opacity: 0.6;
-}
-.ai-feedback-btn:hover {
-    opacity: 1;
-    transform: scale(1.2);
-}
-
 /* تکست باکس و دکمه پورتال اتصال به ادمین */
 .ai-support-gate .ai-support-msg {
     width: 100%;

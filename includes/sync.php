@@ -49,6 +49,9 @@ add_action('wp_ajax_ai_agent_sync_data', 'ai_agent_sync_data_handler');
 // سینک کامل: تمام محتوا از ابتدا ارسال می‌شود (بدون توجه به سینک قبلی)
 add_action('wp_ajax_ai_agent_sync_all_data', 'ai_agent_sync_all_data_handler');
 
+// سینک تصاویر: تمام محتوا به‌همراه تصاویرشان ارسال می‌شود (مستقل از تیک «سینک تصاویر»)
+add_action('wp_ajax_ai_agent_sync_images_data', 'ai_agent_sync_images_data_handler');
+
 
 // استعلام وضعیت دسته‌ای job_id های ذخیره‌شده در دیتابیس
 add_action('wp_ajax_ai_agent_check_sync_status', 'ai_agent_check_sync_status_handler');
@@ -163,6 +166,9 @@ function ai_agent_sync_data_handler() {
         ));
     }
 
+    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by allowed_statuses['image'] = allow-image|deny-image)
+    $sync_images_enabled = !empty($settings['sync_images']);
+
     // ۵. جمع‌آوری تمام محتوای فعلی مطابق با تیک‌های کاربر
     $current_items = ai_agent_collect_sync_items($sync_types);
 
@@ -170,6 +176,20 @@ function ai_agent_sync_data_handler() {
         wp_send_json_error(array(
             'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
         ));
+    }
+
+    /*
+    ============================================
+    اگر تیک «سینک تصاویر» نخورده باشد، عکس‌ها را از آیتم‌ها حذف می‌کنیم
+    تا فقط محتوای متنی به سرور ارسال شود. این رفتار با مقدار
+    allow-image / deny-image در allowed_statuses مطابقت دارد.
+    ============================================
+    */
+    if (!$sync_images_enabled) {
+        foreach ($current_items as &$item_ref) {
+            $item_ref['images'] = array();
+        }
+        unset($item_ref);
     }
 
     // ۶. دریافت نقشه‌ی آی‌دی‌های سینک‌شده از دیتابیس
@@ -372,6 +392,9 @@ function ai_agent_sync_all_data_handler() {
         ));
     }
 
+    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by allowed_statuses['image'] = allow-image|deny-image)
+    $sync_images_enabled = !empty($settings['sync_images']);
+
     // ۵. جمع‌آوری تمام محتوای فعلی
     $current_items = ai_agent_collect_sync_items($sync_types);
 
@@ -379,6 +402,20 @@ function ai_agent_sync_all_data_handler() {
         wp_send_json_error(array(
             'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
         ));
+    }
+
+    /*
+    ============================================
+    اگر تیک «سینک تصاویر» نخورده باشد، عکس‌ها را از آیتم‌ها حذف می‌کنیم
+    تا فقط محتوای متنی به سرور ارسال شود. این رفتار با مقدار
+    allow-image / deny-image در allowed_statuses مطابقت دارد.
+    ============================================
+    */
+    if (!$sync_images_enabled) {
+        foreach ($current_items as &$item_ref) {
+            $item_ref['images'] = array();
+        }
+        unset($item_ref);
     }
 
     // ۶. ارسال تمام محتوا به /sync/content (بدون مقایسه با سینک قبلی)
@@ -444,6 +481,148 @@ function ai_agent_sync_all_data_handler() {
         'sync_type'      => 'full',
     ));
 }
+}
+
+/*
+================================================================
+هندلر اختصاصی «همگام‌سازی تصاویر» (Sync Images)
+
+این هندلر مستقل از وضعیت تیک «سینک تصاویر»، تمام محتوای تیک‌خورده
+را به‌همراه تصاویرشان (حداکثر ۴ عکس base64 برای هر آیتم) به‌صورت کامل
+به /sync/content ارسال می‌کند. کاربرد اصلی این دکمه:
+
+  - کاربر قبلاً بدون تیک «سینک تصاویر» سینک کرده و حالا می‌خواهد
+    تصاویر محتوا را هم به سرور بفرستد.
+  - یا کاربر می‌خواهد صرفاً تصاویر را به‌همراه متن مجدداً ارسال کند
+    (مثلاً بعد از تغییر عکس‌های محصولات).
+
+تفاوت با «سینک تمامی محتوا»:
+  - در «سینک تمامی محتوا»، ارسال تصاویر بستگی به تیک «سینک تصاویر»
+    دارد (اگر تیک نخورده باشد، عکس‌ها حذف می‌شوند).
+  - در «همگام‌سازی تصاویر»، عکس‌ها همیشه ارسال می‌شوند.
+
+مراحل:
+  ۱) بررسی دسترسی کاربر و nonce (اکشن مجزا)
+  ۲) بررسی تنظیمات (sync_types) و API Key
+  ۳) جمع‌آوری تمام محتوای فعلی وردپرس (طبق تیک‌های کاربر) با تصاویر
+  ۴) ارسال به /sync/content (با تصاویر)
+  ۵) به‌روزرسانی جدول synced_items و تاریخ آخرین سینک
+  ۶) بازگرداندن نتیجه‌ی دقیق به فرانت‌اند
+================================================================
+*/
+function ai_agent_sync_images_data_handler() {
+
+    // ۱. بررسی دسترسی
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    // ۲. بررسی nonce (اکشن مجزا برای دکمه‌ی «همگام‌سازی تصاویر»)
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_images_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    // ۳. بررسی API Key
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        wp_send_json_error(array(
+            'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
+        ));
+    }
+
+    // ۴. بررسی انتخاب نوع‌های محتوا
+    $settings = ai_agent_get_settings();
+    $sync_types = isset($settings['sync_types']) ? $settings['sync_types'] : array();
+
+    if (empty($sync_types)) {
+        wp_send_json_error(array(
+            'message' => 'لطفاً ابتدا حداقل یک منبع داده را تیک زده و ذخیره کنید.'
+        ));
+    }
+
+    // ۵. جمع‌آوری تمام محتوای فعلی (این دکمه همیشه تصاویر را شامل می‌شود)
+    $current_items = ai_agent_collect_sync_items($sync_types);
+
+    if (empty($current_items)) {
+        wp_send_json_error(array(
+            'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
+        ));
+    }
+
+    /*
+    ============================================
+    نکته: برخلاف Sync Now و Sync All، در اینجا عمداً بررسی
+    sync_images را انجام نمی‌دهیم؛ چون این دکمه مخصوص ارسال
+    تصاویر است و باید همیشه تصاویر را شامل شود. تصاویر از قبل
+    توسط ai_agent_collect_sync_items به‌صورت base64 پر شده‌اند.
+    ============================================
+    */
+
+    // ۶. ارسال تمام محتوا به‌همراه تصاویر به /sync/content
+    $content_result = ai_agent_push_sync_content($current_items);
+
+    if ($content_result['status'] === 'error') {
+        wp_send_json_error(array(
+            'message'        => $content_result['message'],
+            'new_count'      => 0,
+            'total_count'    => count($current_items),
+            'last_sync_time' => ai_agent_get_last_sync_time(),
+        ));
+    }
+
+    $sent_count = intval($content_result['sent_count']);
+
+    if ($content_result['status'] === 'success' || $content_result['status'] === 'partial') {
+        $results_map = array();
+        foreach ($content_result['results'] as $r) {
+            $key = $r['content_type'] . '::' . $r['source_id'];
+            $results_map[$key] = $r['job_id'];
+        }
+
+        if ($content_result['status'] === 'success') {
+            // در موفقیت کامل، جدول را پاک و از نو با job_id ها پر می‌کنیم
+            ai_agent_clear_all_synced_items();
+            $synced_batch = array();
+            foreach ($current_items as $item) {
+                $key = $item['content_type'] . '::' . $item['source_id'];
+                if (isset($results_map[$key])) {
+                    $synced_batch[] = array(
+                        'source_id'    => $item['source_id'],
+                        'content_type' => $item['content_type'],
+                        'job_id'       => $results_map[$key],
+                    );
+                }
+            }
+            ai_agent_mark_items_synced_batch($synced_batch);
+        }
+        // در حالت partial، جدول را پاک نمی‌کنیم تا آیتم‌های قبلی حفظ شوند
+
+        // ۷. به‌روزرسانی تاریخ آخرین سینک (هر دو: افزایشی و کامل)
+        $sync_time = ai_agent_update_last_sync_all_time();
+        ai_agent_update_last_sync_time($sync_time);
+
+        // ۸. ساخت پیام خلاصه
+        $total = count($current_items);
+
+        if ($content_result['status'] === 'partial') {
+            $message = $sent_count . ' از ' . $total . ' مورد به‌همراه تصاویر با موفقیت ارسال شد. (' . $content_result['message'] . ')';
+        } else {
+            $message = 'سینک تصاویر با موفقیت انجام شد. مجموع ' . $sent_count . ' مورد به‌همراه تصاویر به سرور ارسال شد.';
+        }
+
+        wp_send_json_success(array(
+            'message'        => $message,
+            'new_count'      => $sent_count,
+            'deleted_count'  => 0,
+            'total_count'    => $total,
+            'last_sync_time' => $sync_time,
+            'sync_type'      => 'images',
+        ));
+    }
 }
 
 /*

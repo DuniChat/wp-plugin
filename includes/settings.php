@@ -10,8 +10,9 @@ function ai_agent_get_settings(){
         'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
         'system_prompt'       => '',      // پرامت سیستم (از API همگام‌سازی خوانده می‌شود)
         'api_key'             => '',      // کلید API کاربر برای احراز هویت با سرور همگام‌سازی
-        'daily_message_limit' => 0,       // حداکثر پیام روزانه (از سرور همگام‌سازی دریافت می‌شود)
+        'daily_message_limit' => 0,       // حداکثر پیام روزانه (قابل ویرایش کاربر و ارسال به سرور)
         'allowed_statuses'    => array(), // وضعیت‌های مجاز برای هر نوع محتوا (از سرور همگام‌سازی)
+        'sync_images'         => false,   // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (allow-image / deny-image)
     );
     $saved = get_option('ai_agent_settings', array());
     return wp_parse_args($saved, $defaults);
@@ -43,8 +44,19 @@ function ai_agent_sanitize_settings($input){
     // پاکسازی API Key (کلید احراز هویت کاربر با سرور همگام‌سازی)
     $output['api_key'] = isset($input['api_key']) ? sanitize_text_field($input['api_key']) : '';
 
-    // حفظ فیلدهایی که فرم ندارند و فقط از سرور همگام‌سازی پر می‌شوند
-    $output['daily_message_limit'] = isset($old['daily_message_limit']) ? intval($old['daily_message_limit']) : 0;
+    // daily_message_limit: اکنون به‌صورت numeric updown قابل ویرایش توسط کاربر است
+    // مقدار واردشده توسط کاربر اعمال می‌شود؛ در صورت نبود، مقدار قبلی حفظ می‌گردد
+    $daily_limit = isset($input['daily_message_limit']) ? intval($input['daily_message_limit']) : null;
+    if ($daily_limit === null) {
+        $output['daily_message_limit'] = isset($old['daily_message_limit']) ? intval($old['daily_message_limit']) : 0;
+    } else {
+        $output['daily_message_limit'] = max(0, $daily_limit);
+    }
+
+    // sync_images: چک‌باکس «سینک کردن تصاویر» — اگر تیک خورده باشد true
+    $output['sync_images'] = !empty($input['sync_images']);
+
+    // allowed_statuses همچنان فقط از سرور همگام‌سازی پر می‌شود (این‌جا فقط حفظ مقدار قبلی)
     $output['allowed_statuses']    = isset($old['allowed_statuses']) && is_array($old['allowed_statuses']) ? $old['allowed_statuses'] : array();
 
     return $output;
@@ -189,6 +201,29 @@ function ai_agent_sync_settings_from_server(){
         $settings['allowed_statuses'] = $remote['allowed_statuses'];
     }
 
+    /*
+    ============================================
+    Parse کردن مقدار sync_images از allowed_statuses دریافتی از سرور:
+    اگر در هر کلیدِ allowed_statuses مقدار 'allow-image' وجود داشته باشد،
+    یعنی کاربر قبلاً تیک سینک تصاویر را زده → true؛ در غیر این صورت false.
+    این مقدار در بارگذاری اولیه‌ی صفحه‌ی تنظیمات، state چک‌باکس را تعیین می‌کند.
+    ============================================
+    */
+    $settings['sync_images'] = false;
+    if (isset($remote['allowed_statuses']) && is_array($remote['allowed_statuses'])) {
+        foreach ($remote['allowed_statuses'] as $key => $statuses) {
+            if (is_array($statuses) && in_array('allow-image', $statuses, true)) {
+                $settings['sync_images'] = true;
+                break;
+            }
+            // پشتیبانی از حالتی که مقدار به‌جای آرایه، مستقیم string باشد
+            if (is_string($statuses) && $statuses === 'allow-image') {
+                $settings['sync_images'] = true;
+                break;
+            }
+        }
+    }
+
     // ۷. ذخیره در دیتابیس؛ چون این مقدار از سرور می‌آید (نه فرم کاربر):
     //    الف) اکشن update_option_ai_agent_settings موقتاً قطع می‌شود تا این
     //        ذخیره‌سازی داخلی باعث اجرای دوباره‌ی چرخه‌ی PATCH+GET نشود.
@@ -243,12 +278,35 @@ function ai_agent_after_settings_saved($old_value, $value){
         return;
     }
 
+    /*
+    ============================================
+    ساخت بدنه‌ی PATCH برای /api/v1/sync/settings.
+
+    نکته‌ی مهم: مقدار sync_images (تیک سینک تصاویر) در قالب کلید 'image'
+    داخل allowed_statuses به سرور ارسال می‌شود:
+        - تیک خورده  → allowed_statuses['image'] = ['allow-image']
+        - تیک نخورده → allowed_statuses['image'] = ['deny-image']
+    این کلید در بارگذاری بعدی (GET) توسط ai_agent_sync_settings_from_server
+    خوانده شده و state چک‌باکس را تعیین می‌کند.
+
+    سایر کلیدهای allowed_statuses که از سرور دریافت شده‌اند حفظ می‌شوند.
+    ============================================
+    */
+    $existing_allowed_statuses = (!empty($value['allowed_statuses']) && is_array($value['allowed_statuses']))
+        ? $value['allowed_statuses']
+        : array();
+
+    // حذف کلید قدیمی 'image' اگر وجود داشت تا با مقدار تازه جایگزین شود
+    unset($existing_allowed_statuses['image']);
+    $image_value = !empty($value['sync_images']) ? 'allow-image' : 'deny-image';
+    $existing_allowed_statuses['image'] = array($image_value);
+
     // ۱. ارسال (PATCH) مقادیر تازه ذخیره‌شده‌ی کاربر به سرور
     $push_payload = array(
         'selected_model'        => isset($value['model']) ? (string) $value['model'] : '',
         'system_prompt'         => isset($value['system_prompt']) ? (string) $value['system_prompt'] : '',
         'allowed_content_types' => ai_agent_unmap_content_types(isset($value['sync_types']) ? $value['sync_types'] : array()),
-        'allowed_statuses'      => (!empty($value['allowed_statuses']) && is_array($value['allowed_statuses'])) ? $value['allowed_statuses'] : new stdClass(),
+        'allowed_statuses'      => $existing_allowed_statuses,
         'daily_message_limit'   => isset($value['daily_message_limit']) ? intval($value['daily_message_limit']) : 0,
     );
 
@@ -442,13 +500,31 @@ function ai_agent_settings_page(){
                         </td>
                     </tr>
 
-                    <?php if (!empty($settings['daily_message_limit']) || !empty($settings['allowed_statuses'])) : ?>
+                    <!-- ====== سینک تصاویر (sync_images) ====== -->
+                    <tr>
+                        <th scope="row">سینک تصاویر (Image Sync)</th>
+                        <td>
+                            <label class="ai-agent-checkbox-label">
+                                <input type="checkbox" name="ai_agent_settings[sync_images]" value="1" id="ai_agent_sync_images" <?php checked(!empty($settings['sync_images'])); ?>>
+                                ارسال تصاویر محتوا هنگام همگام‌سازی (Send Images with Content)
+                            </label>
+                            <p class="description">اگر این گزینه تیک بخورد، هنگام کلیک روی دکمه‌های «همگام‌سازی اطلاعات» و «سینک تمامی محتوا»، تصاویر هر پست/محصول/دسته (حداکثر ۴ عکس به‌صورت base64) نیز به سرور ارسال می‌شوند. اگر تیک برداشته شود، فقط محتوای متنی ارسال می‌گردد. این مقدار در سرور به‌صورت <code>allow-image</code> (تیک خورده) یا <code>deny-image</code> (تیک نخورده) در فیلد <code>allowed_statuses</code> ذخیره می‌شود.</p>
+                        </td>
+                    </tr>
+
+                    <!-- ====== حداکثر پیام روزانه (daily_message_limit) ====== -->
+                    <tr>
+                        <th scope="row"><label for="ai_agent_daily_message_limit">حداکثر پیام روزانه (Daily Message Limit)</label></th>
+                        <td>
+                            <input type="number" min="0" step="1" name="ai_agent_settings[daily_message_limit]" id="ai_agent_daily_message_limit" value="<?php echo esc_attr(intval($settings['daily_message_limit'])); ?>" class="small-text" />
+                            <p class="description">این مقدار سقف تعداد پیام روزانه‌ی کاربران را مشخص می‌کند و پس از ذخیره‌ی تنظیمات به‌صورت <code>daily_message_limit</code> در اندپوینت <code>/api/v1/sync/settings</code> ارسال می‌شود. مقدار ۰ یعنی بدون محدودیت.</p>
+                        </td>
+                    </tr>
+
+                    <?php if (!empty($settings['allowed_statuses'])) : ?>
                     <tr>
                         <th scope="row">اطلاعات دریافتی از سرور همگام‌سازی</th>
                         <td>
-                            <?php if (!empty($settings['daily_message_limit'])) : ?>
-                                <p class="description"><strong>حداکثر پیام روزانه:</strong> <?php echo intval($settings['daily_message_limit']); ?></p>
-                            <?php endif; ?>
                             <?php if (!empty($settings['allowed_statuses'])) : ?>
                                 <p class="description"><strong>وضعیت‌های مجاز:</strong></p>
                                 <ul class="ai-agent-status-list">
@@ -459,7 +535,7 @@ function ai_agent_settings_page(){
                                     <?php endforeach; ?>
                                 </ul>
                             <?php endif; ?>
-                            <p class="description ai-agent-readonly-note">این مقادیر فقط از سرور همگام‌سازی دریافت می‌شوند و قابل ویرایش نیستند.</p>
+                            <p class="description ai-agent-readonly-note">این مقادیر فقط از سرور همگام‌سازی دریافت می‌شوند و قابل ویرایش نیستند. (مقدار <code>image</code> توسط تیک «سینک تصاویر» کنترل می‌شود.)</p>
                         </td>
                     </tr>
                     <?php endif; ?>
@@ -513,15 +589,16 @@ function ai_agent_settings_page(){
                                 <button type="button" id="ai-agent-sync-btn" class="button button-secondary ai-agent-action-btn is-blue">همگام‌سازی اطلاعات (Sync Now)</button>
                                 <span id="ai-agent-sync-status" class="ai-agent-status-text"></span>
                                 <?php wp_nonce_field('ai_agent_sync_nonce_action', 'ai_agent_sync_nonce_field'); ?>
-                                <p class="description ai-agent-mt6">این دکمه فقط محتوای جدید (آی‌دی‌هایی که قبلاً سینک نشده‌اند) را به سرور می‌فرستد و محتوای حذف‌شده را به‌عنوان حذف به سرور اطلاع می‌دهد.</p>
+                                <p class="description ai-agent-mt6">این دکمه فقط محتوای جدید (آی‌دی‌هایی که قبلاً سینک نشده‌اند) را به سرور می‌فرستد و محتوای حذف‌شده را به‌عنوان حذف به سرور اطلاع می‌دهد. ارسال تصاویر بستگی به تیک «سینک تصاویر» دارد.</p>
                             </div>
 
                             <div class="ai-agent-sync-all-wrap">
                                 <button type="button" id="ai-agent-sync-all-btn" class="button button-secondary ai-agent-action-btn is-red">سینک تمامی محتوا</button>
                                 <span id="ai-agent-sync-all-status" class="ai-agent-status-text"></span>
                                 <?php wp_nonce_field('ai_agent_sync_all_nonce_action', 'ai_agent_sync_all_nonce_field'); ?>
-                                <p class="description ai-agent-mt6">این دکمه بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا به سرور ارسال می‌کند. از این گزینه در صورت بروز مشکل یا نیاز به ارسال مجدد تمام داده‌ها استفاده کنید.</p>
+                                <p class="description ai-agent-mt6">این دکمه بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا به سرور ارسال می‌کند. از این گزینه در صورت بروز مشکل یا نیاز به ارسال مجدد تمام داده‌ها استفاده کنید. ارسال تصاویر بستگی به تیک «سینک تصاویر» دارد.</p>
                             </div>
+
                         </td>
                     </tr>
                 </table>

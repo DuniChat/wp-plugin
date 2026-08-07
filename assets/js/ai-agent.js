@@ -441,12 +441,8 @@ jQuery(function ($) {
                 });
             }
         } else {
-            let feedbackHtml = '';
-            if (chatId) {
-                feedbackHtml = feedbackHtmlFor(chatId);
-            }
-            // متن و دکمه‌های فیدبک داخل یک بدنه‌ی جدا قرار می‌گیرند تا آواتار CSS کنار کل پیام بنشیند
-            messages.append('<div class="' + cls + ' fade-in-up"><div class="ai-message-body">' + text + feedbackHtml + '</div></div>');
+            // متن داخل یک بدنه‌ی جدا قرار می‌گیرد تا آواتار CSS کنار کل پیام بنشیند
+            messages.append('<div class="' + cls + ' fade-in-up"><div class="ai-message-body">' + text + '</div></div>');
         }
     }
 
@@ -621,16 +617,6 @@ jQuery(function ($) {
                 '</div>' +
             '</div>'
         );
-    }
-
-    function feedbackHtmlFor(chatId) {
-        return `
-            <div class="ai-feedback-wrapper" data-chat-id="${chatId}">
-                <div class="ai-feedback-buttons">
-                    <span class="ai-feedback-btn thumb-up" data-type="like" title="مفید بود">👍</span>
-                    <span class="ai-feedback-btn thumb-down" data-type="dislike" title="مفید نبود">👎</span>
-                </div>
-            </div>`;
     }
 
 /*
@@ -1092,7 +1078,6 @@ function buildReferencesListBox(references) {
 }
 
             if (data.chat_id) {
-                stream.$body.append(feedbackHtmlFor(data.chat_id));
                 if (typeof onDone === 'function') onDone(data.chat_id);
             }
         } else if (data.type === 'error') {
@@ -1148,29 +1133,6 @@ function buildReferencesListBox(references) {
     مدیریت فیدبک هوشمند و گیت کارشناس
     ============================================
     */
-    $(document).on("click", ".ai-feedback-btn", function () {
-        let $btn = $(this);
-        let $wrapper = $btn.closest('.ai-feedback-wrapper');
-        let chatId = $wrapper.data('chat-id');
-        let feedbackType = $btn.data('type');
-
-        if (feedbackType === 'dislike') {
-            $wrapper.html('<p style="margin:4px 0 0 0; font-size:12px; color:#64748b; font-weight:500;">ممنون از بازخوردتون، سعی می‌کنیم بهتر بشیم.</p>');
-            $.ajax({
-                url: ai_agent.ajax_url,
-                method: "POST",
-                data: { action: "ai_agent_feedback", chat_id: chatId, feedback: "dislike" }
-            });
-        } else {
-            $wrapper.html('<p style="margin:4px 0 0 0; font-size:12px; color:#10b981; font-weight:500; display:flex; align-items:center; gap:4px;">ممنون از نظرتون! شما به ما کمک می‌کنید بهتر بشیم. ❤️</p>');
-            $.ajax({
-                url: ai_agent.ajax_url,
-                method: "POST",
-                data: { action: "ai_agent_feedback", chat_id: chatId, feedback: "like" }
-            });
-        }
-    });
-
 /*
     ============================================
     بارگذاری تاریخچه‌ی چت هنگام باز شدن مجدد سایت

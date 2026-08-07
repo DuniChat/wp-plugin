@@ -113,6 +113,13 @@
     color: #dc2626;
 }
 
+/* ----- فیلد عددیِ daily_message_limit ----- */
+#ai_agent_daily_message_limit.small-text {
+    width: 90px;
+    text-align: left;
+    direction: ltr;
+}
+
 /* ----- متن وضعیت کنار دکمه‌های عملیاتی ----- */
 .ai-agent-status-text {
     margin-right: 12px;
