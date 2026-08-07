@@ -317,14 +317,32 @@ function ai_agent_get_history_handler() {
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
 
     if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
-        wp_send_json_success(array('messages' => array()));
+        wp_send_json_success(array(
+            'messages'          => array(),
+            'status'            => '',
+            'last_message_role' => '',
+        ));
     }
 
-    $messages = ai_agent_fetch_chat_history($session_id);
+    $result = ai_agent_fetch_chat_history($session_id);
 
-    if ($messages === false) {
-        wp_send_json_success(array('messages' => array()));
+    if ($result === false) {
+        wp_send_json_success(array(
+            'messages'          => array(),
+            'status'            => '',
+            'last_message_role' => '',
+        ));
     }
+
+    // تابع ai_agent_fetch_chat_history از این پس یک آرایه‌ی ساختاریافته
+    // با کلیدهای messages، status و last_message_role برمی‌گرداند تا ویجت
+    // سمت کاربر بتواند رفتار مناسب را بر اساس وضعیت جلسه (closed /
+    // pending_human / human / bot) انجام دهد.
+    $messages = (is_array($result) && isset($result['messages']) && is_array($result['messages']))
+        ? $result['messages']
+        : array();
+    $session_status = (is_array($result) && isset($result['status'])) ? (string) $result['status'] : '';
+    $last_message_role = (is_array($result) && isset($result['last_message_role'])) ? (string) $result['last_message_role'] : '';
 
     // غنی‌سازی رفرنس‌های هر پیام با تصویر نگاره اصلی محصول
     // (دقیقاً همان کاری که هنگام استریم زنده روی رویداد references انجام می‌شود،
@@ -347,7 +365,11 @@ function ai_agent_get_history_handler() {
         unset($msg);
     }
 
-    wp_send_json_success(array('messages' => $messages));
+    wp_send_json_success(array(
+        'messages'          => $messages,
+        'status'            => $session_status,
+        'last_message_role' => $last_message_role,
+    ));
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
 add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');
@@ -551,3 +573,99 @@ function ai_agent_session_close_handler() {
     }
 }
 add_action('wp_ajax_ai_agent_session_close', 'ai_agent_session_close_handler');
+
+/*
+============================================
+هندلر AJAX: بازگرداندن یک جلسه‌ی چت از پشتیبان انسانی به حالت ربات
+(فقط ادمین — برای جلسات «در انتظار پشتیبان» یا «پشتیبان»)
+
+اندپوینت بالادستی:
+    POST /api/v1/chat/sessions/{session_id}/return-to-bot
+    هدرها: X-API-Key, session-id
+    بدنه: {"additionalProp1": {}}
+
+پس از فراخوانی موفق، جلسه به وضعیت bot بازمی‌گردد و کاربر از این پس
+پاسخ‌های خودکار ربات را دریافت می‌کند. این هندلر از پنل تاریخچه چت‌ها
+(تنظیمات افزونه) فراخوانی می‌شود.
+============================================
+*/
+function ai_agent_session_return_to_bot_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_chat_sessions_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+
+    if (empty($session_id)) {
+        wp_send_json_error(array('message' => 'شناسه‌ی جلسه ارسال نشده است.'));
+    }
+
+    $result = ai_agent_return_session_to_bot($session_id);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error(array('message' => $result['message']));
+    }
+}
+add_action('wp_ajax_ai_agent_session_return_to_bot', 'ai_agent_session_return_to_bot_handler');
+
+/*
+============================================
+هندلر AJAX: بررسی وضعیت فعلی یک جلسه‌ی چت
+(در دسترس هم کاربران لاگین‌شده و هم مهمان — nopriv)
+
+این هندلر برای ویجت چت سمت کاربر استفاده می‌شود تا قبل از ارسال
+هر پیام، وضعیت جلسه را از سرور بررسی کند. بر اساس وضعیت بازگشتی:
+
+    - bot / assistant  →  رفتار معمول چت با ربات
+    - pending_human / human  →  پیام ارسال می‌شود ولی انیمیشن انتظار
+                                 ربات نمایش داده نمی‌شود و خطای نبود
+                                 پاسخ ربات نادیده گرفته می‌شود (چون
+                                 پشتیبان قرار است پاسخ دهد)
+    - closed  →  پیام «این گفتگو بسته شده است» نمایش داده می‌شود
+                 و پیام جدیدی ارسال نمی‌گردد
+
+از آنجا که این اندپوینت در سمت nopriv (ویجت سایت برای کاربران
+لاگین‌نشده) استفاده می‌شود، از nonce استفاده نمی‌کند. خودِ
+session_id (که یک UUID تصادفی است) به‌عنوان یک شناسه‌ی محرمانه
+عمل می‌کند و بدون داشتن آن، دسترسی به وضعیت جلسه ممکن نیست.
+API Key واقعی هرگز در مرورگر افشا نمی‌شود (همانند سایر
+هندلرهای nopriv این افزونه).
+============================================
+*/
+function ai_agent_get_session_status_handler() {
+
+    $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        wp_send_json_success(array(
+            'session_status'    => '',
+            'last_message_role' => '',
+        ));
+    }
+
+    $result = ai_agent_fetch_session_status($session_id);
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success(array(
+            'session_status'    => $result['session_status'],
+            'last_message_role' => $result['last_message_role'],
+        ));
+    } else {
+        // در صورت خطا، وضعیت خالی برمی‌گردد تا کلاینت بتواند با حالت
+        // پیش‌فرض (ربات) ادامه دهد. خطا به‌صورت silent نادیده گرفته
+        // می‌شود تا تجربه‌ی کاربر خراب نشود.
+        wp_send_json_success(array(
+            'session_status'    => '',
+            'last_message_role' => '',
+        ));
+    }
+}
+add_action('wp_ajax_ai_agent_get_session_status', 'ai_agent_get_session_status_handler');
+add_action('wp_ajax_nopriv_ai_agent_get_session_status', 'ai_agent_get_session_status_handler');

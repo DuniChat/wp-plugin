@@ -340,6 +340,9 @@ jQuery(function ($) {
     newChatBtn.on("click", function () {
         clearSessionId();
 
+        // ریست وضعیت جلسه به حالت نامشخص (در واقع حالت ربات برای جلسه‌ی جدید)
+        currentSessionStatus = '';
+
         // پاک کردن پیام‌های فعلی و بازگرداندن پیام خوش‌آمدگویی پیش‌فرض
         messages.empty();
         messages.append(
@@ -619,6 +622,111 @@ jQuery(function ($) {
         );
     }
 
+    /*
+    ============================================
+    پیام سیستمی «این گفتگو بسته شده است»
+
+    این پیام زمانی نمایش داده می‌شود که وضعیت جلسه از سمت سرور
+    closed برگردانده شود (پشتیبان چت را پایان داده است). کاربر باید
+    یک گفتگوی جدید آغاز کند.
+    ============================================
+    */
+    function addClosedMessage() {
+        // اگر همین پیام از قبل آخرین پیام است، دوباره اضافه نکن
+        if (messages.find('.ai-closed-message').last().length) {
+            return;
+        }
+        messages.append(
+            '<div class="ai-closed-message fade-in-up">' +
+                '<span class="ai-closed-icon">🔒</span>' +
+                '<div class="ai-closed-text">این گفتگو بسته شده است. لطفاً یک گفتگوی جدید ایجاد کنید.</div>' +
+            '</div>'
+        );
+    }
+
+    /*
+    ============================================
+    پیام سیستمی «در حالت پشتیبانی»
+
+    این پیام پس از ارسال هر پیام کاربر در حالت pending_human یا human
+    نمایش داده می‌شود تا به کاربر اطمینان داده شود که پیامش به پشتیبان
+    رسیده و در انتظار پاسخ انسانی است (نه ربات).
+    ============================================
+    */
+    function addSupportModeIndicator() {
+        messages.append(
+            '<div class="ai-support-mode-message fade-in-up">' +
+                '<span class="ai-support-mode-icon">🎧</span>' +
+                '<div class="ai-support-mode-text">پیام شما برای پشتیبان ارسال شد. لطفاً منتظر پاسخ باشید.</div>' +
+            '</div>'
+        );
+    }
+
+    /*
+    ============================================
+    متغیر نگه‌دارنده‌ی وضعیت فعلی جلسه
+
+    این مقدار توسط loadChatHistory (هنگام رفرش صفحه) و checkSessionStatus
+    (قبل از هر ارسال پیام) به‌روز می‌شود. مقادیر ممکن:
+
+        ''               →  نامشخص (پیش‌فرض؛ رفتار ربات)
+        'bot'            →  حالت ربات (رفتار معمول)
+        'assistant'      →  حالت ربات (مترادف با bot)
+        'pending_human'  →  در انتظار پشتیبان (حالت پشتیبانی)
+        'human'          →  پشتیبان در حال پاسخ‌دهی (حالت پشتیبانی)
+        'closed'         →  گفتگو بسته شده است
+    ============================================
+    */
+    let currentSessionStatus = '';
+
+    function isSupportMode(status) {
+        return status === 'pending_human' || status === 'human';
+    }
+    function isBotMode(status) {
+        // هر چیزی غیر از pending_human / human / closed به‌عنوان حالت ربات
+        // تلقی می‌شود (شامل bot، assistant و حالت نامشخص).
+        return !isSupportMode(status) && status !== 'closed';
+    }
+
+    /*
+    ============================================
+    بررسی زنده‌ی وضعیت جلسه از سرور قبل از ارسال هر پیام
+
+    این تابع یک Promise برمی‌گرداند که با وضعیت جلسه (string) resolve
+    می‌شود. در صورت خطا، با رشته‌ی خالی resolve می‌شود تا کلاینت بتواند
+    با حالت پیش‌فرض (ربات) ادامه دهد.
+
+    کاربرد: قبل از ارسال هر پیام در حالت pending_human / human باید وضعیت
+    دوباره چک شود، چون پشتیبان ممکن است چت را به ربات بازگردانده یا آن
+    را بسته باشد.
+    ============================================
+    */
+    function checkSessionStatus() {
+        return new Promise(function (resolve) {
+            if (!sessionId) {
+                resolve('');
+                return;
+            }
+            $.ajax({
+                url: ai_agent.ajax_url,
+                method: 'POST',
+                data: {
+                    action: 'ai_agent_get_session_status',
+                    session_id: sessionId
+                },
+                dataType: 'json'
+            }).done(function (res) {
+                if (res && res.success && res.data) {
+                    resolve(res.data.session_status || '');
+                } else {
+                    resolve('');
+                }
+            }).fail(function () {
+                resolve('');
+            });
+        });
+    }
+
 /*
 ============================================
 گالری عکس‌های محصولات مرتبط — بالای متن پیام نمایش داده می‌شود
@@ -885,6 +993,18 @@ function buildReferencesListBox(references) {
     به‌جای $.ajax از fetch + ReadableStream استفاده می‌کنیم تا
     بتوانیم رویدادهای SSE را تکه به تکه بخوانیم و به‌صورت زنده
     در پنجره‌ی چت نمایش دهیم.
+
+    نکته‌ی مهم — بررسی وضعیت جلسه قبل از ارسال:
+    قبل از ارسال هر پیام، وضعیت جلسه از سرور بررسی می‌شود تا اگر
+    پشتیبان چت را به ربات بازگردانده یا بسته است، رفتار متناسب
+    انجام دهیم:
+
+        - closed         →  نمایش پیام «این گفتگو بسته شده است»
+                            و عدم ارسال پیام
+        - pending_human / human  →  ارسال پیام (تا پشتیبان ببیند) ولی
+                                     بدون انیمیشن انتظار ربات و بدون
+                                     نمایش خطای نبود پاسخ ربات
+        - bot / assistant / ''   →  رفتار معمول چت با ربات (استریم)
     ============================================
     */
     async function sendMessage() {
@@ -895,7 +1015,37 @@ function buildReferencesListBox(references) {
         // اگر نه متن داریم و نه عکس، ارسال انجام نمی‌شود
         if (!text && imagesToSend.length === 0) return;
 
-        // نمایش پیام کاربر همراه با گالری عکس‌ها و پرامپت زیر آن
+        // -------------------------------------------------------------
+        // ۱) بررسی زنده‌ی وضعیت جلسه قبل از ارسال
+        //    (فقط اگر session_id داریم — برای جلسه‌ی جدید این چک اجرا
+        //     نمی‌شود و مستقیم به حالت ربات می‌رویم.)
+        // -------------------------------------------------------------
+        let status = currentSessionStatus;
+        if (sessionId) {
+            try {
+                status = await checkSessionStatus();
+                currentSessionStatus = status;
+            } catch (e) {
+                // در صورت خطا، از آخرین وضعیت شناخته‌شده استفاده می‌کنیم
+            }
+        }
+
+        // حالت «بسته‌شده»: پیام کاربر را نمایش می‌دهیم ولی ارسال نمی‌کنیم
+        // و به‌جای آن پیام سیستمی «این گفتگو بسته شده است» را نشان می‌دهیم.
+        if (status === 'closed') {
+            addMessage("user", escapeHtml(text), null, imagesToSend);
+            input.val("");
+            autoResizeInput();
+            clearAttachments();
+            addClosedMessage();
+            return;
+        }
+
+        const supportMode = isSupportMode(status);
+
+        // -------------------------------------------------------------
+        // ۲) نمایش پیام کاربر
+        // -------------------------------------------------------------
         addMessage("user", escapeHtml(text), null, imagesToSend);
         input.val("");
         autoResizeInput(); // برگشت به ارتفاع پیش‌فرض بعد از ارسال
@@ -903,6 +1053,48 @@ function buildReferencesListBox(references) {
         // پاک کردن عکس‌های انتخاب‌شده (نمایش آن‌ها در حباب کاربر کافی است)
         clearAttachments();
 
+        // -------------------------------------------------------------
+        // ۳) در حالت پشتیبانی:
+        //    - انیمیشن انتظار ربات (typing dots) نمایش داده نمی‌شود
+        //    - پیام به API ارسال می‌شود تا پشتیبان ببیند
+        //    - خطای نبود پاسخ ربات نمایش داده نمی‌شود
+        //    - یک اندیکاتور «در حالت پشتیبانی» نشان داده می‌شود
+        // -------------------------------------------------------------
+        if (supportMode) {
+            // اندیکاتور حالت پشتیبانی
+            addSupportModeIndicator();
+
+            // ارسال پیام به API (بدون استریم و بدون نمایش خطا)
+            // این کار به‌صورت silent انجام می‌شود تا تجربه‌ی کاربر خراب نشود.
+            const body = new URLSearchParams();
+            body.append('action', 'ai_agent_chat');
+            body.append('message', text);
+            body.append('session_id', sessionId || '');
+
+            if (imagesToSend.length > 0) {
+                imagesToSend.forEach(function (dataUrl, i) {
+                    body.append('images[' + i + ']', dataUrl);
+                });
+            }
+
+            try {
+                await fetch(ai_agent.ajax_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
+                    body: body.toString(),
+                    credentials: 'same-origin'
+                });
+                // پاسخ SSE را نادیده می‌گیریم — پشتیبان از طریق پنل جداگانه
+                // پاسخ خواهد داد و کاربر با رفرش صفحه آن را خواهد دید.
+            } catch (e) {
+                // خطا را به‌صورت silent نادیده می‌گیریم (مطابق درخواست کاربر)
+            }
+            return;
+        }
+
+        // -------------------------------------------------------------
+        // ۴) حالت ربات: رفتار معمول با استریم SSE
+        // -------------------------------------------------------------
         // ساخت یک پیام AI خالی که محتوای استریم‌شده داخل آن قرار می‌گیرد
         const stream = addStreamingMessage();
 
@@ -1180,6 +1372,35 @@ function renderHistoryMessage(msg) {
     }
 }
 
+    /*
+    ============================================
+    بارگذاری تاریخچه‌ی چت هنگام باز شدن مجدد سایت
+    (تا زمانی که کوکی session_id پاک نشده، تاریخچه حفظ می‌شود)
+
+    هر پیام از سمت API می‌تواند شامل این فیلدها باشد:
+        - role        : user | assistant | support | system
+        - content     : متن پیام
+        - references  : آرایه‌ای از { title, url }
+        - image_keys  : آرایه‌ای از کلیدهای عکس (برای پیام کاربر)
+
+    علاوه بر پیام‌ها، پاسخ شامل فیلدهای زیر در سطح بالاست:
+        - status            : bot | pending_human | human | closed
+        - last_message_role : user | assistant | support | system
+
+    بر اساس وضعیت جلسه (status) رفتار متفاوتی انجام می‌شود:
+        - closed         →  پیام‌ها نمایش داده می‌شوند + پیام سیستمی
+                            «این گفتگو بسته شده است»
+        - pending_human / human  →  پیام‌ها نمایش داده می‌شوند + اندیکاتور
+                                     «در حالت پشتیبانی» (بدون انیمیشن انتظار ربات)
+        - bot / assistant / ''   →  پیام‌ها نمایش داده می‌شوند (رفتار معمول)
+
+    برای پیام‌های کاربر، image_keys به addMessage پاس داده می‌شود تا
+    عکس‌ها به‌صورت lazy و یکی‌یکی از اندپوینت ai_agent_get_media دریافت
+    شوند و در گالری همان پیام نمایش داده شوند. پیام‌های دیگر معمولاً
+    image_keys ندارند اما در صورت وجود، نادیده گرفته می‌شوند (چون گالری
+    عکس فقط برای پیام کاربر تعریف شده است).
+    ============================================
+    */
     function loadChatHistory() {
         if (!sessionId) return;
         $.ajax({
@@ -1190,10 +1411,29 @@ function renderHistoryMessage(msg) {
                 session_id: sessionId
             },
             success: function (res) {
-                if (res.success && res.data && Array.isArray(res.data.messages) && res.data.messages.length > 0) {
+                if (!res.success || !res.data) return;
+
+                const data = res.data;
+                const sessionStatus = data.status || '';
+                // ذخیره‌ی وضعیت برای استفاده‌ی بعدی در sendMessage
+                currentSessionStatus = sessionStatus;
+
+                const msgs = Array.isArray(data.messages) ? data.messages : [];
+
+                if (msgs.length > 0) {
                     messages.empty(); // پیام خوش‌آمدگویی پیش‌فرض حذف می‌شود
-                    res.data.messages.forEach(renderHistoryMessage);
+                    msgs.forEach(renderHistoryMessage);
                 }
+
+                // بر اساس وضعیت جلسه، پیام سیستمی مناسب نمایش می‌دهیم
+                if (sessionStatus === 'closed') {
+                    addClosedMessage();
+                } else if (isSupportMode(sessionStatus)) {
+                    // در حالت پشتیبانی، اندیکاتور «در حالت پشتیبانی» را نمایش می‌دهیم
+                    // (بدون انیمیشن انتظار ربات — پشتیبان قرار است پاسخ دهد)
+                    addSupportModeIndicator();
+                }
+                // در حالت ربات (bot / assistant / '') هیچ پیام اضافه‌ای نمایش داده نمی‌شود
             }
         });
     }

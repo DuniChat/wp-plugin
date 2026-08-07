@@ -1088,10 +1088,11 @@
                 var $textarea = $('<textarea class="ai-agent-session-reply-input" placeholder="پاسخ خود را برای کاربر بنویسید..."></textarea>');
                 var $actionsRow = $('<div class="ai-agent-session-reply-actions"></div>');
                 var $sendBtn = $('<button type="button" class="button button-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
+                var $returnBotBtn = $('<button type="button" class="button button-secondary ai-agent-session-return-bot-btn">بازگردانی چت به ربات</button>');
                 var $closeBtn = $('<button type="button" class="button button-secondary ai-agent-session-close-btn">پایان چت</button>');
                 var $statusSpan = $('<span class="ai-agent-session-reply-status"></span>');
 
-                $actionsRow.append($sendBtn).append($closeBtn).append($statusSpan);
+                $actionsRow.append($sendBtn).append($returnBotBtn).append($closeBtn).append($statusSpan);
                 $wrap.append($textarea).append($actionsRow);
 
                 function sendReply() {
@@ -1197,6 +1198,74 @@
                         error: function() {
                             $closeBtn.prop('disabled', false).text('پایان چت');
                             $sendBtn.prop('disabled', false);
+                            $statusSpan.text('خطای غیرمنتظره در ارتباط با سرور.');
+                        }
+                    });
+                });
+
+                /*
+                ============================================
+                هندلر دکمه «بازگردانی چت به ربات»
+
+                این دکمه فقط برای جلسات «در انتظار پشتیبان» یا «پشتیبان»
+                نمایش داده می‌شود و به پشتیبان اجازه می‌دهد گفتگو را در هر
+                لحظه دوباره به حالت ربات بازگرداند تا کاربر پاسخ خودکار ربات
+                را دریافت کند.
+
+                اندپوینت بالادستی:
+                    POST /api/v1/chat/sessions/{session_id}/return-to-bot
+                    هدرها: X-API-Key, session-id
+                    بدنه: {"additionalProp1": {}}
+
+                پس از موفقیت:
+                    - بج وضعیت جلسه در هدر آکاردئون به «ربات» به‌روز می‌شود
+                    - باکس پاسخ (textarea + دکمه‌ها) غیرفعال می‌شود چون دیگر
+                      پشتیبان نباید پاسخی ارسال کند
+                    - پیام موفقیت نمایش داده می‌شود
+                ============================================
+                */
+                $returnBotBtn.on('click', function() {
+                    if (!confirm('آیا از بازگرداندن این چت به حالت ربات مطمئن هستید؟ پس از این عملیات، کاربر پاسخ‌های خودکار ربات را دریافت خواهد کرد.')) {
+                        return;
+                    }
+
+                    $returnBotBtn.prop('disabled', true).text('در حال بازگردانی...');
+                    $sendBtn.prop('disabled', true);
+                    $closeBtn.prop('disabled', true);
+                    $statusSpan.text('');
+
+                    $.ajax({
+                        url: ajaxurl,
+                        method: 'POST',
+                        data: {
+                            action: 'ai_agent_session_return_to_bot',
+                            nonce: nonce,
+                            session_id: sessionId
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                $statusSpan.text('چت به حالت ربات بازگردانده شد.');
+                                $textarea.prop('disabled', true);
+                                $returnBotBtn.text('بازگردانده شد');
+                                $returnBotBtn.prop('disabled', true);
+                                $sendBtn.prop('disabled', true);
+                                $closeBtn.prop('disabled', true);
+
+                                // به‌روزرسانی بج وضعیت در هدر آکاردئون بدون نیاز به رفرش کل لیست
+                                var $badge = $wrap.closest('.ai-agent-session-item').find('.ai-agent-session-status-badge');
+                                $badge.attr('data-status', 'bot').text(self.getStatusLabel('bot'));
+                            } else {
+                                $returnBotBtn.prop('disabled', false).text('بازگردانی چت به ربات');
+                                $sendBtn.prop('disabled', false);
+                                $closeBtn.prop('disabled', false);
+                                var msg = (response.data && response.data.message) ? response.data.message : 'خطا در بازگردانی چت به ربات.';
+                                $statusSpan.text(msg);
+                            }
+                        },
+                        error: function() {
+                            $returnBotBtn.prop('disabled', false).text('بازگردانی چت به ربات');
+                            $sendBtn.prop('disabled', false);
+                            $closeBtn.prop('disabled', false);
                             $statusSpan.text('خطای غیرمنتظره در ارتباط با سرور.');
                         }
                     });

@@ -302,6 +302,87 @@
     color: #fed7aa;
 }
 
+/* پیام سیستمی «این گفتگو بسته شده است»
+   از همان ساختار پیام escalate استفاده می‌کند ولی با رنگ قرمز
+   تا حس «بسته‌شدن» را منتقل کند. */
+.ai-closed-message {
+    align-self: center;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 92%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #fef2f2;
+    border: 1px dashed #ef4444;
+    text-align: right;
+}
+
+#ai-agent[data-theme="dark"] .ai-closed-message {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.ai-closed-icon {
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.ai-closed-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #b91c1c;
+    line-height: 1.6;
+}
+
+#ai-agent[data-theme="dark"] .ai-closed-text {
+    color: #fca5a5;
+}
+
+/* اندیکاتور «در حالت پشتیبانی» — پس از هر پیام کاربر در حالت
+   pending_human / human نمایش داده می‌شود. از ساختار پیام escalate
+   استفاده می‌کند با همان رنگ نارنجی (تا حس «در حال انتقال/پشتیبانی»
+   حفظ شود) ولی متن متفاوت. */
+.ai-support-mode-message {
+    align-self: center;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 92%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: #fff7ed;
+    border: 1px dashed #fb923c;
+    text-align: right;
+}
+
+#ai-agent[data-theme="dark"] .ai-support-mode-message {
+    background: rgba(251, 146, 60, 0.12);
+    border-color: rgba(251, 146, 60, 0.5);
+}
+
+.ai-support-mode-icon {
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.ai-support-mode-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #c2410c;
+    line-height: 1.6;
+}
+
+#ai-agent[data-theme="dark"] .ai-support-mode-text {
+    color: #fdba74;
+}
+
 /* حباب پیام کارشناس واقعی سیستم */
 .admin-message {
     background: #f1f5f9;

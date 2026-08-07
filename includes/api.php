@@ -719,9 +719,20 @@ function ai_agent_fetch_chat_history($session_id) {
         return false;
     }
 
+    // استخراج وضعیت جلسه و آخرین نقش پیام از شیء بالای پاسخ
+    // این فیلدها برای رفتار صحیح ویجت سمت کاربر ضروری‌اند (مثلاً
+    // برای تشخیص closed / pending_human / human / bot هنگام بارگذاری
+    // تاریخچه و قبل از ارسال هر پیام جدید).
+    $session_status = isset($data['status']) ? (string) $data['status'] : '';
+    $last_message_role = isset($data['last_message_role']) ? (string) $data['last_message_role'] : '';
+
     // فرمت جدید: پاسخ یک شیء است که messages داخل آن قرار دارد
     if (isset($data['messages']) && is_array($data['messages'])) {
-        return $data['messages'];
+        return array(
+            'messages'          => $data['messages'],
+            'status'            => $session_status,
+            'last_message_role' => $last_message_role,
+        );
     }
 
     // فرمت قدیم: خودِ $data آرایه‌ای از پیام‌ها بود
@@ -732,10 +743,104 @@ function ai_agent_fetch_chat_history($session_id) {
         if (!is_int($k)) { $is_list = false; break; }
     }
     if ($is_list) {
-        return $data;
+        return array(
+            'messages'          => $data,
+            'status'            => $session_status,
+            'last_message_role' => $last_message_role,
+        );
     }
 
-    return array();
+    return array(
+        'messages'          => array(),
+        'status'            => $session_status,
+        'last_message_role' => $last_message_role,
+    );
+}
+
+/*
+============================================
+واکشی فقط وضعیت فعلی یک جلسه‌ی چت از سرور
+اندپوینت: GET https://dunichat.ir/api/v1/chat/sessions/{session_id}/messages
+
+این تابع از همان اندپوینتِ messages استفاده می‌کند (تنها
+اندپوینتی است که status جلسه را برمی‌گرداند) و فقط فیلدهای مورد
+نیاز برای تصمیم‌گیری سمت کلاینت را استخراج می‌کند:
+
+    - status            : bot | pending_human | human | closed
+    - last_message_role : user | assistant | support | system
+
+کاربرد اصلی: ویجت چت سمت کاربر باید قبل از ارسال هر پیام، وضعیت
+جلسه را بررسی کند تا اگر پشتیبان چت را به ربات بازگردانده یا آن را
+بسته است، رفتار متناسب انجام دهد (به‌جای ارسال کورکورانه به API
+که ممکن است باعث نمایش انیمیشن انتظار یا خطای بی‌مورد شود).
+
+خروجی: آرایه‌ای با کلیدهای:
+    status  => success | error
+    message : پیام (در حالت خطا)
+    session_status    : وضعیت جلسه (bot | pending_human | human | closed | '')
+    last_message_role : نقش آخرین پیام (در صورت وجود)
+============================================
+*/
+function ai_agent_fetch_session_status($session_id) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key) || empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return array(
+            'status'            => 'error',
+            'message'           => 'API Key یا شناسه‌ی جلسه نامعتبر است.',
+            'session_status'    => '',
+            'last_message_role' => '',
+        );
+    }
+
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 15,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'            => 'error',
+            'message'           => 'خطای ارتباطی با سرور.',
+            'session_status'    => '',
+            'last_message_role' => '',
+        );
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return array(
+            'status'            => 'error',
+            'message'           => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'session_status'    => '',
+            'last_message_role' => '',
+        );
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    if (!is_array($data)) {
+        return array(
+            'status'            => 'error',
+            'message'           => 'پاسخ سرور نامعتبر است.',
+            'session_status'    => '',
+            'last_message_role' => '',
+        );
+    }
+
+    return array(
+        'status'            => 'success',
+        'message'           => '',
+        'session_status'    => isset($data['status']) ? (string) $data['status'] : '',
+        'last_message_role' => isset($data['last_message_role']) ? (string) $data['last_message_role'] : '',
+    );
 }
 
 /*
@@ -1958,5 +2063,88 @@ function ai_agent_close_session($session_id) {
     return array(
         'status'  => 'success',
         'message' => 'چت با موفقیت بسته شد.',
+    );
+}
+
+/*
+============================================
+بازگرداندن یک جلسه‌ی چت از پشتیبان انسانی به حالت ربات
+اندپوینت: POST https://dunichat.ir/api/v1/chat/sessions/{session_id}/return-to-bot
+
+هدرها:
+    X-API-Key  : کلید API کاربر (رمزگشایی‌شده از دیتابیس)
+    session-id : شناسه‌ی جلسه (همان UUID که در مسیر URL هم قرار دارد)
+
+بدنه:
+    {"additionalProp1": {}}
+(بدنه‌ی ثابت — سرور فقط وجود بدنه را بررسی می‌کند و محتوای آن
+برای این اندپوینت اهمیتی ندارد؛ بنابراین دقیقاً همین مقدار ارسال
+می‌شود تا با مستندات API هماهنگ بماند.)
+
+این تابع از پنل تاریخچه چت‌ها برای جلسات «در انتظار پشتیبان»
+یا «پشتیبان» فراخوانی می‌شود تا پشتیبان بتواند در هر لحظه گفتگو
+را دوباره به حالت ربات بازگرداند و کاربر پاسخ خودکار ربات را
+دریافت کند.
+
+پارامتر: $session_id (UUID)
+
+خروجی: آرایه‌ای با کلیدهای status و message
+============================================
+*/
+function ai_agent_return_session_to_bot($session_id) {
+
+    $api_key = ai_agent_get_api_key();
+
+    if (empty($api_key)) {
+        return array('status' => 'error', 'message' => 'API Key تنظیم نشده است.');
+    }
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return array('status' => 'error', 'message' => 'شناسه‌ی جلسه نامعتبر است.');
+    }
+
+    $url = 'https://dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/return-to-bot';
+
+    // بدنه‌ی ثابت مطابق مستندات API: {"additionalProp1": {}}
+    // از wp_json_encode با stdClass خالی استفاده می‌کنیم تا {} (و نه [])
+    // برای کلید additionalProp1 تولید شود.
+    $body = wp_json_encode(array('additionalProp1' => new stdClass()), JSON_UNESCAPED_UNICODE);
+
+    $response = wp_remote_post($url, array(
+        'timeout'     => 20,
+        'redirection' => 0,
+        'httpversion' => '1.1',
+        'headers'     => array(
+            'X-API-Key'    => $api_key,
+            'session-id'   => $session_id,
+            'Accept'       => 'application/json',
+            'Content-Type' => 'application/json; charset=utf-8',
+        ),
+        'body' => $body,
+    ));
+
+    if (is_wp_error($response)) {
+        return array(
+            'status'  => 'error',
+            'message' => 'خطای ارتباطی با سرور: ' . $response->get_error_message(),
+        );
+    }
+
+    $code      = wp_remote_retrieve_response_code($response);
+    $resp_body = wp_remote_retrieve_body($response);
+    $resp_data = json_decode($resp_body, true);
+
+    if ($code < 200 || $code >= 300) {
+        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+        return array(
+            'status'  => 'error',
+            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+        );
+    }
+
+    return array(
+        'status'  => 'success',
+        'message' => 'چت با موفقیت به حالت ربات بازگردانده شد.',
+        'data'    => is_array($resp_data) ? $resp_data : null,
     );
 }

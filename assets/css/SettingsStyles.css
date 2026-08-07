@@ -1454,6 +1454,27 @@ A modern, luxurious control panel experience.
 .ai-agent-session-close-btn:hover {
     background: var(--ai-agent-error-bg) !important;
 }
+/* دکمه «بازگردانی چت به ربات» — هم‌خانواده با دکمه پایان چت ولی با
+   رنگ آبی (info) تا از نظر بصری از «پایان چت» (قرمز) متمایز باشد
+   و در عین حال دقیقاً همان ساختار استایل و ابعاد را داشته باشد. */
+.ai-agent-session-return-bot-btn {
+    border-color: var(--ai-agent-info) !important;
+    color: var(--ai-agent-info) !important;
+    background: var(--ai-agent-surface) !important;
+    border-radius: var(--ai-agent-radius) !important;
+    padding: 0 16px !important;
+    height: 36px !important;
+    line-height: 34px !important;
+    font-weight: 600 !important;
+    transition: all var(--ai-agent-transition) !important;
+}
+.ai-agent-session-return-bot-btn:hover {
+    background: var(--ai-agent-info-bg) !important;
+}
+.ai-agent-session-return-bot-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 .ai-agent-session-reply-status {
     font-size: 12px;
     font-weight: 600;
