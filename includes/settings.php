@@ -652,7 +652,7 @@ function ai_agent_settings_page(){
                                 <label for="ai_agent_daily_message_limit" class="ai-agent-field-label">حداکثر پیام روزانه</label>
                                 <div class="ai-agent-number-input">
                                     <input type="number" min="0" step="1" name="ai_agent_settings[daily_message_limit]" id="ai_agent_daily_message_limit" value="<?php echo esc_attr(intval($settings['daily_message_limit'])); ?>" class="small-text" />
-                                    <span class="ai-agent-number-suffix">پیام / روز (۰ = نامحدود)</span>
+                                    <span class="ai-agent-number-suffix">پیام / روز </span>
                                 </div>
                             </div>
                         </div>
