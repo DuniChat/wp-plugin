@@ -399,10 +399,14 @@ A modern, luxurious control panel experience.
     display: flex;
     gap: 8px;
     align-items: stretch;
+    direction: ltr;
+    justify-content: flex-start;
 }
 .ai-agent-input-group .ai-agent-input,
 .ai-agent-input-group input[type="password"] {
     flex: 1;
+    text-align: left;
+    direction: ltr;
 }
 
 /* Number input */

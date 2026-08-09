@@ -635,7 +635,7 @@ function ai_agent_sync_images_data_handler() {
     array(
         array(
             'source_id'    => '123',
-            'content_type' => 'post',            // post | page | product | product_category
+            'content_type' => 'post',            // post | page | product | list
             'title'        => 'عنوان محتوا',
             'content'      => 'متن کامل محتوا',
             'url'          => 'https://example.com/...',
@@ -761,7 +761,7 @@ function ai_agent_collect_sync_items($sync_types) {
 
                 $items[] = array(
                     'source_id'    => (string) $term->term_id,
-                    'content_type' => 'product_category',
+                    'content_type' => 'list',
                     'title'        => $term_name,
                     'content'      => $desc_trim !== '' ? $desc_trim : 'بدون محتوا',
                     'url'          => $term_link_str !== '' ? $term_link_str : home_url('/'),

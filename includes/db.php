@@ -312,7 +312,7 @@ function ai_agent_is_valid_uuid($uuid) {
 
    - جدول wp_ai_agent_synced_items شامل سه ستون اصلی است:
        source_id     : آی‌دی یکتای محتوا در وردپرس (post_id یا term_id)
-       content_type  : نوع محتوا (post, page, product, product_category)
+       content_type  : نوع محتوا (post, page, product, list)
        synced_at     : تاریخ و ساعت آخرین باری که این آیتم سینک شده
 
    - تاریخ آخرین سینک کلی (last sync time) در wp_options با کلید
@@ -337,7 +337,7 @@ function ai_agent_is_valid_uuid($uuid) {
         'post'            => array('1', '5', '12'),
         'page'            => array('2', '7'),
         'product'         => array('45', '46'),
-        'product_category'=> array('10', '11'),
+        'list'            => array('10', '11'),
     )
 
 ورودی $content_types (اختیاری): اگر ارسال شود، فقط این نوع‌ها برگردانده می‌شوند
@@ -430,7 +430,7 @@ function ai_agent_get_all_synced_job_ids() {
 
 ورودی:
     $source_id    : آی‌دی محتوا در وردپرس (post_id یا term_id)
-    $content_type : نوع محتوا (post, page, product, product_category)
+    $content_type : نوع محتوا (post, page, product, list)
 ============================================
 */
 function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null) {

@@ -1021,7 +1021,7 @@ function ai_agent_fetch_media($key) {
     "items": [
         {
             "source_id":    "string",   // آی‌دی یکتای محتوا در وردپرس
-            "content_type": "page",     // post | page | product | product_category
+            "content_type": "page",     // post | page | product | list
             "title":        "string",
             "content":      "string",
             "url":          "string",
@@ -1069,7 +1069,7 @@ function ai_agent_push_sync_content($items) {
     }
 
     // 2.b پاکسازی هر آیتم (همون منطق قبلی)
-    $allowed_content_types = array('post', 'page', 'product', 'product_category');
+    $allowed_content_types = array('post', 'page', 'product', 'list');
     $allowed_statuses      = array('publish', 'draft', 'pending', 'private', 'future');
     $clean_items = array();
     $skipped_count = 0;

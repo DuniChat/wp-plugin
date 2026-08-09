@@ -1,15 +1,15 @@
 <?php
 /*
-Plugin Name: Ham Goftar
+Plugin Name: dunichat
 Plugin URI: https://dunichat.ir
-Description: AI Floating Chat with Admin Support & Data Syncing
+Description: دستیار هوشمند دانیچت محصولی از دانیجت
 Version: 1.0.0
 Requires at least: 6.0
 Requires PHP: 7.4
-Author: Mani
+Author: ManiKamyabi
 Author URI: https://dunichat.ir
 License: GPL v2 or later
-Text Domain: ai-agent
+Text Domain: dunichat
 */
 
 if (!defined('ABSPATH')) {
