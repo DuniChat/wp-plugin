@@ -332,10 +332,21 @@
                         var d = response.data;
                         // ساخت پیام خلاصه با جزئیات دقیق
                         var summary = '';
-                        if (d.new_count > 0 && d.deleted_count > 0) {
-                            summary = d.new_count + ' مورد جدید اضافه و ' + d.deleted_count + ' مورد حذف شد';
-                        } else if (d.new_count > 0) {
-                            summary = d.new_count + ' مورد جدید اضافه شد';
+                        var trulyNew = (typeof d.new_truly_new_count !== 'undefined') ? d.new_truly_new_count : d.new_count;
+                        var failedResent = (typeof d.failed_resent_count !== 'undefined') ? d.failed_resent_count : 0;
+
+                        if (trulyNew > 0 && failedResent > 0 && d.deleted_count > 0) {
+                            summary = trulyNew + ' مورد جدید اضافه، ' + failedResent + ' مورد ناموفق مجدداً ارسال و ' + d.deleted_count + ' مورد حذف شد';
+                        } else if (trulyNew > 0 && failedResent > 0) {
+                            summary = trulyNew + ' مورد جدید اضافه و ' + failedResent + ' مورد ناموفق مجدداً ارسال شد';
+                        } else if (failedResent > 0 && d.deleted_count > 0) {
+                            summary = failedResent + ' مورد ناموفق مجدداً ارسال و ' + d.deleted_count + ' مورد حذف شد';
+                        } else if (trulyNew > 0 && d.deleted_count > 0) {
+                            summary = trulyNew + ' مورد جدید اضافه و ' + d.deleted_count + ' مورد حذف شد';
+                        } else if (trulyNew > 0) {
+                            summary = trulyNew + ' مورد جدید اضافه شد';
+                        } else if (failedResent > 0) {
+                            summary = failedResent + ' مورد ناموفق مجدداً ارسال شد';
                         } else if (d.deleted_count > 0) {
                             summary = d.deleted_count + ' مورد حذف شد';
                         } else {
@@ -501,7 +512,13 @@
                     $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         var d = response.data;
-                        $statusEl.text('وضعیت با موفقیت به‌روزرسانی شد.');
+                        // نمایش تعداد رکوردهای به‌روزرسانی‌شده در جدول + وضعیت کلی
+                        var updatedCount = (typeof d.updated_count !== 'undefined') ? d.updated_count : null;
+                        if (updatedCount !== null) {
+                            $statusEl.text('وضعیت با موفقیت به‌روزرسانی شد (' + updatedCount + ' رکورد در جدول بروز شد).');
+                        } else {
+                            $statusEl.text('وضعیت با موفقیت به‌روزرسانی شد.');
+                        }
                         if (d.summary) {
                             aiAgentRenderStatusChart(d.summary);
                         }

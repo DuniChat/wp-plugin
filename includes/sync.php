@@ -109,9 +109,41 @@ function ai_agent_check_sync_status_handler() {
         ));
     }
 
+    /*
+    ============================================
+    ۶. به‌روزرسانی وضعیت آیتم‌ها در جدول wp_ai_agent_synced_items
+
+    پاسخ سرور شامل آرایه‌ای از results است که هر آیتم حداقل دارای
+    job_id و status است. هر job_id را در جدول پیدا کرده و وضعیتش را
+    به‌روزرسانی می‌کنیم. این کار باعث می‌شود در سینک بعدی، آیتم‌های
+    ناموفق (failed) به‌صورت خودکار شناسایی و مجدداً ارسال شوند.
+
+    ساختار مورد انتظار هر آیتم در results:
+        {
+            "job_id": "uuid",
+            "status": "queued|processing|completed|failed|not_found",
+            "source_id": "123",      // اختیاری
+            "content_type": "post"   // اختیاری
+        }
+    ============================================
+    */
+    $updated_count = 0;
+    if (!empty($result['results']) && is_array($result['results'])) {
+        foreach ($result['results'] as $r) {
+            if (!is_array($r) || empty($r['job_id']) || empty($r['status'])) {
+                continue;
+            }
+            $updated = ai_agent_update_synced_status_by_job_id($r['job_id'], $r['status']);
+            if ($updated !== false && $updated > 0) {
+                $updated_count++;
+            }
+        }
+    }
+
     wp_send_json_success(array(
-        'results' => $result['results'],
-        'summary' => $result['summary'],
+        'results'        => $result['results'],
+        'summary'        => $result['summary'],
+        'updated_count'  => $updated_count,
     ));
 }
 
@@ -195,16 +227,43 @@ function ai_agent_sync_data_handler() {
     // ۶. دریافت نقشه‌ی آی‌دی‌های سینک‌شده از دیتابیس
     $synced_map = ai_agent_get_synced_items_map();
 
+    /*
+    ============================================
+    ۶.۵. دریافت آیتم‌های ناموفق (failed) از جدول synced_items
+
+    این آیتم‌ها قبلاً به سرور ارسال شده‌اند ولی پردازششان در سرور ناموفق
+    بوده (همان موارد قرمزرنگ در نمودار وضعیت). این آیتم‌ها را در current_items
+    پیدا کرده و به‌جای موجود (existing) به‌عنوان «نیازمند ارسال مجدد» به
+    new_items اضافه می‌کنیم تا دوباره به /sync/content ارسال شوند.
+
+    کلیدهای failed_keys به‌فرمت "content_type::source_id" هستند تا جستجو
+    در حلقه‌ی تفکیک O(1) باشد.
+    ============================================
+    */
+    $failed_rows = ai_agent_get_failed_synced_items();
+    $failed_keys = array();
+    if (!empty($failed_rows)) {
+        foreach ($failed_rows as $row) {
+            $failed_keys[$row->content_type . '::' . $row->source_id] = true;
+        }
+    }
+
     // ۷. تفکیک محتوا به سه گروه: جدید، موجود، حذف‌شده
     $new_items      = array();  // در وردپرس هست، اما در جدول سینک نیست
     $existing_items = array();  // در هر دو هست (فقط تاریخ به‌روزرسانی می‌شود)
     $deleted_items  = array();  // در جدول سینک هست، اما در وردپرس حذف شده
+    $failed_in_wp   = 0;        // تعداد آیتم‌های ناموفقی که هنوز در وردپرس موجودند و مجدداً ارسال می‌شوند
 
     foreach ($current_items as $item) {
         $sid = (string) $item['source_id'];
         $ct  = (string) $item['content_type'];
+        $key = $ct . '::' . $sid;
 
-        if (isset($synced_map[$ct]) && in_array($sid, $synced_map[$ct], true)) {
+        if (isset($failed_keys[$key])) {
+            // آیتم قبلاً سینک شده ولی در سرور ناموفق بوده → باید مجدداً ارسال شود
+            $new_items[]   = $item;
+            $failed_in_wp++;
+        } elseif (isset($synced_map[$ct]) && in_array($sid, $synced_map[$ct], true)) {
             $existing_items[] = $item;
         } else {
             $new_items[] = $item;
@@ -232,6 +291,7 @@ function ai_agent_sync_data_handler() {
 
     // ۸. ارسال محتوای جدید به /sync/content
     $new_sent_count = 0;
+    $failed_resent_count = 0;   // تعداد آیتم‌های ناموفقی که با موفقیت مجدداً ارسال شدند
     $content_error = '';
 
 if (!empty($new_items)) {
@@ -247,7 +307,25 @@ if (!empty($new_items)) {
             $results_map[$key] = $r['job_id'];
         }
 
+        /*
+        شمارش آیتم‌های ناموفقی که در این سینک با موفقیت مجدداً ارسال شدند.
+        این تعداد از بین failed_rows و نتایج سرور به‌دست می‌آید تا در خلاصه‌ی
+        نهایی به کاربر نمایش داده شود.
+        */
+        if (!empty($failed_rows)) {
+            foreach ($failed_rows as $row) {
+                $key = $row->content_type . '::' . $row->source_id;
+                if (isset($results_map[$key])) {
+                    $failed_resent_count++;
+                }
+            }
+        }
+
         // فقط آیتم‌هایی که واقعاً در پاسخ سرور بودند را synced علامت بزن
+        // برای این آیتم‌ها status را به‌صورت صریح 'queued' تنظیم می‌کنیم چون
+        // هم آیتم‌های کاملاً جدید هستند و هم آیتم‌های ناموفقی که مجدداً ارسال
+        // شده‌اند. در هر دو حالت، سرور آیتم را در صف پردازش قرار داده است
+        // و job_id جدیدی برگردانده است.
         $synced_batch = array();
         foreach ($new_items as $item) {
             $key = $item['content_type'] . '::' . $item['source_id'];
@@ -256,6 +334,7 @@ if (!empty($new_items)) {
                     'source_id'    => $item['source_id'],
                     'content_type' => $item['content_type'],
                     'job_id'       => $results_map[$key],
+                    'status'       => 'queued',
                 );
             }
         }
@@ -302,8 +381,18 @@ if (!empty($new_items)) {
     // ۱۲. ساخت پیام خلاصه برای نمایش به کاربر
     $summary_parts = array();
 
-    if ($new_sent_count > 0) {
-        $summary_parts[] = $new_sent_count . ' مورد جدید اضافه شد';
+    // محاسبه‌ی تعداد آیتم‌های کاملاً جدید (غیر از ناموفق‌های مجدداً ارسال‌شده)
+    $truly_new_count = $new_sent_count - $failed_resent_count;
+    if ($truly_new_count < 0) {
+        $truly_new_count = 0; // محتاطانه در صورت ناسازگاری شمارش سرور
+    }
+
+    if ($truly_new_count > 0) {
+        $summary_parts[] = $truly_new_count . ' مورد جدید اضافه شد';
+    }
+
+    if ($failed_resent_count > 0) {
+        $summary_parts[] = $failed_resent_count . ' مورد ناموفق مجدداً ارسال شد';
     }
 
     if ($deleted_sent_count > 0) {
@@ -335,12 +424,14 @@ if (!empty($new_items)) {
     }
 
     wp_send_json_success(array(
-        'message'        => $message,
-        'new_count'      => $new_sent_count,
-        'deleted_count'  => $deleted_sent_count,
-        'total_count'    => $total_current,
-        'last_sync_time' => $sync_time,
-        'sync_type'      => 'incremental',
+        'message'             => $message,
+        'new_count'           => $new_sent_count,
+        'new_truly_new_count' => $truly_new_count,
+        'failed_resent_count' => $failed_resent_count,
+        'deleted_count'       => $deleted_sent_count,
+        'total_count'         => $total_current,
+        'last_sync_time'      => $sync_time,
+        'sync_type'           => 'incremental',
     ));
 }
 

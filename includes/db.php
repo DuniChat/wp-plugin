@@ -22,15 +22,25 @@ function ai_agent_install(){
     // این جدول برای جلوگیری از ارسال مجدد محتوایی که قبلاً به سرور فرستاده شده
     // استفاده می‌شود. در هر بار سینک، فقط محتوای جدید (آی‌دی‌های جدید) ارسال
     // می‌شود و محتوای حذف‌شده از وردپرس، به اندپوینت delete کال زده می‌شود.
+    //
+    // ستون status وضعیت پردازش هر آیتم را در سرور نگه می‌دارد و توسط
+    // دکمه‌ی «استعلام وضعیت» به‌روزرسانی می‌شود. مقدارهای ممکن:
+    //   queued      → در صف پردازش (پیش‌فرض هنگام ارسال اولیه یا مجدد)
+    //   processing  → در حال پردازش توسط سرور
+    //   completed   → پردازش با موفقیت انجام شده
+    //   failed      → پردازش ناموفق (با دکمه‌ی «همگام‌سازی اطلاعات» مجدداً ارسال می‌شود)
+    //   not_found   → سرور آی‌دی job را نمی‌شناسد (پاک شده یا منقضی شده)
     $sql3 = "CREATE TABLE {$table_synced} (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     source_id VARCHAR(64) NOT NULL,
     content_type VARCHAR(32) NOT NULL,
     job_id VARCHAR(64) DEFAULT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'queued',
     synced_at DATETIME NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY source_type (source_id, content_type),
-    KEY content_type (content_type)
+    KEY content_type (content_type),
+    KEY status (status)
     ) {$charset_collate};";
 
     dbDelta($sql3);
@@ -59,6 +69,17 @@ function ai_agent_maybe_install(){
     $column_exists = $wpdb->get_var("SHOW COLUMNS FROM {$table_synced} LIKE 'job_id'");
     if (empty($column_exists)) {
         ai_agent_install();
+    }
+
+    // ===== Migration: افزودن ستون status به نصب‌های قدیمی =====
+    // این ستون در نسخه‌ی جدید اضافه شده است. اگر جدول از قبل وجود داشت
+    // ولی این ستون را نداشت، با ALTER TABLE اضافه می‌شود تا نیازی به
+    // غیرفعال/فعال کردن مجدد پلاگین نباشد.
+    $status_column = $wpdb->get_var("SHOW COLUMNS FROM {$table_synced} LIKE 'status'");
+    if (empty($status_column)) {
+        $wpdb->query("ALTER TABLE {$table_synced} ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'queued' AFTER job_id");
+        // افزودن ایندکس روی status برای کوئری‌های پراستفاده (مثل گرفتن آیتم‌های failed)
+        $wpdb->query("ALTER TABLE {$table_synced} ADD KEY status (status)");
     }
 }
 
@@ -423,17 +444,64 @@ function ai_agent_get_all_synced_job_ids() {
 
 /*
 ============================================
-ثبت یا به‌روزرسانی یک آیتم سینک‌شده در جدول
+دریافت لیست تمام آیتم‌های سینک‌شده با وضعیت مشخص
 
-اگر آیتم از قبل وجود داشته باشد، فقط تاریخ synced_at به‌روزرسانی می‌شود
-(REPLACE INTO با UNIQUE KEY باعث این رفتار می‌شود).
+این تابع برای پیدا کردن آیتم‌های ناموفق (status='failed') استفاده می‌شود
+تا در سینک بعدی به‌صورت خودکار مجدداً به سرور ارسال شوند.
 
-ورودی:
-    $source_id    : آی‌دی محتوا در وردپرس (post_id یا term_id)
-    $content_type : نوع محتوا (post, page, product, list)
+ورودی $status: وضعیت مورد نظر (پیش‌فرض: 'failed')
+خروجی: آرایه‌ای از آبجکت‌ها با کلیدهای source_id, content_type, job_id, status, synced_at
 ============================================
 */
-function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null) {
+function ai_agent_get_synced_items_by_status($status = 'failed') {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return array();
+    }
+
+    $status = (string) $status;
+    if ($status === '') {
+        return array();
+    }
+
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT source_id, content_type, job_id, status, synced_at FROM {$table} WHERE status = %s",
+        $status
+    ));
+
+    return is_array($rows) ? $rows : array();
+}
+
+/*
+============================================
+میان‌بر: دریافت آیتم‌های ناموفق (failed)
+
+خروجی: همان خروجی ai_agent_get_synced_items_by_status('failed')
+============================================
+*/
+function ai_agent_get_failed_synced_items() {
+    return ai_agent_get_synced_items_by_status('failed');
+}
+
+/*
+============================================
+به‌روزرسانی وضعیت یک آیتم سینک‌شده بر اساس job_id
+
+این تابع در هندلر «استعلام وضعیت» فراخوانی می‌شود تا پس از دریافت
+وضعیت‌های جدید از سرور، جدول را به‌روز کند. job_id شناسه یکتای هر
+ردیف در سطح سرور است، بنابراین بهترین کلید برای به‌روزرسانی است.
+
+ورودی:
+    $job_id : آی‌دی job برگشتی از سرور
+    $status : وضعیت جدید (queued|processing|completed|failed|not_found)
+
+خروجی: تعداد ردیف‌های به‌روزرسانی‌شده (int) یا false در صورت خطا
+============================================
+*/
+function ai_agent_update_synced_status_by_job_id($job_id, $status) {
 
     global $wpdb;
     $table = $wpdb->prefix.'ai_agent_synced_items';
@@ -442,15 +510,139 @@ function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null) {
         return false;
     }
 
-    // اگر job_id ارسال نشده (مثلا فقط داریم synced_at را رفرش می‌کنیم)،
-    // مقدار قبلی را از دیتابیس می‌خوانیم تا با REPLACE INTO پاک نشود
+    $job_id = (string) $job_id;
+    $status = (string) $status;
+
+    if ($job_id === '' || $status === '') {
+        return false;
+    }
+
+    return $wpdb->update(
+        $table,
+        array(
+            'status'    => $status,
+            'synced_at' => current_time('mysql'),
+        ),
+        array('job_id' => $job_id),
+        array('%s', '%s'),
+        array('%s')
+    );
+}
+
+/*
+============================================
+به‌روزرسانی وضعیت یک آیتم سینک‌شده بر اساس source_id و content_type
+
+این تابع برای حالت‌هایی استفاده می‌شود که job_id در دسترس نیست و
+می‌خواهیم با کلید ترکیبی source_id+content_type وضعیت را به‌روز کنیم.
+
+ورودی:
+    $source_id    : آی‌دی محتوا در وردپرس
+    $content_type : نوع محتوا
+    $status       : وضعیت جدید
+    $job_id       : در صورت ارسال، job_id هم به‌روزرسانی می‌شود (اختیاری)
+
+خروجی: تعداد ردیف‌های به‌روزرسانی‌شده (int) یا false در صورت خطا
+============================================
+*/
+function ai_agent_update_synced_item_status($source_id, $content_type, $status, $job_id = null) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return false;
+    }
+
+    $data = array(
+        'status'    => (string) $status,
+        'synced_at' => current_time('mysql'),
+    );
+    $format = array('%s', '%s');
+
+    if ($job_id !== null) {
+        $data['job_id'] = (string) $job_id;
+        $format[] = '%s';
+    }
+
+    return $wpdb->update(
+        $table,
+        $data,
+        array(
+            'source_id'    => (string) $source_id,
+            'content_type' => (string) $content_type,
+        ),
+        $format,
+        array('%s', '%s')
+    );
+}
+
+/*
+============================================
+دریافت وضعیت فعلی یک آیتم سینک‌شده
+
+خروجی: رشته‌ی وضعیت (queued|processing|completed|failed|not_found)
+یا رشته‌ی خالی اگر آیتم وجود نداشت.
+============================================
+*/
+function ai_agent_get_synced_item_status($source_id, $content_type) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return '';
+    }
+
+    $status = $wpdb->get_var($wpdb->prepare(
+        "SELECT status FROM {$table} WHERE source_id=%s AND content_type=%s",
+        (string) $source_id,
+        (string) $content_type
+    ));
+
+    return $status !== null ? (string) $status : '';
+}
+
+/*
+============================================
+ثبت یا به‌روزرسانی یک آیتم سینک‌شده در جدول
+
+اگر آیتم از قبل وجود داشته باشد، فقط تاریخ synced_at به‌روزرسانی می‌شود
+(REPLACE INTO با UNIQUE KEY باعث این رفتار می‌شود).
+
+ورودی:
+    $source_id    : آی‌دی محتوا در وردپرس (post_id یا term_id)
+    $content_type : نوع محتوا (post, page, product, list)
+    $job_id       : آی‌دی job برگشتی از سرور (در صورت ارسال null، مقدار قبلی حفظ می‌شود)
+    $status       : وضعیت پردازش در سرور (queued|processing|completed|failed|not_found)
+                    اگر null ارسال شود، وضعیت قبلی ردیف حفظ می‌شود (یا پیش‌فرض 'queued').
+                    هنگام ارسال اولیه یا مجدد یک آیتم، مقدار 'queued' ارسال شود.
+============================================
+*/
+function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $status = null) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return false;
+    }
+
+    // اگر job_id یا status ارسال نشده باشند، مقادیر قبلی را از دیتابیس می‌خوانیم
+    // تا با REPLACE INTO پاک نشوند. این رفتار برای حفظ وضعیت آیتم‌های موجود
+    // هنگام به‌روزرسانی فقط synced_at ضروری است.
+    $existing = $wpdb->get_row($wpdb->prepare(
+        "SELECT job_id, status FROM {$table} WHERE source_id=%s AND content_type=%s",
+        (string) $source_id,
+        (string) $content_type
+    ));
+
     if ($job_id === null) {
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT job_id FROM {$table} WHERE source_id=%s AND content_type=%s",
-            (string) $source_id,
-            (string) $content_type
-        ));
-        $job_id = $existing !== null ? $existing : '';
+        $job_id = ($existing && $existing->job_id !== null) ? $existing->job_id : '';
+    }
+    if ($status === null) {
+        // اگر ردیف از قبل وجود داشت، وضعیت قبلی را حفظ کن؛ در غیر این صورت 'queued'
+        $status = ($existing && $existing->status !== null && $existing->status !== '') ? $existing->status : 'queued';
     }
 
     return $wpdb->replace(
@@ -459,9 +651,10 @@ function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null) {
             'source_id'    => (string) $source_id,
             'content_type' => (string) $content_type,
             'job_id'       => (string) $job_id,
+            'status'       => (string) $status,
             'synced_at'    => current_time('mysql'),
         ),
-        array('%s', '%s', '%s', '%s')
+        array('%s', '%s', '%s', '%s', '%s')
     );
 }
 
@@ -489,7 +682,10 @@ function ai_agent_mark_items_synced_batch($items) {
             continue;
         }
         $job_id = isset($item['job_id']) ? $item['job_id'] : null;
-        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'], $job_id)) {
+        // اگر status در آیتم تعریف نشده بود، null ارسال می‌کنیم تا تابع
+        // mark_item_synced وضعیت قبلی را حفظ کند (یا 'queued' پیش‌فرض).
+        $status = isset($item['status']) ? $item['status'] : null;
+        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'], $job_id, $status)) {
             $count++;
         }
     }
