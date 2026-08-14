@@ -103,7 +103,7 @@ add_filter('pre_update_option_ai_agent_settings', 'ai_agent_persist_api_key_on_s
 روند کار:
   ۱) API Key رمزگشایی‌شده از wp_options خوانده می‌شود؛ اگر خالی بود
      کالی به سرور زده نمی‌شود.
-  ۲) درخواست GET به https://dunichat.ir/api/v1/sync/settings زده می‌شود.
+  ۲) درخواست GET به https://api.dunichat.ir/api/v1/sync/settings زده می‌شود.
   ۳) ساختار پاسخ بررسی می‌شود:
        - خطای ارتباطی / کد HTTP غیر 200
        - پاسخ شامل کلید detail (خطای سرور، مثل کلید API نامعتبر)

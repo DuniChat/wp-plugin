@@ -123,7 +123,7 @@ dunichat-ai-agent/
 │
 ├── 🗄️  db.php            # جداول دیتابیس، رمزنگاری API Key، مدیریت آیتم‌های سینک‌شده
 ├── ⚙️  settings.php       # صفحه‌ی تنظیمات، sanitize، همگام‌سازی تنظیمات با سرور
-├── 🌐 api.php             # تمام تماس‌های HTTP/cURL به سرویس dunichat.ir (chat/sync/history)
+├── 🌐 api.php             # تمام تماس‌های HTTP/cURL به سرویس api.dunichat.ir (chat/sync/history)
 ├── 🧩 widget.php          # رندر HTML ویجت چت شناور در فوتر سایت
 ├── 🔁 ajax.php            # هندلرهای AJAX (چت SSE، تاریخچه، ‌سشن‌ها، پاسخ پشتیبان)
 ├── 🔄 sync.php            # منطق جمع‌آوری و ارسال محتوای وردپرس/ووکامرس
@@ -147,7 +147,7 @@ sequenceDiagram
     participant U as 👤 کاربر سایت
     participant W as 🧩 ویجت چت
     participant WP as 🐘 وردپرس (ajax.php)
-    participant API as ☁️ dunichat.ir API
+    participant API as ☁️ api.dunichat.ir API
 
     U->>W: ارسال پیام / عکس
     W->>WP: POST admin-ajax.php (ai_agent_chat)

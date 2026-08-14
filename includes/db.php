@@ -329,7 +329,7 @@ function ai_agent_is_valid_uuid($uuid) {
    ============================================================
 
    این توابع برای پیگیری‌ی محتواهایی که قبلاً به سرور همگام‌سازی
-   (https://dunichat.ir/api/v1/sync/content) ارسال شده‌اند استفاده می‌شوند.
+   (https://api.dunichat.ir/api/v1/sync/content) ارسال شده‌اند استفاده می‌شوند.
 
    - جدول wp_ai_agent_synced_items شامل سه ستون اصلی است:
        source_id     : آی‌دی یکتای محتوا در وردپرس (post_id یا term_id)

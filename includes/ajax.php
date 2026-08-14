@@ -357,7 +357,7 @@ add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler'
 کند. کلاینت برای هر کلید در image_keys یک درخواست جداگانه (یکی‌یکی)
 به این اندپوینت می‌فرستد.
 
-اندپوینت هدف: GET https://dunichat.ir/api/v1/media/site/{key}
+اندپوینت هدف: GET https://api.dunichat.ir/api/v1/media/site/{key}
 هدر: X-API-Key (همان کلید API کاربر که در دیتابیس ذخیره شده)
 
 پارامترهای ورودی (POST یا GET):
