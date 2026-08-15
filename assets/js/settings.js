@@ -83,15 +83,15 @@
 
                 // نمایش قیمت ورودی و خروجی مدل (به ازای هر ۱ میلیون توکن) تا کاربر بهتر انتخاب کند
                 if (model && typeof model === 'object') {
-                    var hasInPrice  = typeof model.system_input_price_irr_per_1m !== 'undefined' && model.system_input_price_irr_per_1m !== null;
-                    var hasOutPrice = typeof model.system_output_price_irr_per_1m !== 'undefined' && model.system_output_price_irr_per_1m !== null;
+                    var hasInPrice  = typeof model.system_input_price_irr_per_1000_tokens !== 'undefined' && model.system_input_price_irr_per_1000_tokens !== null;
+                    var hasOutPrice = typeof model.system_output_price_irr_per_5000_tokens !== 'undefined' && model.system_output_price_irr_per_5000_tokens !== null;
 
                     if (hasInPrice || hasOutPrice) {
                         var priceParts = [];
-                        if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1m));
-                        if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_1m));
+                        if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1000_tokens));
+                        if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_5000_tokens));
 
-                        $item.append($('<div></div>').text(priceParts.join(' · ') + ' (به ازای هر ۱ میلیون توکن)'));
+                        $item.append($('<div></div>').text(priceParts.join(' · ') + ' (به ازای هر 1000 توکن)'));
                     }
                 }
 
