@@ -753,6 +753,56 @@ button.ai-references-title.ai-references-toggle {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
+/* حالت lazy-loading برای آیتم‌های گالری رفرنس که type=image هستند:
+   همان ساختار placeholder گالری پیام کاربر را داراست (کلاس is-loading
+   و یک فرزند .user-gallery-placeholder) اما در گالری رفرنس با ابعاد
+   ۵۶x۵۶px. این قانون‌ها placeholder خاکستری با انیمیشن shimmer
+   می‌سازند تا قبل از بارگذاری عکس از سرور، یک حالت loading
+   مشاهظه‌پذیر داشته باشیم. */
+.ai-references-gallery-wrap .ai-reference-gallery-item.is-loading {
+    position: relative;
+    background: #e5e7eb;
+    cursor: default;
+}
+.ai-references-gallery-wrap .ai-reference-gallery-item .user-gallery-placeholder {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        100deg,
+        rgba(0, 0, 0, 0.04) 30%,
+        rgba(0, 0, 0, 0.10) 50%,
+        rgba(0, 0, 0, 0.04) 70%
+    );
+    background-size: 200% 100%;
+    animation: ai-gallery-shimmer 1.4s linear infinite;
+}
+#ai-agent[data-theme="dark"] .ai-references-gallery-wrap .ai-reference-gallery-item.is-loading {
+    background: rgba(255, 255, 255, 0.08);
+}
+#ai-agent[data-theme="dark"] .ai-references-gallery-wrap .ai-reference-gallery-item .user-gallery-placeholder {
+    background: linear-gradient(
+        100deg,
+        rgba(255, 255, 255, 0.04) 30%,
+        rgba(255, 255, 255, 0.12) 50%,
+        rgba(255, 255, 255, 0.04) 70%
+    );
+    background-size: 200% 100%;
+    animation: ai-gallery-shimmer 1.4s linear infinite;
+}
+.ai-references-gallery-wrap .ai-reference-gallery-item.is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+.ai-references-gallery-wrap .ai-reference-gallery-item.is-error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    cursor: default;
+}
+
 /* حالت کشیدن (drag) گالری با موس: نشانگر دست و غیرفعال شدن انتخاب متن/عکس */
 .ai-references-gallery-wrap .ai-references-gallery {
     cursor: grab;

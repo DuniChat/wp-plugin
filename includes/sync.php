@@ -1144,12 +1144,31 @@ function ai_agent_get_reference_image_url($url) {
 
 /*
 ============================================
-غنی‌سازی آرایه‌ی رفرنس‌های دریافتی از مدل با افزودن کلید image
+غنی‌سازی آرایه‌ی رفرنس‌های دریافتی از مدل با افزودن کلید image و type
 
-ورودی: آرایه‌ای از رفرنس‌ها با ساختار { title, url }
-خروجی: همان آرایه با کلید اضافه‌ی image برای هر آیتم
-    (image خالی یعنی آن منبع عکس شاخص ندارد؛ فرانت‌اند آن را
-    نادیده می‌گیرد و از گالری حذف می‌کند)
+ورودی: آرایه‌ای از رفرنس‌ها با ساختار { title, url, type? }
+    نوع(type) می‌تواند یکی از مقادیر "text" یا "image" باشد. اگر
+    فیلد type در ورودی نباشد، مقدار پیش‌فرض "text" در نظر گرفته
+    می‌شود تا با رفرنس‌های قدیمی (که type نداشتند) سازگار بماند.
+
+خروجی: همان آرایه با کلیدهای اضافه‌ی image و type برای هر آیتم
+    - برای رفرنس‌های "text"  : image = URL عکس شاخص محصول (یا رشته‌ی خالی)
+    - برای رفرنس‌های "image" : image همیشه خالی است، چون url خود آن‌ها
+      به یک فایل عکس اشاره می‌کند و فرانت‌اند باید آن را به‌صورت lazy
+      بارگذاری کند (با استفاده از url به‌عنوان کلید عکس در اندپوینت
+      ai_agent_get_media).
+
+نکته‌ی مهم درباره‌ی فیلتر کردن:
+    ۱) رفرنس‌های تصویری (type=image) حذف نمی‌شوند چون خود عکس
+       باید در گالری نمایش داده شود. فقط «لینک» آن‌ها در فهرست
+       متنی «موارد مرتبط» توسط فرانت‌اند نادیده گرفته می‌شود.
+    ۲) رفرنس‌های تکراری (با url یکسان) فقط یک‌بار در خروجی ظاهر
+       می‌شوند تا در فهرست «موارد مرتبط» آیتم تکراری نداشته باشیم.
+
+این تابع به‌عنوان یک نقطه‌ی مرکزی برای هر دو اندپوینت زیر استفاده
+می‌شود و در هر دو حالت خروجی یکسانی تولید می‌کند:
+    - استریم زنده‌ی /api/v1/chat/messages (از طریق callback on_references)
+    - بارگذاری تاریخچه از /api/v1/chat/sessions/{session_id}/messages
 ============================================
 */
 function ai_agent_enrich_references_with_images($references) {
@@ -1158,17 +1177,45 @@ function ai_agent_enrich_references_with_images($references) {
         return array();
     }
 
-    $enriched = array();
+    $enriched  = array();
+    $seen_urls = array(); // برای حذف رفرنس‌های تکراری بر اساس URL
 
     foreach ($references as $ref) {
         if (!is_array($ref) || empty($ref['url'])) {
             continue;
         }
 
+        // حفظ فیلد type (ممکن است در ورودی نباشد؛ در آن صورت "text" فرض می‌کنیم)
+        $ref_type = isset($ref['type']) ? (string) $ref['type'] : 'text';
+        $ref_type = strtolower(trim($ref_type));
+        if ($ref_type === '') {
+            $ref_type = 'text';
+        }
+
+        // حذف رفرنس‌های تکراری بر اساس URL (اولین مورد نگه داشته می‌شود)
+        $ref_url = (string) $ref['url'];
+        $url_key = trim($ref_url);
+        if ($url_key === '') {
+            continue;
+        }
+        if (isset($seen_urls[$url_key])) {
+            continue;
+        }
+        $seen_urls[$url_key] = true;
+
+        // برای رفرنس‌های تصویری، url خودش یک فایل عکس است و نیاز به
+        // عکس شاخص (post thumbnail) ندارد. در نتیجه فیلد image برای
+        // آن‌ها خالی می‌ماند و فرانت‌اند به‌جای آن از url به‌عنوان
+        // کلید عکس در lazy-loading استفاده می‌کند.
+        $image_field = ($ref_type === 'image')
+            ? ''
+            : ai_agent_get_reference_image_url($ref_url);
+
         $enriched[] = array(
             'title' => isset($ref['title']) ? (string) $ref['title'] : '',
-            'url'   => (string) $ref['url'],
-            'image' => ai_agent_get_reference_image_url($ref['url']),
+            'url'   => $ref_url,
+            'type'  => $ref_type,
+            'image' => $image_field,
         );
     }
 

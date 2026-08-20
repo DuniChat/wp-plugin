@@ -961,30 +961,80 @@ jQuery(function ($) {
 function buildReferencesGallery(references) {
     if (!Array.isArray(references) || references.length === 0) return null;
 
-    const withImages = references.filter(ref => ref && ref.url && ref.image);
-    if (withImages.length === 0) return null;
+    // نوع‌بندی رفرنس‌ها به دو گروه برای نمایش در گالری:
+    // ۱) رفرنس‌های متنی که عکس شاخص (post thumbnail) محصول دارند
+    //    → عکس شاخص مستقیماً به‌عنوان src تگ <img> استفاده می‌شود
+    //    و لینک به url محصول باز می‌شود.
+    // ۲) رفرنس‌های تصویری (type=image) که url خودشان یک فایل عکس است
+    //    (مثل site_xxx/docs/yyy.jpg) → عکس به‌صورت lazy از اندپوینت
+    //    ai_agent_get_media بارگذاری می‌شود. این url دقیقاً همان
+    //    فرمت کلید عکس را دارد و در data-image-key قرار می‌گیرد تا
+    //    مکانیزم lazy-loading موجود (lazyImageObserver / processLazyQueue)
+    //    آن را به‌صورت یکی‌یکی دریافت کرده و placeholder را با <img>
+    //    واقعی جایگزین کند.
+    const items = [];
+    references.forEach(function (ref) {
+        if (!ref || !ref.url) return;
+        const refType = (ref.type || 'text').toString().toLowerCase();
+        if (refType === 'image') {
+            items.push({ ref: ref, isImageType: true });
+        } else if (ref.image) {
+            items.push({ ref: ref, isImageType: false });
+        }
+    });
+    if (items.length === 0) return null;
 
     const $wrap = $('<div class="ai-references-gallery-wrap"></div>');
     const $gallery = $('<div class="ai-references-gallery"></div>');
     const $dots = $('<div class="ai-gallery-dots"></div>');
     const itemEls = [];
+    const lazyTargets = []; // placeholderهای تصویری که باید به observer داده شوند
 
-    withImages.forEach(function (ref) {
-        const $item = $('<a class="ai-reference-gallery-item" target="_blank" rel="noopener noreferrer"></a>')
-            .attr('href', ref.url)
-            .attr('title', ref.title ? String(ref.title) : '');
+    items.forEach(function (item) {
+        const ref = item.ref;
+        let $item;
 
-        const $img = $('<img loading="lazy" alt="" />').attr('src', ref.image);
+        if (item.isImageType) {
+            // رفرنس تصویری: یک placeholder با data-image-key می‌سازیم که
+            // ساختار آن با مکانیزم lazy-loading موجود سازگار است
+            // (کلاس is-loading و یک فرزند .user-gallery-placeholder).
+            // لینک href موقتاً روی «#» می‌ماند تا کلیک‌های تصادفی به
+            // جایی نروند. بعد از بارگذاری، با img و openLightbox کار
+            // می‌کند.
+            $item = $('<a class="ai-reference-gallery-item is-loading" href="#" rel="noopener noreferrer"></a>')
+                .attr('data-image-key', String(ref.url))
+                .attr('title', ref.title ? String(ref.title) : '');
+            $item.append('<span class="user-gallery-placeholder"></span>');
 
-        // مدیریت خطای لود عکس: کل آیتم گالری حذف می‌شود
-        $img.one('error', function () {
-            $item.remove();
-            const idx = itemEls.indexOf($item[0]);
-            if (idx > -1) itemEls.splice(idx, 1);
-            $dots.toggle($gallery.children().length > 2);
-        });
+            // هندلر کلیک: اگر عکس لود شده، لایت‌باکس باز کن؛ در غیر
+            // این صورت چیزی باز نکن (لینک href=# است که با preventDefault
+            // بلاک می‌شود).
+            $item.on('click', function (e) {
+                e.preventDefault();
+                const src = $(this).find('img').attr('src');
+                if (src) openLightbox(src);
+            });
 
-        $item.append($img);
+            lazyTargets.push($item);
+        } else {
+            // رفرنس متنی با عکس شاخص محصول: رفتار قدیمی حفظ می‌شود
+            $item = $('<a class="ai-reference-gallery-item" target="_blank" rel="noopener noreferrer"></a>')
+                .attr('href', ref.url)
+                .attr('title', ref.title ? String(ref.title) : '');
+
+            const $img = $('<img loading="lazy" alt="" />').attr('src', ref.image);
+
+            // مدیریت خطای لود عکس: کل آیتم گالری حذف می‌شود
+            $img.one('error', function () {
+                $item.remove();
+                const idx = itemEls.indexOf($item[0]);
+                if (idx > -1) itemEls.splice(idx, 1);
+                $dots.toggle($gallery.children().length > 2);
+            });
+
+            $item.append($img);
+        }
+
         $gallery.append($item);
         itemEls.push($item[0]);
     });
@@ -997,6 +1047,20 @@ function buildReferencesGallery(references) {
     });
     $dots.toggle(itemEls.length > 2);
     $dots.children().first().addClass('active');
+
+    // ثبت placeholderهای تصویری در lazy-loading observer
+    // (همان observer مشترک که برای عکس‌های پیام کاربر هم استفاده می‌شود).
+    if (lazyTargets.length > 0) {
+        const observer = ensureLazyObserver();
+        lazyTargets.forEach(function ($ph) {
+            if (observer) {
+                observer.observe($ph[0]);
+            } else {
+                // مرورگر قدیمی بدون IntersectionObserver → بارگذاری مستقیم
+                enqueueLazyImage($ph);
+            }
+        });
+    }
 
     // اسکرول افقی با چرخ ماوس هنگام هاور (بدون نیاز به Shift)
     $gallery.on('wheel', function (e) {
@@ -1078,6 +1142,13 @@ function buildReferencesListBox(references) {
     const $list = $('<div class="ai-references-list"></div>');
     references.forEach(function (ref) {
         if (!ref || !ref.url) return;
+        // رفرنس‌های تصویری (type=image) در فهرست متنی «موارد مرتبط»
+        // نمایش داده نمی‌شوند؛ چون url آن‌ها به یک فایل عکس اشاره
+        // می‌کند (مثل site_xxx/docs/yyy.jpg) و به‌جای لینک متنی،
+        // خودِ عکس در گالری بالای پیام نمایش داده می‌شود.
+        const refType = (ref.type || 'text').toString().toLowerCase();
+        if (refType === 'image') return;
+
         const label = ref.title ? String(ref.title) : String(ref.url);
         const $link = $('<a class="ai-reference-link" target="_blank" rel="noopener noreferrer"></a>')
             .attr('href', ref.url)
