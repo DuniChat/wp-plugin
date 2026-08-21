@@ -16,6 +16,48 @@
 */
 
     jQuery(function($){
+
+        /*
+        ============================================
+        Escape HTML و تبدیل ساده و امن مارک‌داون به HTML
+        (نسخه‌ی مشابه ai-agent.js، برای استفاده در پیش‌نمایش
+        تاریخچه‌ی چت داخل پنل تنظیمات — تب «بارگذاری چت»)
+
+        فقط دو حالت پشتیبانی می‌شود چون فقط همین دو مورد از سمت
+        مدل استفاده می‌شود:
+            **متن پررنگ**              →  <strong>متن پررنگ</strong>
+            [عنوان لینک](https://...)  →  <a href="...">عنوان لینک</a>
+
+        برای جلوگیری از XSS، ابتدا کل متن با escapeHtml امن می‌شود و
+        سپس الگوهای بالا روی متنِ امن‌شده اعمال می‌گردند.
+        ============================================
+        */
+        function aiAgentEscapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function aiAgentRenderInlineMarkdown(rawText) {
+            if (!rawText) return '';
+
+            var html = aiAgentEscapeHtml(rawText);
+
+            // بولد: **متن**
+            html = html.replace(/\*\*([^\*\n]+)\*\*/g, '<strong>$1</strong>');
+
+            // لینک: [عنوان](URL) — فقط http/https پذیرفته می‌شود
+            html = html.replace(
+                /\[([^\[\]]+)\]\((https?:\/\/[^\s()]+)\)/g,
+                '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+
+            // شکستن خط
+            html = html.replace(/\n/g, '<br>');
+
+            return html;
+        }
+
         $('.ai-agent-color-field').wpColorPicker();
 
         // ----- دکمه نمایش/مخفی کردن API Key -----
@@ -940,7 +982,9 @@
                 var $timeSpan = $('<span class="ai-agent-msg-time"></span>').text(timeStr);
                 $msgHeader.append($roleSpan).append($timeSpan);
 
-                var $msgContent = $('<div class="ai-agent-msg-content"></div>').text(content);
+                // محتوای پیام با پشتیبانی از مارک‌داون (بولد و لینک) رندر می‌شود
+                // (مشابه رفتار ویجت عمومی در ai-agent.js)
+                var $msgContent = $('<div class="ai-agent-msg-content"></div>').html(aiAgentRenderInlineMarkdown(content));
 
                 // گالری عکس‌های lazy — فقط برای پیام‌هایی که image_keys دارند
                 // (معمولاً پیام کاربر، اما اگر API برای نقش‌های دیگر هم فرستاد، نمایش می‌دهیم)
@@ -1190,7 +1234,7 @@
                                 var $header = $('<div class="ai-agent-msg-header"></div>');
                                 $header.append($('<span class="ai-agent-msg-role"></span>').text('پشتیبان'));
                                 $header.append($('<span class="ai-agent-msg-time"></span>').text(timeStr));
-                                var $content = $('<div class="ai-agent-msg-content"></div>').text(text);
+                                var $content = $('<div class="ai-agent-msg-content"></div>').html(aiAgentRenderInlineMarkdown(text));
                                 $bubble.append($header).append($content);
 
                                 if ($chatArea.length) {

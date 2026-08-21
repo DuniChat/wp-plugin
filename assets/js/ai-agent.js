@@ -1523,8 +1523,17 @@ function buildReferencesListBox(references) {
 
         if (data.type === 'chunk' && typeof data.content !== 'undefined') {
         stream.$loading.remove();
-        stream.rawText += data.content; // ذخیره‌ی متن خام برای پردازش نهایی
-        stream.$content.append(escapeHtml(data.content));
+        stream.rawText += data.content; // ذخیره‌ی متن خام برای رندر لحظه‌ای و پردازش نهایی
+
+        // به‌جای append کردن متن خامِ escape شده، در هر chunk کل متنِ
+        // جمع‌شده تا این لحظه را با renderInlineMarkdown دوباره رندر
+        // می‌کنیم. این کار باعث می‌شود مارک‌داون (بولد **متن** و لینک
+        // [عنوان](URL)) هم‌زمان با تایپ شدن توسط مدل (runtime) به HTML
+        // تبدیل شود، نه فقط در پایان استریم (رویداد done).
+        // چون هر بار کل rawText از نو escape و پردازش می‌شود، الگوهای
+        // ناقص (مثلاً «**» بدون بسته شدن) تا تکمیل نشدن، به‌صورت خام
+        // نمایش داده می‌شوند و از فلش زدن تگ نصفه‌ونیمه جلوگیری می‌شود.
+        stream.$content.html(renderInlineMarkdown(stream.rawText));
         } else if (data.type === 'references' && Array.isArray(data.references)) {
     stream.references = data.references;
 
