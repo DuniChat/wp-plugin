@@ -1268,9 +1268,20 @@ button.ai-references-title.ai-references-toggle {
         bottom: 0;
         left: 0;
         width: 100vw !important;
-        height: 100vh !important;
-        max-height: 100vh !important;
         max-width: 100vw !important;
+
+        /* ارتفاع: سه لایه به ترتیب اولویت (آخری در صورت پشتیبانی مرورگر برنده می‌شود)
+           ۱) 100vh: fallback برای مرورگرهای خیلی قدیمی
+           ۲) 100dvh: ارتفاع پویای واقعی ویوپورت — با ظاهر/پنهان شدن نوار سافاری هماهنگ می‌شود
+           ۳) calc(--ai-agent-vh): محاسبه‌ی دقیق توسط JS از طریق visualViewport،
+              برای پوشش رفتار سافاری هنگام باز شدن کیبورد و لحظه‌ی اول لود صفحه */
+        height: 100vh !important;
+        height: 100dvh !important;
+        height: calc(var(--ai-agent-vh, 1vh) * 100) !important;
+        max-height: 100vh !important;
+        max-height: 100dvh !important;
+        max-height: calc(var(--ai-agent-vh, 1vh) * 100) !important;
+
         border-radius: 0;
         box-shadow: none;
         border: none;

@@ -371,6 +371,75 @@ jQuery(function ($) {
         return window.matchMedia('(max-width: 768px)').matches;
     }
 
+    /*
+    ============================================
+    رفع مشکل نوار پایین سافاری موبایل روی iOS:
+
+    واحد 100vh در سافاری بر اساس بزرگ‌ترین حالت ممکن ویوپورت
+    محاسبه می‌شود (یعنی زمانی که نوار آدرس/نوار پایین جمع شده
+    باشد)، در حالی که در لحظه‌ی لود صفحه یا هنگام اسکرول، آن نوار
+    معمولاً نمایش داده می‌شود. نتیجه: باکس با ارتفاع 100vh رندر
+    می‌شود ولی بخشی از پایین آن (دقیقاً همان‌جا که فوتر و اینپوت
+    تایپ قرار دارند) زیر نوار مرورگر پنهان می‌ماند.
+
+    این تابع ارتفاع واقعیِ قابل‌نمایش را (با اولویت از
+    window.visualViewport که دقیق‌ترین منبع است) اندازه می‌گیرد
+    و آن را به‌صورت یک متغیر CSS با واحد ۱٪ در ریشه‌ی سند قرار
+    می‌دهد. در CSS از calc(var(--ai-agent-vh) * 100) استفاده شده
+    که هم روی سافاری قدیمی (بدون پشتیبانی از 100dvh) کار می‌کند و
+    هم لحظه‌ی باز شدن کیبورد را به‌درستی پوشش می‌دهد.
+    ============================================
+    */
+    function updateViewportHeightVar() {
+        var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+        document.documentElement.style.setProperty('--ai-agent-vh', vh + 'px');
+    }
+
+    /*
+    ============================================
+    جبران باگ اسکرول خودکار سافاری iOS هنگام فوکوس روی اینپوت:
+
+    وقتی کاربر روی تکست‌باکس داخل ویجت (که position: fixed دارد)
+    فوکوس می‌کند، سافاری صفحه را کمی اسکرول می‌کند تا اینپوت را به
+    دید بیاورد — این کار حتی با وجود قفل بودن body هم اتفاق می‌افتد.
+    نتیجه: visualViewport نسبت به layout viewport یک offsetTop
+    پیدا می‌کند، اما چون باکس ما top:0 نسبت به layout viewport
+    دارد، دیگر با ناحیه‌ی واقعیِ قابل‌دیدن هم‌تراز نیست و همان
+    فاصله‌ی خالی بین کیبورد و باکس ایجاد می‌شود.
+
+    این تابع height و top باکس را مستقیماً از روی visualViewport
+    (height واقعی + offsetTop) ست می‌کند تا باکس همیشه دقیقاً چسبیده
+    به بالای صفحه‌ی نمایش داده‌شده بماند و کف آن هم دقیقاً روی
+    نوار بالای کیبورد بنشیند.
+    ============================================
+    */
+    function syncWindowToVisualViewport() {
+        if (!window.visualViewport) return;
+        var el = windowChat[0];
+        if (!isMobileViewport() || !windowChat.hasClass('ai-agent-open')) {
+            // خارج از حالت موبایل تمام‌صفحه: هر مقدار inline قبلی را پاک کن
+            el.style.removeProperty('top');
+            el.style.removeProperty('height');
+            return;
+        }
+        var vv = window.visualViewport;
+        el.style.setProperty('height', vv.height + 'px', 'important');
+        el.style.setProperty('top', vv.offsetTop + 'px', 'important');
+    }
+
+    function syncViewportGeometry() {
+        updateViewportHeightVar();
+        syncWindowToVisualViewport();
+    }
+
+    syncViewportGeometry();
+    window.addEventListener('resize', syncViewportGeometry);
+    window.addEventListener('orientationchange', syncViewportGeometry);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncViewportGeometry);
+        window.visualViewport.addEventListener('scroll', syncViewportGeometry);
+    }
+
     function lockBodyScroll() {
         if (!isMobileViewport()) return;
         // ذخیره‌ی موقعیت اسکرول فعلی صفحه برای بازگرداندن بعد از بستن چت
@@ -399,16 +468,19 @@ jQuery(function ($) {
     button.on("click", function () {
         windowChat.toggleClass("ai-agent-open");
         if (windowChat.hasClass("ai-agent-open")) {
+            syncViewportGeometry();
             messages.scrollTop(messages[0].scrollHeight);
             input.focus();
             lockBodyScroll();
         } else {
+            syncViewportGeometry();
             unlockBodyScroll();
         }
     });
 
     close.on("click", function () {
         windowChat.removeClass("ai-agent-open");
+        syncViewportGeometry();
         unlockBodyScroll();
     });
 

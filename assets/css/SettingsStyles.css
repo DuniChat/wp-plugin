@@ -1186,7 +1186,6 @@ A modern, luxurious control panel experience.
 }
 .ai-agent-session-item.ai-agent-session-open .ai-agent-session-arrow {
     color: var(--ai-agent-primary);
-    transform: rotate(90deg);
 }
 
 .ai-agent-session-id {
