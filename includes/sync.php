@@ -840,6 +840,176 @@ function ai_agent_sync_images_data_handler() {
 
 /*
 ================================================================
+ساخت متن ویژگی‌های یک محصول ووکامرس (Attributes) برای الحاق به
+انتهای فیلد content
+
+این تابع دو دسته ویژگی را پوشش می‌دهد:
+  ۱) ویژگی‌های خود محصول (چه ویژگی سراسری/Taxonomy مثل pa_color و
+     چه ویژگی محلی/سفارشی که فقط برای همان محصول تعریف شده)
+  ۲) در صورتی که محصول از نوع متغیر (Variable Product) باشد،
+     ویژگی‌های هر یک از تنوع‌ها (Variations) به همراه قیمت آن‌ها
+
+خروجی یک رشته‌ی متنی آماده برای چسباندن به انتهای content است (با
+دو خط جدید در ابتدا تا از متن اصلی جدا شود). اگر محصول ویژگی یا
+تنوعی نداشته باشد، رشته‌ی خالی برمی‌گرداند و ساختار content تغییری
+نمی‌کند.
+================================================================
+*/
+function ai_agent_build_product_attributes_text($post_id) {
+
+    if (!class_exists('WooCommerce') || !function_exists('wc_get_product')) {
+        return '';
+    }
+
+    $post_id = absint($post_id);
+    if (empty($post_id)) {
+        return '';
+    }
+
+    $product = wc_get_product($post_id);
+    if (!$product || !is_a($product, 'WC_Product')) {
+        return '';
+    }
+
+    $blocks = array();
+
+    /*
+    ============================================
+    ۱. ویژگی‌های محصول (چه سراسری/taxonomy مثل pa_رنگ و pa_سایز،
+       چه محلی/سفارشی که فقط مخصوص همین محصول تعریف شده‌اند)
+    ============================================
+    */
+    $attribute_lines = array();
+    $attributes = $product->get_attributes();
+
+    if (!empty($attributes) && is_array($attributes)) {
+        foreach ($attributes as $attribute) {
+            if (!is_a($attribute, 'WC_Product_Attribute')) {
+                continue;
+            }
+
+            $label = wc_attribute_label($attribute->get_name(), $product);
+            $label = is_string($label) ? trim($label) : '';
+
+            $values = array();
+
+            if ($attribute->is_taxonomy()) {
+                // ویژگی سراسری: مقادیر آن ترم‌های یک تاکسونومی هستند (مثل pa_color)
+                $terms = $attribute->get_terms();
+                if (!empty($terms) && !is_wp_error($terms)) {
+                    foreach ($terms as $term) {
+                        if (isset($term->name)) {
+                            $values[] = trim((string) $term->name);
+                        }
+                    }
+                }
+            } else {
+                // ویژگی محلی/سفارشی: مقادیر آن به‌صورت متن ساده ذخیره شده‌اند
+                $options = $attribute->get_options();
+                if (!empty($options) && is_array($options)) {
+                    foreach ($options as $opt) {
+                        $values[] = trim((string) $opt);
+                    }
+                }
+            }
+
+            $values = array_values(array_filter($values, function ($v) {
+                return $v !== '';
+            }));
+
+            if ($label !== '' && !empty($values)) {
+                $attribute_lines[] = $label . ': ' . implode('، ', $values);
+            }
+        }
+    }
+
+    if (!empty($attribute_lines)) {
+        $blocks[] = "ویژگی‌های محصول:\n" . implode("\n", array_map(function ($l) {
+            return '- ' . $l;
+        }, $attribute_lines));
+    }
+
+    /*
+    ============================================
+    ۲. اگر محصول از نوع متغیر (Variable) است، ویژگی‌های هر تنوع
+       (Variation) را هم به همراه قیمتش اضافه می‌کنیم
+    ============================================
+    */
+    if ($product->is_type('variable')) {
+
+        $variation_ids = $product->get_children();
+        $variation_lines = array();
+        $index = 1;
+
+        if (!empty($variation_ids) && is_array($variation_ids)) {
+            foreach ($variation_ids as $variation_id) {
+
+                $variation = wc_get_product($variation_id);
+                if (!$variation || !is_a($variation, 'WC_Product_Variation')) {
+                    continue;
+                }
+
+                // آرایه‌ای مثل: array('attribute_pa_color' => 'red', 'attribute_size' => 'M')
+                $variation_attrs = $variation->get_variation_attributes();
+                if (empty($variation_attrs) || !is_array($variation_attrs)) {
+                    continue;
+                }
+
+                $parts = array();
+                foreach ($variation_attrs as $attr_key => $attr_value) {
+
+                    // مقدار خالی یعنی «هر مقدار» برای این ویژگی قابل قبول است؛
+                    // چیزی برای نمایش نداریم پس رد می‌شویم
+                    if ($attr_value === '' || $attr_value === null) {
+                        continue;
+                    }
+
+                    $taxonomy   = str_replace('attribute_', '', $attr_key);
+                    $attr_label = wc_attribute_label($taxonomy, $product);
+                    $attr_label = is_string($attr_label) ? trim($attr_label) : $taxonomy;
+
+                    if (taxonomy_exists($taxonomy)) {
+                        // ویژگی سراسری: attr_value یک slug است، باید نام واقعی ترم را پیدا کنیم
+                        $term = get_term_by('slug', $attr_value, $taxonomy);
+                        $value_label = ($term && !is_wp_error($term)) ? trim((string) $term->name) : (string) $attr_value;
+                    } else {
+                        // ویژگی محلی: attr_value همان مقدار متنی نهایی است
+                        $value_label = (string) $attr_value;
+                    }
+
+                    if ($value_label !== '') {
+                        $parts[] = $attr_label . ': ' . $value_label;
+                    }
+                }
+
+                if (!empty($parts)) {
+                    $price_text = '';
+                    $price = $variation->get_price();
+                    if ($price !== '' && $price !== null) {
+                        $price_text = ' (قیمت: ' . (string) $price . ')';
+                    }
+                    $variation_lines[] = 'گونه ' . $index . ' - ' . implode('، ', $parts) . $price_text;
+                    $index++;
+                }
+            }
+        }
+
+        if (!empty($variation_lines)) {
+            $blocks[] = "انواع محصول (Variations):\n" . implode("\n", array_map(function ($l) {
+                return '- ' . $l;
+            }, $variation_lines));
+        }
+    }
+
+    if (empty($blocks)) {
+        return '';
+    }
+
+    return "\n\n" . implode("\n\n", $blocks);
+}
+
+/*
+================================================================
 جمع‌آوری تمام محتوای فعلی وردپرس مطابق با تیک‌های کاربر
 
 این تابع مرکزی است که هم در سینک افزایشی و هم در سینک کامل استفاده
@@ -927,6 +1097,25 @@ function ai_agent_collect_sync_items($sync_types) {
                 // تا کل بچ خطای 422 نخورد
                 if (empty($post->ID) || $title === '' || $content === '') {
                     continue;
+                }
+
+                /*
+                ============================================
+                در صورتی که آیتم یک محصول ووکامرس باشد، ویژگی‌های آن
+                (چه Attribute های ساده/سراسری و چه ویژگی‌های هر تنوع
+                در محصولات متغیر/Variable) را به‌صورت متن به انتهای
+                همین فیلد content اضافه می‌کنیم. این کار بدون تغییر
+                ساختار API انجام می‌شود؛ چون همچنان یک رشته‌ی ساده در
+                content ارسال می‌شود، فقط محتوای آن غنی‌تر شده است.
+                این بخش بعد از بررسی content خالی انجام می‌شود تا
+                منطق رد کردن آیتم‌های ناقص تغییری نکند.
+                ============================================
+                */
+                if ($content_type === 'product' && class_exists('WooCommerce')) {
+                    $attributes_text = ai_agent_build_product_attributes_text($post->ID);
+                    if ($attributes_text !== '') {
+                        $content .= $attributes_text;
+                    }
                 }
 
                 // استخراج عکس‌های پست/محصول به‌صورت base64 (حداکثر ۴ عکس)
