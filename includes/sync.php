@@ -248,23 +248,48 @@ function ai_agent_sync_data_handler() {
         }
     }
 
-    // ۷. تفکیک محتوا به سه گروه: جدید، موجود، حذف‌شده
+    // ۷. تفکیک محتوا به چهار گروه: جدید، موجود، ویرایش‌شده، حذف‌شده
     $new_items      = array();  // در وردپرس هست، اما در جدول سینک نیست
-    $existing_items = array();  // در هر دو هست (فقط تاریخ به‌روزرسانی می‌شود)
+    $existing_items = array();  // در هر دو هست و ویرایش نشده (فقط تاریخ به‌روزرسانی می‌شود)
+    $edited_items   = array();  // در جدول سینک هست، ولی محتوا پس از آخرین سینک ویرایش شده
     $deleted_items  = array();  // در جدول سینک هست، اما در وردپرس حذف شده
     $failed_in_wp   = 0;        // تعداد آیتم‌های ناموفقی که هنوز در وردپرس موجودند و مجدداً ارسال می‌شوند
 
+    /*
+    ============================================
+    منطق شناسایی آیتم‌های ویرایش‌شده:
+    برای هر آیتم موجود در synced_map، مقدار published_at فعلی محتوا را با
+    مقدار ذخیره‌شده در جدول مقایسه می‌کنیم. اگر متفاوت بودند، یعنی محتوا
+    پس از آخرین سینک ویرایش شده است. این آیتم‌ها به‌جای آنکه فقط
+    synced_at آن‌ها به‌روزرسانی شود، باید ابتدا با /sync/delete از سرور
+    حذف و سپس با /sync/content مجدداً ارسال شوند تا نسخه‌ی جدید جایگزین
+    نسخه‌ی قدیمی شود.
+    ============================================
+    */
     foreach ($current_items as $item) {
         $sid = (string) $item['source_id'];
         $ct  = (string) $item['content_type'];
         $key = $ct . '::' . $sid;
+        // مقدار فعلی published_at برای این آیتم (post_modified برای پست‌ها،
+        // هش محتوا برای ترم‌ها)
+        $current_published_at = isset($item['published_at']) ? (string) $item['published_at'] : '';
 
         if (isset($failed_keys[$key])) {
             // آیتم قبلاً سینک شده ولی در سرور ناموفق بوده → باید مجدداً ارسال شود
             $new_items[]   = $item;
             $failed_in_wp++;
         } elseif (isset($synced_map[$ct]) && in_array($sid, $synced_map[$ct], true)) {
-            $existing_items[] = $item;
+            // آیتم از قبل سینک شده → بررسی اینکه آیا ویرایش شده یا نه
+            $stored_published_at = ai_agent_get_synced_item_published_at($sid, $ct);
+            if ($current_published_at !== '' && $stored_published_at !== ''
+                && $current_published_at !== $stored_published_at) {
+                // محتوا پس از آخرین سینک ویرایش شده → ابتدا حذف سپس ارسال مجدد
+                $edited_items[] = $item;
+            } else {
+                // محتوا بدون تغییر → فقط تاریخ synced_at (و در صورت نیاز published_at)
+                // به‌روزرسانی می‌شود
+                $existing_items[] = $item;
+            }
         } else {
             $new_items[] = $item;
         }
@@ -370,9 +395,94 @@ if (!empty($new_items)) {
         }
     }
 
-    // ۱۰. به‌روزرسانی تاریخ synced_at برای آیتم‌های موجود (تغییری در سرور ندهیم)
+    /*
+    ============================================
+    ۹.۵. پردازش آیتم‌های ویرایش‌شده (edited_items)
+
+    این آیتم‌ها از قبل در سرور وجود دارند ولی محتوای وردپرسی آن‌ها پس از
+    آخرین سینک ویرایش شده است. چون نسخه‌ی قدیمی هنوز در سرور است،
+    ابتدا باید با /sync/delete حذف شوند و سپس نسخه‌ی جدید با /sync/content
+    مجدداً ارسال شود. در صورت خطا در حذف، آیتم در جدول با published_at
+    قدیمی باقی می‌ماند تا در سینک بعدی دوباره به‌عنوان ویرایش‌شده شناسایی
+    و عملیات delete+resend مجدداً تلاش شود.
+    ============================================
+    */
+    $edited_processed_count = 0;  // تعداد موارد ویرایش‌شده‌ای که با موفقیت delete+resend شدند
+    $edited_error = '';
+
+    if (!empty($edited_items)) {
+        // ۹.۵.a. ارسال درخواست حذف برای آیتم‌های ویرایش‌شده به /sync/delete
+        $edited_delete_result = ai_agent_push_sync_delete($edited_items);
+
+        if ($edited_delete_result['status'] === 'success' || $edited_delete_result['status'] === 'partial') {
+            // ۹.۵.b. ارسال مجدد محتوای ویرایش‌شده به /sync/content
+            $edited_content_result = ai_agent_push_sync_content($edited_items);
+
+            if ($edited_content_result['status'] === 'success' || $edited_content_result['status'] === 'partial') {
+                // ۹.۵.c. به‌روزرسانی job_id، status و published_at برای آیتم‌های ویرایش‌شده
+                $edited_results_map = array();
+                foreach ($edited_content_result['results'] as $r) {
+                    $key = $r['content_type'] . '::' . $r['source_id'];
+                    $edited_results_map[$key] = $r['job_id'];
+                }
+
+                $edited_synced_batch = array();
+                foreach ($edited_items as $item) {
+                    $key = $item['content_type'] . '::' . $item['source_id'];
+                    if (isset($edited_results_map[$key])) {
+                        $edited_synced_batch[] = array(
+                            'source_id'    => $item['source_id'],
+                            'content_type' => $item['content_type'],
+                            'job_id'       => $edited_results_map[$key],
+                            'status'       => 'queued',
+                            // ذخیره‌ی published_at جدید تا در سینک بعدی، اگر
+                            // محتوا دوباره ویرایش نشده بود، به‌عنوان موجود
+                            // شناسایی شود و نیاز به delete+resend نباشد.
+                            'published_at' => isset($item['published_at']) ? $item['published_at'] : null,
+                        );
+                        $edited_processed_count++;
+                    }
+                }
+                ai_agent_mark_items_synced_batch($edited_synced_batch);
+
+                if ($edited_content_result['status'] === 'partial') {
+                    $edited_error = $edited_content_result['message'];
+                }
+            } else {
+                $edited_error = $edited_content_result['message'];
+                /*
+                اگر ارسال محتوای جدید ناموفق بود، آیتم را در جدول دست‌نخورده باقی
+                می‌گذاریم. چون published_at قدیمی همچنان ذخیره شده، در سینک بعدی
+                دوباره به‌عنوان ویرایش‌شده شناسایی و عملیات delete+resend مجدداً
+                تلاش می‌شود. (نکته: نسخه‌ی قدیمی محتوا در این حالت از سرور حذف
+                شده است ولی نسخه‌ی جدید هنوز ارسال نشده — این یک حالت موقت است
+                که در سینک بعدی خود‌به‌ خود حل می‌شود.)
+                */
+            }
+
+            if ($edited_delete_result['status'] === 'partial') {
+                $edited_error = ($edited_error !== '' ? $edited_error . ' | ' : '') . $edited_delete_result['message'];
+            }
+        } else {
+            $edited_error = $edited_delete_result['message'];
+            /*
+            اگر حذف ناموفق بود، آیتم در جدول با published_at قدیمی باقی می‌ماند.
+            در سینک بعدی، چون مقدار فعلی published_at همچنان با مقدار ذخیره‌شده
+            متفاوت است، آیتم دوباره به‌عنوان ویرایش‌شده شناسایی و عملیات delete+
+            resend مجدداً تلاش می‌شود.
+            */
+        }
+    }
+
+    // ۱۰. به‌روزرسانی تاریخ synced_at (و در صورت نیاز published_at) برای آیتم‌های موجود
     foreach ($existing_items as $item) {
-        ai_agent_mark_item_synced($item['source_id'], $item['content_type']);
+        // published_at را هم ارسال می‌کنیم تا برای ردیف‌های قدیمی (که هنوز
+        // published_at ندارند) این ستون با مقدار فعلی پر شود و در سینک‌های
+        // بعدی بتوان ویرایش‌ها را شناسایی کرد. برای ردیف‌های جدید که قبلاً
+        // published_at دارند، مقدار فعلی همان مقدار ذخیره‌شده است و ارسال
+        // مجدد آن خللی ایجاد نمی‌کند.
+        $pub_at = isset($item['published_at']) ? $item['published_at'] : null;
+        ai_agent_mark_item_synced($item['source_id'], $item['content_type'], null, null, $pub_at);
     }
 
     // ۱۱. به‌روزرسانی تاریخ آخرین سینک
@@ -395,6 +505,10 @@ if (!empty($new_items)) {
         $summary_parts[] = $failed_resent_count . ' مورد ناموفق مجدداً ارسال شد';
     }
 
+    if ($edited_processed_count > 0) {
+        $summary_parts[] = $edited_processed_count . ' مورد ویرایش‌شده به‌روزرسانی شد';
+    }
+
     if ($deleted_sent_count > 0) {
         $summary_parts[] = $deleted_sent_count . ' مورد حذف شد';
     }
@@ -402,12 +516,13 @@ if (!empty($new_items)) {
     $total_current = count($current_items);
 
     if (empty($summary_parts)) {
-        if ($content_error !== '' || $delete_error !== '') {
-            $errors = array_filter(array($content_error, $delete_error));
+        if ($content_error !== '' || $delete_error !== '' || $edited_error !== '') {
+            $errors = array_filter(array($content_error, $delete_error, $edited_error));
             wp_send_json_error(array(
                 'message'         => implode(' | ', $errors),
                 'new_count'       => 0,
                 'deleted_count'   => 0,
+                'edited_count'    => 0,
                 'total_count'     => $total_current,
                 'last_sync_time'  => $sync_time,
             ));
@@ -417,8 +532,8 @@ if (!empty($new_items)) {
     } else {
         $message = implode(' و ', $summary_parts) . '. (مجموع محتوای فعلی: ' . $total_current . ' مورد)';
 
-        if ($content_error !== '' || $delete_error !== '') {
-            $errors = array_filter(array($content_error, $delete_error));
+        if ($content_error !== '' || $delete_error !== '' || $edited_error !== '') {
+            $errors = array_filter(array($content_error, $delete_error, $edited_error));
             $message .= ' — توجه: ' . implode(' | ', $errors);
         }
     }
@@ -428,6 +543,7 @@ if (!empty($new_items)) {
         'new_count'           => $new_sent_count,
         'new_truly_new_count' => $truly_new_count,
         'failed_resent_count' => $failed_resent_count,
+        'edited_count'        => $edited_processed_count,
         'deleted_count'       => $deleted_sent_count,
         'total_count'         => $total_current,
         'last_sync_time'      => $sync_time,
@@ -542,6 +658,9 @@ function ai_agent_sync_all_data_handler() {
                         'source_id'    => $item['source_id'],
                         'content_type' => $item['content_type'],
                         'job_id'       => $results_map[$key],
+                        // ذخیره‌ی published_at برای پشتیبانی از شناسایی ویرایش‌ها
+                        // در سینک‌های بعدی Sync Now
+                        'published_at' => isset($item['published_at']) ? $item['published_at'] : null,
                     );
                 }
             }
@@ -685,6 +804,9 @@ function ai_agent_sync_images_data_handler() {
                         'source_id'    => $item['source_id'],
                         'content_type' => $item['content_type'],
                         'job_id'       => $results_map[$key],
+                        // ذخیره‌ی published_at برای پشتیبانی از شناسایی ویرایش‌ها
+                        // در سینک‌های بعدی Sync Now
+                        'published_at' => isset($item['published_at']) ? $item['published_at'] : null,
                     );
                 }
             }
@@ -819,6 +941,12 @@ function ai_agent_collect_sync_items($sync_types) {
                     'url'          => $permalink !== '' ? $permalink : home_url('/'),
                     'status'       => (string) $post->post_status,
                     'images'       => $images,
+                    // published_at: تاریخ آخرین ویرایش پست (post_modified).
+                    // این مقدار در جدول synced_items ذخیره می‌شود و در سینک‌های
+                    // بعدی برای شناسایی پست‌های ویرایش‌شده مقایسه می‌شود. هرگاه
+                    // مقدار فعلی post_modified با مقدار ذخیره‌شده تفاوت داشته
+                    // باشد، یعنی پست پس از آخرین سینک ویرایش شده است.
+                    'published_at' => (string) $post->post_modified,
                 );
             }
         }
@@ -850,6 +978,16 @@ function ai_agent_collect_sync_items($sync_types) {
                 // استخراج عکس شاخص دسته‌بندی محصول (WooCommerce) به base64
                 $images = ai_agent_collect_term_images_base64($term->term_id);
 
+                // محاسبه‌ی هش "نسخه‌ی محتوا" برای ترم.
+                // وردپرس برای ترم‌ها تاریخ ویرایش ذاتی نگه نمی‌دارد، پس
+                // برای شناسایی ویرایش‌های بعدی، یک هش از name + description +
+                // thumbnail_id می‌سازیم. هرگاه هرکدام از این مقادیر عوض شود،
+                // هش عوض می‌شود و در سینک بعدی این ترم به‌عنوان ویرایش‌شده
+                // شناسایی می‌شود.
+                $term_thumb_id = get_term_meta($term->term_id, 'thumbnail_id', true);
+                $term_signature = $term_name . '||' . $description . '||' . (string) $term_thumb_id;
+                $term_published_at = md5($term_signature);
+
                 $items[] = array(
                     'source_id'    => (string) $term->term_id,
                     'content_type' => 'list',
@@ -858,6 +996,11 @@ function ai_agent_collect_sync_items($sync_types) {
                     'url'          => $term_link_str !== '' ? $term_link_str : home_url('/'),
                     'status'       => 'publish',
                     'images'       => $images,
+                    // published_at: هش محتوای ترم (نام + توضیح + عکس شاخص).
+                    // چون ترم‌ها تاریخ ویرایش ندارند، از هش به‌عنوان شناسه‌ی
+                    // نسخه‌ی محتوا استفاده می‌کنیم تا در سینک بعدی بتوان
+                    // ترم‌های ویرایش‌شده را شناسایی کرد.
+                    'published_at' => $term_published_at,
                 );
             }
         }

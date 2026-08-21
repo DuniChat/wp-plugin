@@ -30,6 +30,14 @@ function ai_agent_install(){
     //   completed   → پردازش با موفقیت انجام شده
     //   failed      → پردازش ناموفق (با دکمه‌ی «همگام‌سازی اطلاعات» مجدداً ارسال می‌شود)
     //   not_found   → سرور آی‌دی job را نمی‌شناسد (پاک شده یا منقضی شده)
+    //
+    // ستون published_at تاریخ آخرین ویرایش محتوا را ذخیره می‌کند تا در سینک‌های
+    // بعدی با مقایسه‌ی آن با تاریخ ویرایش فعلی، آیتم‌های ویرایش‌شده شناسایی شوند.
+    // برای پست/برگه/محصول: مقدار این ستون برابر post_modified وردپرس است.
+    // برای ترم‌ها (content_type=list): یک هش از name+description+thumbnail_id
+    // در نظر گرفته می‌شود چون ترم‌ها تاریخ ویرایش ذاتی ندارند.
+    // هرگاه مقدار این ستون با مقدار فعلی محتوا تفاوت داشته باشد، یعنی محتوا
+    // پس از آخرین سینک ویرایش شده و باید ابتدا حذف و سپس مجدداً ارسال شود.
     $sql3 = "CREATE TABLE {$table_synced} (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     source_id VARCHAR(64) NOT NULL,
@@ -37,6 +45,7 @@ function ai_agent_install(){
     job_id VARCHAR(64) DEFAULT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'queued',
     synced_at DATETIME NOT NULL,
+    published_at VARCHAR(255) DEFAULT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY source_type (source_id, content_type),
     KEY content_type (content_type),
@@ -80,6 +89,16 @@ function ai_agent_maybe_install(){
         $wpdb->query("ALTER TABLE {$table_synced} ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'queued' AFTER job_id");
         // افزودن ایندکس روی status برای کوئری‌های پراستفاده (مثل گرفتن آیتم‌های failed)
         $wpdb->query("ALTER TABLE {$table_synced} ADD KEY status (status)");
+    }
+
+    // ===== Migration: افزودن ستون published_at به نصب‌های قدیمی =====
+    // این ستون برای ذخیره‌ی تاریخ آخرین ویرایش محتوای سینک‌شده اضافه شده است
+    // تا در سینک بعدی بتوان آیتم‌های ویرایش‌شده را شناسایی کرد. برای نصب‌های
+    // قدیمی که جدول از قبل وجود دارد ولی این ستون را ندارند، با ALTER TABLE
+    // اضافه می‌شود بدون نیاز به غیرفعال/فعال کردن پلاگین.
+    $published_at_column = $wpdb->get_var("SHOW COLUMNS FROM {$table_synced} LIKE 'published_at'");
+    if (empty($published_at_column)) {
+        $wpdb->query("ALTER TABLE {$table_synced} ADD COLUMN published_at VARCHAR(255) DEFAULT NULL AFTER synced_at");
     }
 }
 
@@ -605,6 +624,41 @@ function ai_agent_get_synced_item_status($source_id, $content_type) {
 
 /*
 ============================================
+دریافت تاریخ آخرین ویرایش ذخیره‌شده‌ی یک آیتم سینک‌شده
+
+این تابع برای مقایسه‌ی تاریخ ذخیره‌شده با تاریخ فعلی محتوا استفاده
+می‌شود. هرگاه این دو مقدار متفاوت باشند، یعنی محتوا پس از آخرین سینک
+ویرایش شده و باید ابتدا با /sync/delete حذف و سپس مجدداً با
+/sync/content ارسال شود.
+
+ورودی:
+    $source_id    : آی‌دی محتوا در وردپرس
+    $content_type : نوع محتوا
+
+خروجی: رشته‌ی تاریخ/هش ذخیره‌شده، یا رشته‌ی خالی اگر آیتم وجود نداشت
+یا هنوز published_at برای آن ثبت نشده بود.
+============================================
+*/
+function ai_agent_get_synced_item_published_at($source_id, $content_type) {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return '';
+    }
+
+    $published_at = $wpdb->get_var($wpdb->prepare(
+        "SELECT published_at FROM {$table} WHERE source_id=%s AND content_type=%s",
+        (string) $source_id,
+        (string) $content_type
+    ));
+
+    return $published_at !== null ? (string) $published_at : '';
+}
+
+/*
+============================================
 ثبت یا به‌روزرسانی یک آیتم سینک‌شده در جدول
 
 اگر آیتم از قبل وجود داشته باشد، فقط تاریخ synced_at به‌روزرسانی می‌شود
@@ -617,9 +671,12 @@ function ai_agent_get_synced_item_status($source_id, $content_type) {
     $status       : وضعیت پردازش در سرور (queued|processing|completed|failed|not_found)
                     اگر null ارسال شود، وضعیت قبلی ردیف حفظ می‌شود (یا پیش‌فرض 'queued').
                     هنگام ارسال اولیه یا مجدد یک آیتم، مقدار 'queued' ارسال شود.
+    $published_at : تاریخ آخرین ویرایش محتوا (post_modified برای پست‌ها، یا هش محتوا
+                    برای ترم‌ها). اگر null ارسال شود، مقدار قبلی ردیف حفظ می‌شود.
+                    هنگام ارسال یا ارسال مجدد یک آیتم، مقدار فعلی محتوا ارسال شود.
 ============================================
 */
-function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $status = null) {
+function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $status = null, $published_at = null) {
 
     global $wpdb;
     $table = $wpdb->prefix.'ai_agent_synced_items';
@@ -628,11 +685,11 @@ function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $s
         return false;
     }
 
-    // اگر job_id یا status ارسال نشده باشند، مقادیر قبلی را از دیتابیس می‌خوانیم
-    // تا با REPLACE INTO پاک نشوند. این رفتار برای حفظ وضعیت آیتم‌های موجود
-    // هنگام به‌روزرسانی فقط synced_at ضروری است.
+    // اگر job_id یا status یا published_at ارسال نشده باشند، مقادیر قبلی را از
+    // دیتابیس می‌خوانیم تا با REPLACE INTO پاک نشوند. این رفتار برای حفظ
+    // وضعیت آیتم‌های موجود هنگام به‌روزرسانی فقط synced_at ضروری است.
     $existing = $wpdb->get_row($wpdb->prepare(
-        "SELECT job_id, status FROM {$table} WHERE source_id=%s AND content_type=%s",
+        "SELECT job_id, status, published_at FROM {$table} WHERE source_id=%s AND content_type=%s",
         (string) $source_id,
         (string) $content_type
     ));
@@ -644,17 +701,34 @@ function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $s
         // اگر ردیف از قبل وجود داشت، وضعیت قبلی را حفظ کن؛ در غیر این صورت 'queued'
         $status = ($existing && $existing->status !== null && $existing->status !== '') ? $existing->status : 'queued';
     }
+    if ($published_at === null) {
+        // حفظ مقدار قبلی published_at اگر وجود داشت؛ در غیر این صورت NULL می‌گذاریم.
+        $published_at = ($existing && $existing->published_at !== null) ? $existing->published_at : null;
+    }
+
+    $data = array(
+        'source_id'    => (string) $source_id,
+        'content_type' => (string) $content_type,
+        'job_id'       => (string) $job_id,
+        'status'       => (string) $status,
+        'synced_at'    => current_time('mysql'),
+    );
+    $format = array('%s', '%s', '%s', '%s', '%s');
+
+    // ستون published_at ممکن است NULL باشد (برای ردیف‌های قدیمی یا ترم‌هایی که
+    // هنوز هش‌شان ساخته نشده)، پس فرمت آن را با توجه به مقدار تنظیم می‌کنیم.
+    if ($published_at === null) {
+        $data['published_at'] = null;
+        $format[] = '%s'; // wpdb با %s و مقدار NULL تبدیل به NULL می‌کند
+    } else {
+        $data['published_at'] = (string) $published_at;
+        $format[] = '%s';
+    }
 
     return $wpdb->replace(
         $table,
-        array(
-            'source_id'    => (string) $source_id,
-            'content_type' => (string) $content_type,
-            'job_id'       => (string) $job_id,
-            'status'       => (string) $status,
-            'synced_at'    => current_time('mysql'),
-        ),
-        array('%s', '%s', '%s', '%s', '%s')
+        $data,
+        $format
     );
 }
 
@@ -665,9 +739,13 @@ function ai_agent_mark_item_synced($source_id, $content_type, $job_id = null, $s
 ورودی: آرایه‌ای از آرایه‌های داخلی با کلیدهای source_id و content_type
     مثال:
     array(
-        array('source_id' => '1', 'content_type' => 'post'),
-        array('source_id' => '2', 'content_type' => 'page'),
+        array('source_id' => '1', 'content_type' => 'post', 'published_at' => '2025-01-01 12:00:00'),
+        array('source_id' => '2', 'content_type' => 'page', 'published_at' => '2025-01-02 13:00:00'),
     )
+    
+    در صورت وجود کلیدهای اختیاری job_id، status و published_at در آیتم،
+    آنها نیز به‌عنوان مقادیر جدید ذخیره می‌شوند. در غیر این صورت، مقادیر
+    قبلی ردیف حفظ می‌شوند.
 ============================================
 */
 function ai_agent_mark_items_synced_batch($items) {
@@ -685,7 +763,10 @@ function ai_agent_mark_items_synced_batch($items) {
         // اگر status در آیتم تعریف نشده بود، null ارسال می‌کنیم تا تابع
         // mark_item_synced وضعیت قبلی را حفظ کند (یا 'queued' پیش‌فرض).
         $status = isset($item['status']) ? $item['status'] : null;
-        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'], $job_id, $status)) {
+        // اگر published_at در آیتم تعریف نشده بود، null ارسال می‌کنیم تا تابع
+        // mark_item_synced مقدار قبلی را حفظ کند.
+        $published_at = isset($item['published_at']) ? $item['published_at'] : null;
+        if (ai_agent_mark_item_synced($item['source_id'], $item['content_type'], $job_id, $status, $published_at)) {
             $count++;
         }
     }
