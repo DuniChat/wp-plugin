@@ -5,6 +5,43 @@
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/*
+============================================
+رنگ دستیار — سیستم متغیرهای رنگ (لایت/دارک)
+
+کاربر در صفحه‌ی تنظیمات دو رنگ مستقل انتخاب می‌کند:
+  - --ai-agent-color-light  : رنگ ویجت در حالت روشن
+  - --ai-agent-color-dark   : رنگ ویجت در حالت تاریک
+
+مقدار این دو متغیر توسط PHP (enqueue.php) به‌صورت inline CSS
+روی #ai-agent تزریق می‌شود؛ مقادیر زیر فقط fallback هستند.
+
+متغیر --ai-agent-theme-color بر اساس data-theme (که توسط JS با
+کلیک روی آیکون ماه/خورشید تغییر می‌کند) به رنگ همان حالت اشاره
+می‌کند و همه‌ی عناصر رنگی ویجت (دکمه شناور، هدر، حباب پیام کاربر
+و رنگ فوکِس فیلد متن) از آن پیروی می‌کنند.
+
+دو متغیر -rgb برای ساخت سایه‌های شفاف rgba(var(...)) استفاده می‌شوند.
+============================================
+*/
+#ai-agent {
+    --ai-agent-color-light: #F4865B;
+    --ai-agent-color-dark: #F4865B;
+    --ai-agent-color-light-rgb: 244, 134, 91;
+    --ai-agent-color-dark-rgb: 244, 134, 91;
+}
+
+#ai-agent[data-theme="dark"] {
+    --ai-agent-theme-color: var(--ai-agent-color-dark);
+    --ai-agent-theme-color-rgb: var(--ai-agent-color-dark-rgb);
+}
+
+#ai-agent[data-theme="light"],
+#ai-agent:not([data-theme]) {
+    --ai-agent-theme-color: var(--ai-agent-color-light);
+    --ai-agent-theme-color-rgb: var(--ai-agent-color-light-rgb);
+}
+
 /* دکمه شناور دایره‌ای مدرن */
 #ai-agent-button {
     position: fixed;
@@ -13,18 +50,18 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: #2563eb;
+    background: var(--ai-agent-theme-color, #2563eb);
     cursor: pointer;
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 8px 24px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.35);
     z-index: 999999;
 }
 
 #ai-agent-button:hover {
     transform: scale(1.1) translateY(-3px);
-    box-shadow: 0 12px 30px rgba(37, 99, 235, 0.5);
+    box-shadow: 0 12px 30px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.5);
 }
 
 #ai-agent-button img {
@@ -71,7 +108,7 @@
 /* هدر شیک و مینیمال چت */
 #ai-agent-header {
     flex-shrink: 0; /* جلوگیری از تغییر اندازه */
-    background: #2563eb;
+    background: var(--ai-agent-theme-color, #2563eb);
     color: #ffffff;
     padding: 16px 20px;
     font-weight: 600;
@@ -198,9 +235,9 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
 
-/* حباب پیام کاربر */
+/* حباب پیام کاربر — از رنگ دستیارِ همان حالت (لایت/دارک) پیروی می‌کند */
 .user-message {
-    background: #2563eb;
+    background: var(--ai-agent-theme-color, #2563eb);
     color: #ffffff;
     border-radius: 16px 16px 16px 4px;
     align-self: flex-start;
@@ -459,14 +496,18 @@
 
 #ai-agent[data-theme="dark"] #ai-agent-input:focus {
     background: #1e293b;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    border-color: var(--ai-agent-theme-color, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(var(--ai-agent-theme-color-rgb, 59, 130, 246), 0.2);
 }
 
+/*
+فوکِس فیلد متن — به‌جای آبی ثابت قبلی، از رنگی که کاربر در
+صفحه‌ی تنظیمات انتخاب کرده (رنگ همان حالت لایت/دارک) پیروی می‌کند.
+*/
 #ai-agent-input:focus {
     background: #ffffff;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    border-color: var(--ai-agent-theme-color, #2563eb);
+    box-shadow: 0 0 0 3px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.1);
 }
 
 /* دکمه ارسال: فقط خود SVG بدون هیچ بک‌گراند/حاشیه/سایه‌ای
@@ -612,8 +653,9 @@ button.ai-references-title.ai-references-toggle {
     transform: rotate(180deg);
 }
 
+/* رنگ‌های تعاملی (هاور/فوکِس/لینک) از رنگ دستیارِ همان حالت پیروی می‌کنند */
 .ai-references-toggle:hover .ai-references-title-text {
-    color: #2563eb;
+    color: var(--ai-agent-theme-color, #2563eb);
 }
 
 .ai-references-list {
@@ -628,19 +670,52 @@ button.ai-references-title.ai-references-toggle {
 
 .ai-reference-link {
     font-size: 12.5px;
-    color: #2563eb;
+    color: var(--ai-agent-theme-color, #2563eb);
     text-decoration: none;
     padding: 6px 10px;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     word-break: break-word;
 }
 
+/* متن عنوان لینک — فلکس ۱ تا فضای باقی‌مانده را پر کند و بَج به سمت چپ برود */
+.ai-reference-link-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    word-break: break-word;
+}
+
+/*
+   بَج خیلی کوچک content_type در سمت چپ هر لینک در لیست «موارد مرتبط».
+   رنگ‌بندی عمداً neutral انتخاب شده تا تحت کنترل تم سایت باقی بماند؛
+   هیچ استایل اختصاصی برای نوع‌های product/post/list/page تعریف نمی‌شود.
+   فقط متن فارسیِ نوع داخل یک کادر کوچک کنار لینک نمایش داده می‌شود.
+*/
+.ai-reference-type-badge {
+    flex: 0 0 auto;
+    display: inline-block !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    padding: 3px 8px;
+    border-radius: 6px;
+    color: inherit;
+    background: rgba(127, 127, 127, 0.14);
+    border: 1px solid rgba(127, 127, 127, 0.25);
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
 .ai-reference-link:hover {
-    background: #eef2ff;
-    border-color: #c7d2fe;
+    background: rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.08);
+    border-color: rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.35);
     text-decoration: underline;
 }
 
@@ -653,19 +728,29 @@ button.ai-references-title.ai-references-toggle {
     color: #94a3b8;
 }
 #ai-agent[data-theme="dark"] .ai-references-toggle:hover .ai-references-title-text {
-    color: #93c5fd;
+    color: var(--ai-agent-theme-color, #93c5fd);
 }
 #ai-agent[data-theme="dark"] .ai-references-arrow {
     color: #64748b;
 }
 #ai-agent[data-theme="dark"] .ai-reference-link {
-    color: #93c5fd;
+    color: var(--ai-agent-theme-color, #93c5fd);
     background: #1e293b;
     border-color: rgba(255, 255, 255, 0.1);
 }
 #ai-agent[data-theme="dark"] .ai-reference-link:hover {
     background: #24344d;
-    border-color: rgba(147, 197, 253, 0.35);
+    border-color: rgba(var(--ai-agent-theme-color-rgb, 147, 197, 253), 0.35);
+}
+
+/*
+   بَج content_type در دارک‌مود — همان رنگ neutral اما با شفافیت متفاوت
+   تا روی پس‌زمینه‌ی تیره هم خوانا باشد. هیچ رنگ اختصاصی برای نوع‌ها تعریف نشده.
+*/
+#ai-agent[data-theme="dark"] .ai-reference-type-badge {
+    color: inherit;
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.20);
 }
 /* گالری عکس نگاره اصلی محصولات مرتبط، کنار هم و هایپرلینک به صفحه محصول */
 .ai-references-gallery {
@@ -745,7 +830,7 @@ button.ai-references-title.ai-references-toggle {
 }
 
 .ai-reference-gallery-item:hover {
-    border-color: #2563eb;
+    border-color: var(--ai-agent-theme-color, #2563eb);
     transform: translateY(-2px) scale(1.03);
 }
 
@@ -829,7 +914,7 @@ button.ai-references-title.ai-references-toggle {
     outline: none;
 }
 .ai-support-gate .ai-support-msg:focus {
-    border-color: #2563eb;
+    border-color: var(--ai-agent-theme-color, #2563eb);
 }
 .ai-support-gate .ai-submit-support-btn {
     margin-top: 6px;
@@ -908,7 +993,7 @@ button.ai-references-title.ai-references-toggle {
 }
 
 #ai-agent-attach:hover {
-    color: #2563eb;
+    color: var(--ai-agent-theme-color, #2563eb);
     background: #f1f5f9;
 }
 
@@ -917,7 +1002,7 @@ button.ai-references-title.ai-references-toggle {
 }
 
 #ai-agent[data-theme="dark"] #ai-agent-attach:hover {
-    color: #93c5fd;
+    color: var(--ai-agent-theme-color, #93c5fd);
     background: rgba(255, 255, 255, 0.06);
 }
 
@@ -976,7 +1061,7 @@ button.ai-references-title.ai-references-toggle {
 }
 
 #ai-agent-voice:hover {
-    color: #2563eb;
+    color: var(--ai-agent-theme-color, #2563eb);
     background: #f1f5f9;
 }
 
@@ -985,7 +1070,7 @@ button.ai-references-title.ai-references-toggle {
 }
 
 #ai-agent[data-theme="dark"] #ai-agent-voice:hover {
-    color: #93c5fd;
+    color: var(--ai-agent-theme-color, #93c5fd);
     background: rgba(255, 255, 255, 0.06);
 }
 

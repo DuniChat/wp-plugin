@@ -60,6 +60,35 @@
 
         $('.ai-agent-color-field').wpColorPicker();
 
+        /*
+        ============================================
+        تب‌های دستگاه (موبایل / تبلت / دسکتاپ) — بخش «موقعیت آیکون افزونه»
+
+        با کلیک روی هر آیکون، پنل تنظیمات همان دستگاه (سمت قرارگیری +
+        جابجایی عمودی) نمایش داده می‌شود؛ هر دستگاه می‌تواند مقادیری
+        مستقل و متفاوت داشته باشد. پنل‌های دیگر با CSS مخفی می‌شوند
+        اما در DOM باقی می‌مانند تا مقادیر هر سه دستگاه هنگام ذخیره‌ی
+        فرم ارسال شوند.
+        ============================================
+        */
+        var $deviceTabs = $('#ai-agent-device-tabs');
+        if ($deviceTabs.length) {
+            $deviceTabs.on('click', '.ai-agent-device-tab', function () {
+                var device = $(this).data('device');
+                if (!device) return;
+
+                // فعال‌کردن تب کلیک‌شده و غیرفعال‌کردن بقیه
+                $deviceTabs.find('.ai-agent-device-tab')
+                    .removeClass('is-active')
+                    .attr('aria-selected', 'false');
+                $(this).addClass('is-active').attr('aria-selected', 'true');
+
+                // نمایش پنل تنظیمات همان دستگاه
+                $('.ai-agent-device-panel').removeClass('is-active');
+                $('.ai-agent-device-panel[data-device-panel="' + device + '"]').addClass('is-active');
+            });
+        }
+
         // ----- دکمه نمایش/مخفی کردن API Key -----
         $('#ai-agent-toggle-api-key').on('click', function(){
             var $input = $('#ai_agent_api_key');

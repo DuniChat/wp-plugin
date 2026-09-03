@@ -823,6 +823,110 @@ A modern, luxurious control panel experience.
     color: var(--ai-agent-text-muted);
 }
 
+/*
+----- موقعیت آیکون افزونه (radio cards) -----
+این بلاک روی همان ساختار .ai-agent-check-card سوار می‌شود تا
+دکمه‌های رادیو (radio) «راست/چپ» دقیقاً شبیه چک‌باکس‌های «منابع داده»
+به‌نظر برسند. تفاوت فقط در این است که input از نوع radio است و
+به‌جای input:checked از input:checked استفاده می‌کنیم (همان انتخابگر
+کار می‌کند).
+*/
+.ai-agent-position-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.ai-agent-position-option input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--ai-agent-primary);
+    cursor: pointer;
+    margin: 0;
+    flex-shrink: 0;
+}
+.ai-agent-position-option:has(input:checked) {
+    border-color: var(--ai-agent-primary);
+    background: var(--ai-agent-primary-light);
+    box-shadow: 0 0 0 3px var(--ai-agent-primary-glow);
+}
+
+/*
+----- تب‌های دستگاه (موبایل / تبلت / دسکتاپ) برای موقعیت آیکون -----
+سه آیکون کوچک؛ با کلیک روی هرکدام، تنظیمات (سمت قرارگیری و
+جابجایی عمودی) همان دستگاه نمایش داده می‌شود. هر دستگاه می‌تواند
+مقادیری مستقل و متفاوت از دستگاه‌های دیگر داشته باشد.
+پنل‌های غیرفعال با display:none مخفی می‌شوند اما در DOM باقی
+می‌مانند تا مقادیر هر سه دستگاه هنگام ذخیره‌ی فرم ارسال شوند.
+*/
+.ai-agent-device-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.ai-agent-device-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: var(--ai-agent-radius);
+    border: 1.5px solid var(--ai-agent-border);
+    background: var(--ai-agent-surface);
+    color: var(--ai-agent-text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    font-family: var(--ai-agent-font);
+    cursor: pointer;
+    transition: all var(--ai-agent-transition);
+    line-height: 1;
+}
+.ai-agent-device-tab svg {
+    display: block;
+    flex-shrink: 0;
+}
+.ai-agent-device-tab:hover {
+    border-color: var(--ai-agent-primary);
+    color: var(--ai-agent-primary-dark);
+    background: var(--ai-agent-primary-lighter);
+    transform: translateY(-1px);
+}
+.ai-agent-device-tab.is-active {
+    border-color: var(--ai-agent-primary);
+    background: var(--ai-agent-primary-light);
+    color: var(--ai-agent-primary-darker);
+    box-shadow: 0 0 0 3px var(--ai-agent-primary-glow);
+}
+.ai-agent-device-panel {
+    display: none;
+}
+.ai-agent-device-panel.is-active {
+    display: block;
+}
+
+/* متن راهنمای کوچک زیر فیلدها */
+.ai-agent-field-hint {
+    margin: 8px 0 0;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--ai-agent-text-muted);
+}
+
+/* نقاط رنگی کنار لیبل‌های دو رنگ دستیار (لایت/دارک) */
+.ai-agent-field-label .ai-agent-color-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.ai-agent-color-dot-light {
+    background: #f1f5f9;
+    box-shadow: inset 0 0 0 2px #ffffff;
+    border-color: #cbd5e1;
+}
+.ai-agent-color-dot-dark {
+    background: #111827;
+}
+
 /* ----- Status list ----- */
 .ai-agent-status-list {
     list-style: none;

@@ -6,6 +6,11 @@ function ai_agent_get_settings(){
     $defaults = array(
         'model'               => 'tencent/hy3:free',
         'color'               => '#F4865B',
+        // ====== رنگ دستیار (دو رنگ مستقل برای حالت لایت و دارک) ======
+        // color_light: رنگ ویجت وقتی چت در حالت روشن (Light) است
+        // color_dark : رنگ ویجت وقتی چت در حالت تاریک (Dark) است
+        'color_light'         => '#F4865B',
+        'color_dark'          => '#F4865B',
         'timeout'             => 15,
         'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
         'system_prompt'       => '',      // پرامت سیستم (از API همگام‌سازی خوانده می‌شود)
@@ -13,9 +18,75 @@ function ai_agent_get_settings(){
         'daily_message_limit' => 0,       // حداکثر پیام روزانه (قابل ویرایش کاربر و ارسال به سرور)
         'allowed_statuses'    => array(), // وضعیت‌های مجاز برای هر نوع محتوا (از سرور همگام‌سازی)
         'sync_images'         => false,   // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (allow-image / deny-image)
+
+        /*
+        ============================================
+        موقعیت آیکون افزونه (ویجت شناور) — تفکیک بر اساس دستگاه
+
+        برای هر دستگاه (موبایل / تبلت / دسکتاپ) دو مقدار مستقل ذخیره می‌شود:
+          - button_position_side_{device}   : 'right' (پیش‌فرض) یا 'left'
+          - button_position_offset_y_{device}: مقدار به پیکسل؛
+            مثبت ⇒ بالا، منفی ⇒ پایین، 0 ⇒ بدون تغییر
+
+        بازه‌های دستگاه:
+          - mobile  : عرض صفحه تا 768px
+          - tablet  : عرض صفحه بین 769px تا 1024px
+          - desktop : عرض صفحه از 1025px به بالا
+        ============================================
+        */
+        'button_position_side'            => 'right',
+        'button_position_offset_y'        => 0,
+
+        'button_position_side_mobile'     => 'right',
+        'button_position_offset_y_mobile' => 0,
+
+        'button_position_side_tablet'     => 'right',
+        'button_position_offset_y_tablet' => 0,
+
+        'button_position_side_desktop'    => 'right',
+        'button_position_offset_y_desktop'=> 0,
     );
     $saved = get_option('ai_agent_settings', array());
-    return wp_parse_args($saved, $defaults);
+    $settings = wp_parse_args($saved, $defaults);
+
+    /*
+    ============================================
+    مهاجرت خودکار از نسخه‌های قبلی:
+
+    ۱) رنگ: اگر color_light / color_dark هنوز ذخیره نشده‌اند ولی رنگ
+       قدیمی (color) موجود است، همان رنگ برای هر دو حالت کپی می‌شود.
+    ۲) موقعیت: اگر مقادیر per-device ذخیره نشده‌اند ولی مقادیر قدیمی
+       (button_position_side / button_position_offset_y) موجودند، همان
+       مقادیر برای هر سه دستگاه کپی می‌شود تا پس از به‌روزرسانی
+       افزونه، موقعیت فعلی سایت تغییر نکند.
+    ============================================
+    */
+    if (!isset($saved['color_light']) && !empty($settings['color'])) {
+        $settings['color_light'] = $settings['color'];
+    }
+    if (!isset($saved['color_dark']) && !empty($settings['color'])) {
+        $settings['color_dark'] = $settings['color'];
+    }
+
+    $needs_position_migration = (
+        !isset($saved['button_position_side_mobile']) ||
+        !isset($saved['button_position_side_tablet']) ||
+        !isset($saved['button_position_side_desktop'])
+    );
+    if ($needs_position_migration) {
+        $legacy_side   = (isset($saved['button_position_side']) && $saved['button_position_side'] === 'left') ? 'left' : 'right';
+        $legacy_offset = isset($saved['button_position_offset_y']) ? intval($saved['button_position_offset_y']) : 0;
+        foreach (array('mobile', 'tablet', 'desktop') as $device) {
+            if (!isset($saved['button_position_side_' . $device])) {
+                $settings['button_position_side_' . $device] = $legacy_side;
+            }
+            if (!isset($saved['button_position_offset_y_' . $device])) {
+                $settings['button_position_offset_y_' . $device] = $legacy_offset;
+            }
+        }
+    }
+
+    return $settings;
 }
 
 function ai_agent_register_settings(){
@@ -29,8 +100,34 @@ function ai_agent_sanitize_settings($input){
 
     // چون لیست مدل‌ها به‌صورت پویا از API خارجی خوانده می‌شود، آرایه ثابتی برای اعتبارسنجی وجود ندارد
     $output['model'] = (isset($input['model']) && trim($input['model']) !== '') ? sanitize_text_field($input['model']) : 'tencent/hy3:free';
-    $color = isset($input['color']) ? sanitize_hex_color($input['color']) : '';
-    $output['color'] = $color ? $color : '#2563eb';
+
+    /*
+    ============================================
+    رنگ دستیار — دو رنگ مستقل برای حالت لایت و دارک
+
+    color_light: رنگ ویجت در حالت روشن (Light)
+    color_dark : رنگ ویجت در حالت تاریک (Dark)
+
+    اگر کاربر رنگی را پاک کند (خالی بفرستد)، مقدار قبلی ذخیره‌شده
+    حفظ می‌شود؛ و اگر مقدار قبلی هم نبود، رنگ پیش‌فرض برند اعمال می‌شود.
+    کلید قدیمی color نیز برای سازگاری با نسخه‌های قبلی معتبر می‌ماند
+    و همیشه با مقدار color_light همگام نگه داشته می‌شود.
+    ============================================
+    */
+    $color_light = isset($input['color_light']) ? sanitize_hex_color($input['color_light']) : '';
+    if (!$color_light) {
+        $color_light = (isset($old['color_light']) && sanitize_hex_color($old['color_light'])) ? sanitize_hex_color($old['color_light']) : '#F4865B';
+    }
+    $output['color_light'] = $color_light;
+
+    $color_dark = isset($input['color_dark']) ? sanitize_hex_color($input['color_dark']) : '';
+    if (!$color_dark) {
+        $color_dark = (isset($old['color_dark']) && sanitize_hex_color($old['color_dark'])) ? sanitize_hex_color($old['color_dark']) : '#F4865B';
+    }
+    $output['color_dark'] = $color_dark;
+
+    // کلید قدیمی color برای سازگاری (معادل رنگ حالت روشن)
+    $output['color'] = $color_light;
 
     $timeout = isset($input['timeout']) ? intval($input['timeout']) : 15;
     $output['timeout'] = $timeout > 0 ? $timeout : 15;
@@ -56,8 +153,49 @@ function ai_agent_sanitize_settings($input){
     // sync_images: چک‌باکس «سینک کردن تصاویر» — اگر تیک خورده باشد true
     $output['sync_images'] = !empty($input['sync_images']);
 
-    // allowed_statuses همچنان فقط از سرور همگام‌سازی پر می‌شود (این‌جا فقط حفظ مقدار قبلی)
+    // allowed_statuses همچنان تنها از سرور همگام‌سازی پر می‌شود (این‌جا فقط حفظ مقدار قبلی)
     $output['allowed_statuses']    = isset($old['allowed_statuses']) && is_array($old['allowed_statuses']) ? $old['allowed_statuses'] : array();
+
+    /*
+    ============================================
+    موقعیت آیکون افزونه (ویجت شناور) — تفکیک بر اساس دستگاه
+
+    برای هر دستگاه (موبایل / تبلت / دسکتاپ) دو مقدار ذخیره می‌شود:
+      - button_position_side_{device}   : 'left' یا 'right' (پیش‌فرض 'right')
+      - button_position_offset_y_{device}: عدد صحیح به پیکسل
+        (مثبت ⇒ بالا، منفی ⇒ پایین، 0 ⇒ بدون تغییر)
+
+    هر دستگاه می‌تواند مقادیری کاملاً مستقل و متفاوت از دستگاه‌های
+    دیگر داشته باشد. مقادیر قدیمی button_position_side /
+    button_position_offset_y نیز برای سازگاری حفظ می‌شوند و از
+    مقادیر دسکتاپ کپی می‌گردند.
+
+    مقدار ارسال‌شده از فرم بررسی می‌شود؛ اگر نامعتبر بود، مقدار قبلی
+    یا پیش‌فرض به‌کار گرفته می‌شود.
+    ============================================
+    */
+    foreach (array('mobile', 'tablet', 'desktop') as $device) {
+        $side_key   = 'button_position_side_' . $device;
+        $offset_key = 'button_position_offset_y_' . $device;
+
+        $raw_side = isset($input[$side_key]) ? sanitize_text_field($input[$side_key]) : '';
+        if ($raw_side === '') {
+            $output[$side_key] = (isset($old[$side_key]) && $old[$side_key] === 'left') ? 'left' : 'right';
+        } else {
+            $output[$side_key] = ($raw_side === 'left') ? 'left' : 'right';
+        }
+
+        $raw_offset = isset($input[$offset_key]) ? intval($input[$offset_key]) : null;
+        if ($raw_offset === null) {
+            $output[$offset_key] = isset($old[$offset_key]) ? intval($old[$offset_key]) : 0;
+        } else {
+            $output[$offset_key] = $raw_offset;
+        }
+    }
+
+    // مقادیر قدیمی (تک‌دستگاهه) برای سازگاری — از مقادیر دسکتاپ کپی می‌شوند
+    $output['button_position_side']     = $output['button_position_side_desktop'];
+    $output['button_position_offset_y'] = $output['button_position_offset_y_desktop'];
 
     return $output;
 }
@@ -573,8 +711,17 @@ function ai_agent_settings_page(){
                         </div>
                     </section>
 
-                    <!-- ====== Appearance (Color + Timeout) ====== -->
+                    <!-- ====== Appearance (Dual Colors + Timeout) ====== -->
                     <section class="ai-agent-card ai-agent-grid-2">
+                        <?php
+                        /*
+                        رنگ دستیار — دو رنگ مستقل دریافت می‌شود:
+                          - color_light: رنگ ویجت در حالت روشن (Light)
+                          - color_dark : رنگ ویجت در حالت تاریک (Dark)
+                        هنگام نمایش به بازدیدکننده، هر حالتی که فعال باشد
+                        از رنگ همان حالت استفاده می‌شود (دکمه شناور، هدر،
+                        حباب پیام کاربر و رنگ فوکِس فیلد متن).
+                        */ ?>
                         <div class="ai-agent-card-cell">
                             <header class="ai-agent-card-header">
                                 <h2>
@@ -583,7 +730,21 @@ function ai_agent_settings_page(){
                                 </h2>
                             </header>
                             <div class="ai-agent-card-body">
-                                <input type="text" name="ai_agent_settings[color]" id="ai_agent_color" value="<?php echo esc_attr($settings['color']); ?>" class="ai-agent-color-field" />
+                                <div class="ai-agent-field-row">
+                                    <label for="ai_agent_color_light" class="ai-agent-field-label">
+                                        <span class="ai-agent-color-dot ai-agent-color-dot-light" aria-hidden="true"></span>
+                                        رنگ در حالت روشن (Light)
+                                    </label>
+                                    <input type="text" name="ai_agent_settings[color_light]" id="ai_agent_color_light" value="<?php echo esc_attr($settings['color_light']); ?>" class="ai-agent-color-field" />
+                                </div>
+                                <div class="ai-agent-field-row ai-agent-mt">
+                                    <label for="ai_agent_color_dark" class="ai-agent-field-label">
+                                        <span class="ai-agent-color-dot ai-agent-color-dot-dark" aria-hidden="true"></span>
+                                        رنگ در حالت تاریک (Dark)
+                                    </label>
+                                    <input type="text" name="ai_agent_settings[color_dark]" id="ai_agent_color_dark" value="<?php echo esc_attr($settings['color_dark']); ?>" class="ai-agent-color-field" />
+                                </div>
+                                <p class="ai-agent-field-hint">وقتی چت در حالت روشن یا تاریک نمایش داده می‌شود، رنگ همان حالت روی دکمه شناور، هدر، حباب پیام کاربر و فوکِس فیلد متن اعمال می‌گردد.</p>
                             </div>
                         </div>
                         <div class="ai-agent-card-cell">
@@ -599,6 +760,98 @@ function ai_agent_settings_page(){
                                     <span class="ai-agent-number-suffix">ثانیه</span>
                                 </div>
                             </div>
+                        </div>
+                    </section>
+
+                    <!-- ====== Widget Button Position (per device) ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                                موقعیت آیکون افزونه
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <?php
+                            /*
+                            انتخاب دستگاه (موبایل / تبلت / دسکتاپ):
+                            سه آیکون کوچک در بالا نمایش داده می‌شود؛ با کلیک روی هر
+                            آیکون، تنظیمات همان دستگاه (سمت قرارگیری + جابجایی عمودی)
+                            نشان داده می‌شود و کاربر می‌تواند برای هر دستگاه مقادیری
+                            کاملاً متفاوت و مستقل تعیین کند.
+
+                            نکته: هر سه پنل همیشه در DOM باقی می‌مانند (فقط با CSS
+                            مخفی/نمایش می‌شوند) تا مقادیر هر سه دستگاه هنگام ذخیره‌ی
+                            فرم ارسال شوند.
+                            */ ?>
+                            <div class="ai-agent-field-row">
+                                <label class="ai-agent-field-label">انتخاب دستگاه</label>
+                                <div class="ai-agent-device-tabs" id="ai-agent-device-tabs" role="tablist">
+                                    <button type="button" class="ai-agent-device-tab is-active" data-device="mobile" role="tab" aria-selected="true" title="تنظیمات موبایل">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                        <span class="ai-agent-device-tab-label">موبایل</span>
+                                    </button>
+                                    <button type="button" class="ai-agent-device-tab" data-device="tablet" role="tab" aria-selected="false" title="تنظیمات تبلت">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                        <span class="ai-agent-device-tab-label">تبلت</span>
+                                    </button>
+                                    <button type="button" class="ai-agent-device-tab" data-device="desktop" role="tab" aria-selected="false" title="تنظیمات دسکتاپ">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                        <span class="ai-agent-device-tab-label">دسکتاپ</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <?php
+                            $ai_agent_devices = array(
+                                'mobile'  => 'موبایل',
+                                'tablet'  => 'تبلت',
+                                'desktop' => 'دسکتاپ',
+                            );
+                            foreach ($ai_agent_devices as $ai_agent_device => $ai_agent_device_label) :
+                                $ai_agent_side_key   = 'button_position_side_' . $ai_agent_device;
+                                $ai_agent_offset_key = 'button_position_offset_y_' . $ai_agent_device;
+                            ?>
+                            <div class="ai-agent-device-panel<?php echo $ai_agent_device === 'mobile' ? ' is-active' : ''; ?>" data-device-panel="<?php echo esc_attr($ai_agent_device); ?>">
+                                <!-- سمت قرارگیری (چپ / راست) — مخصوص همین دستگاه -->
+                                <div class="ai-agent-field-row ai-agent-mt">
+                                    <label class="ai-agent-field-label">سمت قرارگیری — <?php echo esc_html($ai_agent_device_label); ?></label>
+                                    <div class="ai-agent-checkbox-grid ai-agent-position-grid">
+                                        <label class="ai-agent-check-card ai-agent-position-option">
+                                            <input type="radio" name="ai_agent_settings[<?php echo esc_attr($ai_agent_side_key); ?>]" value="right" <?php checked($settings[$ai_agent_side_key], 'right'); ?>>
+                                            <span class="ai-agent-check-card-body">
+                                                <span class="ai-agent-check-card-title">راست</span>
+                                                <span class="ai-agent-check-card-sub">Right Side</span>
+                                            </span>
+                                        </label>
+                                        <label class="ai-agent-check-card ai-agent-position-option">
+                                            <input type="radio" name="ai_agent_settings[<?php echo esc_attr($ai_agent_side_key); ?>]" value="left" <?php checked($settings[$ai_agent_side_key], 'left'); ?>>
+                                            <span class="ai-agent-check-card-body">
+                                                <span class="ai-agent-check-card-title">چپ</span>
+                                                <span class="ai-agent-check-card-sub">Left Side</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- جابجایی عمودی به پیکسل — مخصوص همین دستگاه -->
+                                <div class="ai-agent-field-row ai-agent-mt">
+                                    <label for="ai_agent_<?php echo esc_attr($ai_agent_offset_key); ?>" class="ai-agent-field-label">جابجایی عمودی — <?php echo esc_html($ai_agent_device_label); ?></label>
+                                    <div class="ai-agent-number-input">
+                                        <input type="number" step="1" name="ai_agent_settings[<?php echo esc_attr($ai_agent_offset_key); ?>]" id="ai_agent_<?php echo esc_attr($ai_agent_offset_key); ?>" value="<?php echo esc_attr(intval($settings[$ai_agent_offset_key])); ?>" />
+                                        <span class="ai-agent-number-suffix">پیکسل (مثبت: بالا، منفی: پایین)</span>
+                                    </div>
+                                </div>
+
+                                <?php if ($ai_agent_device === 'mobile') : ?>
+                                <p class="ai-agent-field-hint">بازه‌ی موبایل: عرض صفحه تا ۷۶۸ پیکسل. در موبایل پنجره‌ی چت تمام‌صفحه است و این تنظیمات فقط روی دکمه‌ی شناور اعمال می‌شود.</p>
+                                <?php elseif ($ai_agent_device === 'tablet') : ?>
+                                <p class="ai-agent-field-hint">بازه‌ی تبلت: عرض صفحه بین ۷۶۹ تا ۱۰۲۴ پیکسل.</p>
+                                <?php else : ?>
+                                <p class="ai-agent-field-hint">بازه‌ی دسکتاپ: عرض صفحه از ۱۰۲۵ پیکسل به بالا.</p>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
                     </section>
 
