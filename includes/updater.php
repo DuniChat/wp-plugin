@@ -12,16 +12,23 @@ if (!defined('ABSPATH')) exit;
  * افزونه‌ها نمایش می‌دهد و فرآیند دانلود و نصب را خود وردپرس انجام می‌دهد.
  *
  * فرآیند انتشار نسخه‌ی جدید (چک‌لیست توسعه‌دهنده):
- *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده (مثلاً 1.0.2)
+ *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده (مثلاً 1.0.4)
  *   ۲) تغییرات را کامیت و پوش کن
- *   ۳) در گیت‌هاب یک Release با تگ vX.Y.Z (مثلاً v1.0.2) منتشر کن
+ *   ۳) در گیت‌هاب یک Release با تگ vX.Y.Z (مثلاً v1.0.4) منتشر کن
  *      - لازم نیست فایل زیپی پیوست کنی؛ اگر زیپی پیوست شود (با پسوند .zip)
  *        همان دانلود می‌شود وگرنه از زیپ سورسِ خود تگ استفاده می‌شود.
  *      - ریلیزهای Draft و Pre-release نادیده گرفته می‌شوند.
  *
+ * تشخیص مشکل:
+ *   در صفحه‌ی افزونه‌ها، زیر توضیحات افزونه‌ی دانیچت، وضعیت آخرین بررسی
+ *   گیت‌هاب نمایش داده می‌شود (زمان، موفقیت/خطا و کد HTTP).
+ *   اگر همیشه «ناموفق» بود، احتمالاً هاست شما به api.github.com دسترسی
+ *   ندارد یا محدودیت نرخ درخواست (rate limit) خورده است.
+ *
  * نکته: نتیجه‌ی چک تا ۱۲ ساعت کش می‌شود؛ اما هر بار که ادمین صفحه‌ی
- * افزونه‌ها را باز کند (اگر بیش از ۲ دقیقه از آخرین چک گذشته باشد) یک
- * چک تازه انجام می‌شود تا ریلیزهای جدید بلافاصله دیده شوند.
+ * افزونه‌ها یا به‌روزرسانی‌ها را باز کند (اگر بیش از ۲ دقیقه از آخرین
+ * چک گذشته باشد) یک چک تازه انجام می‌شود تا ریلیزهای جدید بلافاصله
+ * دیده شوند.
  */
 class Dunichat_GitHub_Updater
 {
@@ -61,6 +68,24 @@ class Dunichat_GitHub_Updater
      */
     private $cache_key = 'dunichat_github_latest_release';
 
+    /**
+     * کلید گزینه‌ی وضعیت آخرین بررسی (برای نمایش در ردیف افزونه)
+     * @var string
+     */
+    private $status_key = 'dunichat_updater_status';
+
+    /**
+     * کش نسخه‌ی فعلی (برای جلوگیری از خواندن مکرر هدر فایل)
+     * @var string|null
+     */
+    private $current_version = null;
+
+    /**
+     * آیا در این ریکوئست، ارزیابی read-filter انجام شده است؟
+     * @var bool
+     */
+    private $read_checked = false;
+
     public function __construct($plugin_file)
     {
         $this->file     = $plugin_file;
@@ -84,14 +109,19 @@ class Dunichat_GitHub_Updater
         // پاک کردن کش بعد از پایان موفق آپدیت
         add_action('upgrader_process_complete', array($this, 'clear_cache'), 10, 2);
 
-        // هر بار ادمین صفحه‌ی افزونه‌ها / به‌روزرسانی‌ها را باز کند، اگر کش قدیمی است، تازه چک شود
-        add_action('load-plugins.php', array($this, 'clear_cache'));
-        add_action('load-update-core.php', array($this, 'clear_cache'));
+        // ⚠ اولویت ۵ حیاتی است: باید «قبل از» wp_update_plugins هسته (اولویت ۱۰)
+        // اجرا شود تا کش گیت‌هاب پاک شده و داده‌ی تازه در همان چرخه‌ی رسمی
+        // وردپرس گرفته و در transient ذخیره شود
+        add_action('load-plugins.php', array($this, 'clear_cache'), 5);
+        add_action('load-update-core.php', array($this, 'clear_cache'), 5);
+
+        // نمایش وضعیت آخرین بررسی گیت‌هاب در ردیف افزونه (ابزار تشخیص مشکل)
+        add_filter('plugin_row_meta', array($this, 'row_meta'), 10, 2);
     }
 
     /**
      * تزریق اطلاعات به‌روزرسانی به transient وردپرس
-     * (به pre_set_site_transient_update_plugins وصل است)
+     * (به pre_set_site_transient_update_plugins وصل است و نتیجه ذخیره می‌شود)
      */
     public function inject_update($transient)
     {
@@ -124,7 +154,12 @@ class Dunichat_GitHub_Updater
 
     /**
      * نسخه‌ی سبک‌ترِ همان تزریق، ولی هنگام «خواندن» transient؛
-     * باعث می‌شود ریلیز تازه بدون منتظر ماندن برای چرخه‌ی ۱۲ ساعته‌ی وردپرس دیده شود.
+     * باعث می‌شود ریلیز تازه بدون منتظر ماندن برای چرخه‌ی رسمی وردپرس دیده شود.
+     *
+     * ⚠ نکته‌ی مهم: ورودی‌های قبلی (به‌خصوص no_update که از بررسی‌های قبل در
+     * transient ذخیره شده) ممکن است کهنه باشند؛ بنابراین هر بار که ورودی
+     * معتبری برای نسخه‌ی جدید ثبت نشده، دوباره با آخرین داده‌ی گیت‌هاب
+     * ارزیابی می‌کنیم.
      */
     public function inject_update_on_read($transient)
     {
@@ -132,19 +167,43 @@ class Dunichat_GitHub_Updater
             return $transient;
         }
 
-        // اگر قبلاً برای این افزونه چیزی ثبت شده، دست نمی‌زنیم
-        if (isset($transient->response[$this->basename]) || isset($transient->no_update[$this->basename])) {
+        // فقط اگر آپدیتِ معتبرِ جدیدتر از نسخه‌ی نصب‌شده از قبل ثبت شده، کاری نکن
+        if (isset($transient->response[$this->basename])
+            && is_object($transient->response[$this->basename])
+            && !empty($transient->response[$this->basename]->new_version)
+            && version_compare($transient->response[$this->basename]->new_version, $this->get_current_version(), '>')) {
             return $transient;
         }
 
         // در هر ریکوئست فقط یک بار
-        static $checked = false;
-        if ($checked) {
+        if ($this->read_checked) {
             return $transient;
         }
-        $checked = true;
+        $this->read_checked = true;
 
-        return $this->inject_update($transient);
+        if (!isset($transient->response) || !is_array($transient->response)) {
+            $transient->response = array();
+        }
+
+        if (!isset($transient->no_update) || !is_array($transient->no_update)) {
+            $transient->no_update = array();
+        }
+
+        $entry = $this->get_update_entry();
+
+        if (null === $entry) {
+            // گیت‌هاب در دسترس نبود؛ ورودی‌های فعلی دست‌نخورده می‌مانند
+            return $transient;
+        }
+
+        if ($entry['available']) {
+            $transient->response[$this->basename] = $entry['object'];
+            unset($transient->no_update[$this->basename]);
+        } else {
+            $transient->no_update[$this->basename] = $entry['object'];
+        }
+
+        return $transient;
     }
 
     /**
@@ -354,15 +413,26 @@ class Dunichat_GitHub_Updater
      */
     private function fetch_release()
     {
+        $headers = array(
+            'Accept'     => 'application/vnd.github+json',
+            'User-Agent' => 'Dunichat-WordPress-Plugin',
+        );
+
+        // اختیاری: برای رفع محدودیت نرخ درخواست (rate limit) هاست‌های اشتراکی،
+        // می‌توانید توکن گیت‌هاب را در wp-config.php تعریف کنید:
+        //   define('DUNICHAT_GITHUB_TOKEN', 'ghp_xxxxxxxxxxxxxxxxxxxx');
+        if (defined('DUNICHAT_GITHUB_TOKEN') && DUNICHAT_GITHUB_TOKEN) {
+            $headers['Authorization'] = 'Bearer ' . DUNICHAT_GITHUB_TOKEN;
+        }
+
         $response = wp_remote_get($this->api_url, array(
             'timeout' => 15,
-            'headers' => array(
-                'Accept'     => 'application/vnd.github+json',
-                'User-Agent' => 'Dunichat-WordPress-Plugin',
-            ),
+            'headers' => $headers,
         ));
 
         if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+            $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+            $this->store_status(false, $code, array());
             // کش منفی کوتاه تا در صورت خطا، هر ریکوئست به گیت‌هاب کوبیده نشود
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
@@ -371,10 +441,12 @@ class Dunichat_GitHub_Updater
         $release = json_decode(wp_remote_retrieve_body($response), true);
 
         if (!is_array($release) || empty($release['tag_name'])) {
+            $this->store_status(false, 200, array());
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
         }
 
+        $this->store_status(true, 200, $release);
         set_transient($this->cache_key, array('fetched_at' => time(), 'release' => $release), 12 * HOUR_IN_SECONDS);
 
         return $release;
@@ -400,13 +472,16 @@ class Dunichat_GitHub_Updater
     }
 
     /**
-     * نسخه‌ی فعلی نصب‌شده از هدر فایل اصلی افزونه
+     * نسخه‌ی فعلی نصب‌شده از هدر فایل اصلی افزونه (با کش)
      */
     private function get_current_version()
     {
-        $data = get_file_data($this->file, array('Version' => 'Version'), 'plugin');
+        if (null === $this->current_version) {
+            $data = get_file_data($this->file, array('Version' => 'Version'), 'plugin');
+            $this->current_version = !empty($data['Version']) ? $data['Version'] : '0.0.0';
+        }
 
-        return !empty($data['Version']) ? $data['Version'] : '0.0.0';
+        return $this->current_version;
     }
 
     /**
@@ -417,6 +492,53 @@ class Dunichat_GitHub_Updater
         $version = ltrim((string) $tag, 'vV');
 
         return '' !== $version ? $version : '0.0.0';
+    }
+
+    /**
+     * ذخیره‌ی وضعیت آخرین بررسی (برای نمایش در ردیف افزونه)
+     */
+    private function store_status($ok, $code, $release)
+    {
+        update_option($this->status_key, array(
+            'time' => time(),
+            'ok'   => (bool) $ok,
+            'code' => (int) $code,
+            'tag'  => !empty($release['tag_name']) ? $release['tag_name'] : '',
+        ), false);
+    }
+
+    /**
+     * نمایش وضعیت آخرین بررسی گیت‌هاب زیر توضیحات افزونه در صفحه‌ی افزونه‌ها
+     * (ابزار تشخیص: اگر «ناموفق» بود یعنی درخواست به api.github.com انجام نمی‌شود)
+     */
+    public function row_meta($links, $file)
+    {
+        if ($file !== $this->basename) {
+            return $links;
+        }
+
+        $status = get_option($this->status_key);
+
+        if (!is_array($status) || empty($status['time'])) {
+            $links[] = 'بررسی آپدیت گیت‌هاب: هنوز بررسی نشده (یک بار صفحه را رفرش کنید)';
+
+            return $links;
+        }
+
+        $ago = human_time_diff((int) $status['time'], current_time('timestamp'));
+
+        if (!empty($status['ok'])) {
+            $text = 'بررسی آپدیت گیت‌هاب: ' . $ago . ' پیش — موفق';
+            if (!empty($status['tag'])) {
+                $text .= ' (آخرین ریلیز: ' . $status['tag'] . ')';
+            }
+        } else {
+            $text = 'بررسی آپدیت گیت‌هاب: ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
+        }
+
+        $links[] = $text;
+
+        return $links;
     }
 
     /**
