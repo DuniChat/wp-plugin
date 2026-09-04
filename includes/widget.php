@@ -106,6 +106,23 @@ function ai_agent_widget(){
 
                 <textarea id="ai-agent-input" placeholder="پیام خود را بنویسید..."></textarea>
 
+                <?php
+                /*
+                نوار ضبط صدا: در حالت عادی مخفی است. با شروع ضبط (کلیک روی
+                دکمه میکروفون)، جای‌گزینِ textarea می‌شود و افکت‌های زیر را
+                نمایش می‌دهد: نقطه‌ی قرمز پالسی، موج صدا (equalizer) متحرک،
+                شمارنده‌ی زمان ضبط (mm:ss تا سقف ۱۰:۰۰) و دکمه‌ی لغو ضبط.
+                این المان توسط JS کنترل می‌شود (کلاس is-active).
+                */ ?>
+                <div id="ai-agent-recording-bar" class="ai-agent-recording-bar" aria-hidden="true">
+                    <span class="ai-recording-dot" aria-hidden="true"></span>
+                    <span class="ai-recording-waveform" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </span>
+                    <span class="ai-recording-label">در حال ضبط صدا...</span>
+                    <span id="ai-agent-recording-timer" class="ai-recording-timer">00:00</span>
+                </div>
+
                 <button id="ai-agent-send" title="ارسال پیام" type="button">
                     <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/send.svg'); ?>" alt="ارسال" />
                 </button>

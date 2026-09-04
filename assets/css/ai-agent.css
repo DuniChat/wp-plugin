@@ -1124,6 +1124,139 @@ button.ai-references-title.ai-references-toggle {
 }
 
 /* ============================================
+   نوار ضبط صدا (Recording Bar)
+
+   جای‌گزینِ textarea می‌شود تا کاملاً برای کاربر مشخص باشد در حال
+   ضبطِ صدا (شبیه ارسال ویس) است: نقطه‌ی قرمز پالسی + موج صدا
+   (equalizer) متحرک + شمارنده‌ی زمان + دکمه‌ی لغو ضبط.
+   ============================================ */
+.ai-agent-recording-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.ai-agent-recording-bar.is-active {
+    display: flex;
+}
+
+#ai-agent[data-theme="dark"] .ai-agent-recording-bar {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* نقطه‌ی قرمز پالسی: نشانه‌ی «در حال ضبط» */
+.ai-recording-dot {
+    width: 9px;
+    height: 9px;
+    min-width: 9px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: ai-recording-dot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ai-recording-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+/* موج صدا (equalizer) متحرک — القای حس «صدا در حال ضبط شدن است» */
+.ai-recording-waveform {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 20px;
+    flex: 0 0 auto;
+}
+
+.ai-recording-waveform span {
+    display: block;
+    width: 3px;
+    height: 6px;
+    border-radius: 2px;
+    background: var(--ai-agent-theme-color, #2563eb);
+    animation: ai-recording-wave 0.9s ease-in-out infinite;
+}
+
+.ai-recording-waveform span:nth-child(1) { animation-delay: 0s; }
+.ai-recording-waveform span:nth-child(2) { animation-delay: 0.12s; }
+.ai-recording-waveform span:nth-child(3) { animation-delay: 0.24s; }
+.ai-recording-waveform span:nth-child(4) { animation-delay: 0.36s; }
+.ai-recording-waveform span:nth-child(5) { animation-delay: 0.48s; }
+
+@keyframes ai-recording-wave {
+    0%, 100% { height: 6px; }
+    50% { height: 18px; }
+}
+
+/* متن «در حال ضبط صدا...» */
+.ai-recording-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#ai-agent[data-theme="dark"] .ai-recording-label {
+    color: #cbd5e1;
+}
+
+/* شمارنده‌ی زمان ضبط (mm:ss) */
+.ai-recording-timer {
+    flex: 0 0 auto;
+    font-size: 12.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #ef4444;
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+#ai-agent[data-theme="dark"] .ai-recording-timer {
+    color: #fca5a5;
+}
+
+/*
+   حالت «در حال پردازش نهایی...» — بعد از کلیک روی توقف تا رسیدنِ
+   نتیجه‌ی واقعیِ سرویس. موج صدا از حرکت می‌ایستد و نقطه‌ی قرمز
+   کمی کندتر و کم‌رنگ‌تر پالس می‌زند تا حس «صبر کن، در حال تکمیل
+   شدن است» منتقل شود (نه اینکه هنوز در حال ضبط صداست).
+*/
+.ai-agent-recording-bar.is-processing .ai-recording-waveform span {
+    animation: none;
+    height: 4px;
+    opacity: 0.5;
+}
+
+.ai-agent-recording-bar.is-processing .ai-recording-dot {
+    animation-duration: 2s;
+    opacity: 0.5;
+}
+
+.ai-agent-recording-bar.is-processing .ai-recording-timer {
+    opacity: 0.6;
+}
+
+/* روی موبایل، ارتفاع نوار ضبط با ارتفاع بزرگ‌تر textarea هماهنگ می‌شود */
+@media (max-width: 768px) {
+    .ai-agent-recording-bar {
+        height: 44px;
+    }
+}
+
+/* ============================================
    ناحیه پیش‌نمایش عکس‌های انتخاب‌شده (بالای فوتر)
    ============================================ */
 #ai-agent-attachments {
