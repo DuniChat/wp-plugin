@@ -522,7 +522,7 @@ class Dunichat_GitHub_Updater
         $status = get_option($this->status_key);
 
         if (!is_array($status) || empty($status['time'])) {
-            $links[] = 'بررسی آپدیت گیت‌هاب: هنوز بررسی نشده (یک بار صفحه را رفرش کنید)';
+            $links[] = 'بررسی آپدیت : هنوز بررسی نشده (یک بار صفحه را رفرش کنید)';
 
             return $links;
         }
@@ -530,12 +530,12 @@ class Dunichat_GitHub_Updater
         $ago = human_time_diff((int) $status['time'], current_time('timestamp'));
 
         if (!empty($status['ok'])) {
-            $text = 'بررسی آپدیت گیت‌هاب: ' . $ago . ' پیش — موفق';
+            $text = 'بررسی آپدیت : ' . $ago . ' پیش — موفق';
             if (!empty($status['tag'])) {
                 $text .= ' (آخرین ریلیز: ' . $status['tag'] . ')';
             }
         } else {
-            $text = 'بررسی آپدیت گیت‌هاب: ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
+            $text = 'بررسی آپدیت : ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
         }
 
         $links[] = $text;
