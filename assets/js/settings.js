@@ -449,11 +449,15 @@
         });
 
         // ----- دکمه‌ی «سینک تمامی محتوا» (Sync All) -----
+        // رفتار: ابتدا تمام source_id های ذخیره‌شده در جدول با /sync/delete
+        // از سرور حذف می‌شوند، سپس تمام محتوای تیک‌خورده از ابتدا با
+        // /sync/content مجدداً ارسال می‌شود.
         $('#ai-agent-sync-all-btn').on('click', function(e) {
             e.preventDefault();
 
-            // تأیید کاربر قبل از انجام سینک کامل (چون ممکن است حجم بالایی ارسال شود)
-            if (!confirm('آیا مطمئن هستید؟ این عملیات بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا به سرور ارسال می‌کند. برای فروشگاه‌های با محتوای زیاد ممکن است زمان‌بر باشد.')) {
+            // تأیید کاربر قبل از انجام سینک کامل (چون ابتدا محتوای قبلی از
+            // سرور حذف و سپس کل محتوا دوباره ارسال می‌شود)
+            if (!confirm('آیا مطمئن هستید؟ این عملیات ابتدا تمام محتوای قبلیِ همگام‌شده را از سرور حذف می‌کند و سپس تمام محتوای تیک‌خورده را از ابتدا دوباره ارسال می‌کند. برای فروشگاه‌های با محتوای زیاد ممکن است زمان‌بر باشد.')) {
                 return;
             }
 
@@ -462,7 +466,7 @@
             var token = $('#ai_agent_sync_all_nonce_field').val();
 
             $btn.prop('disabled', true).addClass('is-loading');
-            $status.text('در حال ارسال تمام محتوا به سرور...');
+            $status.text('در حال حذف محتوای قبلی از سرور و ارسال مجدد تمام محتوا...');
 
             $.ajax({
                 url: ajaxurl,
@@ -475,7 +479,14 @@
                     $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         var d = response.data;
-                        var summary = d.new_count + ' مورد با موفقیت به سرور ارسال شد';
+                        // ساخت پیام خلاصه با ذکر تعداد حذفی‌ها و ارسالی‌ها
+                        var deletedCount = (typeof d.deleted_count !== 'undefined') ? parseInt(d.deleted_count, 10) : 0;
+                        var summary = '';
+                        if (deletedCount > 0) {
+                            summary = deletedCount + ' مورد قبلی از سرور حذف و ' + d.new_count + ' مورد جدید ارسال شد';
+                        } else {
+                            summary = d.new_count + ' مورد با موفقیت به سرور ارسال شد';
+                        }
                         if (d.total_count) {
                             summary += ' (از مجموع ' + d.total_count + ' مورد)';
                         }
@@ -484,6 +495,10 @@
                             $status.append('<br><small style="color:#888;font-weight:normal;">زمان سینک کامل: ' + d.last_sync_time + '</small>');
                             // به‌روزرسانی فیلد «آخرین سینک کامل» در بلوک آخرین همگام‌سازی
                             $('.ai-agent-last-sync-item').last().find('.ai-agent-last-sync-value').text(d.last_sync_time);
+                        }
+                        // به‌روزرسانی نمودار وضعیت پس از سینک کامل (اگر موجود باشد)
+                        if (typeof aiAgentCheckSyncStatus === 'function') {
+                            aiAgentCheckSyncStatus(false);
                         }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در سینک کامل.';

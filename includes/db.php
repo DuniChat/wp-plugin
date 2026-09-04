@@ -463,6 +463,49 @@ function ai_agent_get_all_synced_job_ids() {
 
 /*
 ============================================
+دریافت تمام ردیف‌های جدول سینک‌شده‌ها به‌صورت جفت
+(source_id + content_type)
+
+این تابع مخصوص دکمه‌ی «سینک تمامی محتوا» است. قبل از ارسال مجدد
+تمام محتوا، همه‌ی آیتم‌هایی که قبلاً به سرور اعلام شده‌اند باید با
+اندپوینت /api/v1/sync/delete حذف شوند؛ برای همین به source_id و
+content_type هر دو نیاز است (بدنه‌ی درخواست حذف باید به شکل
+{ "items": [ { "source_id": "...", "content_type": "..." } ] } باشد).
+
+خروجی: آرایه‌ای از آرایه‌ها با کلیدهای source_id و content_type
+============================================
+*/
+function ai_agent_get_all_synced_items_rows() {
+
+    global $wpdb;
+    $table = $wpdb->prefix.'ai_agent_synced_items';
+
+    // اگر جدول وجود نداشت (مثلاً قبل از نصب کامل پلاگین)، خالی برمی‌گردد
+    if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") !== $table) {
+        return array();
+    }
+
+    $rows = $wpdb->get_results("SELECT source_id, content_type FROM {$table}");
+
+    $items = array();
+    if (is_array($rows)) {
+        foreach ($rows as $row) {
+            // ردیف‌های بدون source_id معتبر نادیده گرفته می‌شوند
+            if (!isset($row->source_id) || (string) $row->source_id === '') {
+                continue;
+            }
+            $items[] = array(
+                'source_id'    => (string) $row->source_id,
+                'content_type' => (string) $row->content_type,
+            );
+        }
+    }
+
+    return $items;
+}
+
+/*
+============================================
 دریافت لیست تمام آیتم‌های سینک‌شده با وضعیت مشخص
 
 این تابع برای پیدا کردن آیتم‌های ناموفق (status='failed') استفاده می‌شود

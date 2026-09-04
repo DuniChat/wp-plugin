@@ -27,8 +27,10 @@ if (!defined('ABSPATH')) {
       ارسال می‌شود و محتوای حذف‌شده به /sync/delete کال زده می‌شود.
 
   ب) سینک کامل (دکمه‌ی «سینک تمامی محتوا»):
-      بدون توجه به آی‌دی‌های قدیمی، تمام محتوای تیک‌خورده به /sync/content
-      ارسال می‌شود و جدول آی‌دی‌های سینک‌شده از نو پر می‌شود.
+      ابتدا تمام source_id های موجود در جدول wp_ai_agent_synced_items
+      به /sync/delete ارسال می‌شوند تا محتوای قبلی از سرور حذف شود و
+      جدول خالی گردد؛ سپس تمام محتوای تیک‌خورده از ابتدا به /sync/content
+      ارسال و جدول آی‌دی‌های سینک‌شده از نو پر می‌شود.
 
 جدول wp_ai_agent_synced_items برای پیگیری آی‌دی‌های سینک‌شده استفاده
 می‌شود (تعریف شده در db.php). تاریخ آخرین سینک در wp_options با کلید
@@ -556,13 +558,22 @@ if (!empty($new_items)) {
 ================================================================
 هندلر سینک کامل (Sync All)
 
-این هندلر بدون توجه به سینک قبلی، تمام محتوای تیک‌خورده را از ابتدا
-به /sync/content ارسال می‌کند. جدول synced_items پاک شده و دوباره با
-تمام آی‌دی‌های فعلی پر می‌شود.
+مراحل این هندلر:
+  ۱) خواندن تمام ردیف‌های جدول wp_ai_agent_synced_items
+  ۲) اعلام حذف تک‌تک آن‌ها به سرور با اندپوینت /api/v1/sync/delete
+     (هدر X-API-Key و بدنه‌ی { "items": [ { source_id, content_type } ] })
+     — تابع ai_agent_push_sync_delete آیتم‌ها را در دسته‌های ۲۰تایی
+     ارسال می‌کند (تعریف‌شده در api.php)
+  ۳) خالی‌کردن کامل جدول wp_ai_agent_synced_items
+  ۴) جمع‌آوری تمام محتوای تیک‌خورده‌ی فعلی وردپرس (طبق تیک‌های کاربر)
+  ۵) ارسال از ابتدا به /sync/content — دقیقاً مشابه دکمه‌ی «همگام‌سازی
+     اطلاعات» ولی بدون مقایسه با سینک قبلی
+  ۶) پرکردن مجدد جدول با job_id های جدید و به‌روزرسانی تاریخ سینک
 
-نکته: این حالت برای زمانی است که کاربر می‌خواهد مطمئن شود تمام محتوا
-دوباره در سرور همگام‌سازی ثبت شده است (مثلاً بعد از تغییر ساختار
-محتوا یا مشکلات قبلی).
+نکته: این حالت برای زمانی است که کاربر می‌خواهد محتوای سرور دقیقاً
+با محتوای فعلی وردپرس بازسازی شود (مثلاً بعد از تغییر ساختار محتوا
+یا مشکلات قبلی). اگر حذف از سرور کاملاً ناموفق باشد، عملیات متوقف
+می‌شود تا جدول محلی دست‌نخورده بماند و کاربر بتواند دوباره تلاش کند.
 ================================================================
 */
 function ai_agent_sync_all_data_handler() {
@@ -602,12 +613,79 @@ function ai_agent_sync_all_data_handler() {
     // خواندن پرچم سینک تصاویر از تنظیمات (controlled by allowed_statuses['image'] = allow-image|deny-image)
     $sync_images_enabled = !empty($settings['sync_images']);
 
-    // ۵. جمع‌آوری تمام محتوای فعلی
+    /*
+    ============================================
+    ۵. حذف کامل محتوای قبلی از سرور
+
+    تمام ردیف‌های جدول wp_ai_agent_synced_items خوانده می‌شوند و هر
+    source_id به‌همراه content_type آن به /api/v1/sync/delete اعلام
+    حذف می‌شود. اگر جدول خالی باشد (هیچ سینک قبلی انجام نشده)، این
+    مرحله کلاً نادیده گرفته می‌شود و مستقیم به ارسال محتوا می‌رویم.
+    ============================================
+    */
+    $synced_rows = ai_agent_get_all_synced_items_rows();
+
+    $deleted_sent_count = 0;   // تعداد آیتم‌هایی که حذفشان با موفقیت به سرور اعلام شد
+    $delete_error = '';        // پیام خطای حذف جزئی (در صورت وجود)
+
+    if (!empty($synced_rows)) {
+        $delete_result = ai_agent_push_sync_delete($synced_rows);
+
+        if ($delete_result['status'] === 'error') {
+            /*
+            هیچ آیتمی از سرور حذف نشد → عملیات سینک کامل متوقف می‌شود.
+            در این حالت جدول محلی را دست‌نخورده نگه می‌داریم تا وضعیت
+            قبلی حفظ شود و کاربر بعد از رفع مشکل بتواند دوباره تلاش کند.
+            */
+            wp_send_json_error(array(
+                'message'        => 'حذف محتوای قبلی از سرور ناموفق بود: ' . $delete_result['message'],
+                'new_count'      => 0,
+                'deleted_count'  => 0,
+                'total_count'    => 0,
+                'last_sync_time' => ai_agent_get_last_sync_all_time(),
+            ));
+        }
+
+        $deleted_sent_count = intval($delete_result['deleted_count']);
+
+        /*
+        در صورت موفقیت کامل یا جزئیِ حذف، جدول محلی به‌طور کامل خالی
+        می‌شود؛ چون از این به بعد ملاک ما محتوای فعلی وردپرس است و
+        آیتم‌های موفقِ ارسال بعدی از نو در جدول ثبت خواهند شد. آیتم‌های
+        ناموفقِ حذف در سرور باقی می‌مانند و پیامشان در خلاصه نمایش
+        داده می‌شود.
+        */
+        ai_agent_clear_all_synced_items();
+
+        if ($delete_result['status'] === 'partial') {
+            $delete_error = $delete_result['message'];
+        }
+    }
+
+    // ۶. جمع‌آوری تمام محتوای فعلی
     $current_items = ai_agent_collect_sync_items($sync_types);
 
     if (empty($current_items)) {
-        wp_send_json_error(array(
-            'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
+        /*
+        محتوای قبلی (در صورت وجود) از سرور حذف شده ولی هیچ محتوای فعلی
+        برای ارسال وجود ندارد. تاریخ سینک به‌روز شده و نتیجه برگردانده
+        می‌شود.
+        */
+        $sync_time = ai_agent_update_last_sync_all_time();
+        ai_agent_update_last_sync_time($sync_time);
+
+        $message = 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.';
+        if ($deleted_sent_count > 0) {
+            $message = $deleted_sent_count . ' مورد قبلی از سرور حذف شد، اما ' . $message;
+        }
+
+        wp_send_json_success(array(
+            'message'        => $message,
+            'new_count'      => 0,
+            'deleted_count'  => $deleted_sent_count,
+            'total_count'    => 0,
+            'last_sync_time' => $sync_time,
+            'sync_type'      => 'full',
         ));
     }
 
@@ -625,14 +703,24 @@ function ai_agent_sync_all_data_handler() {
         unset($item_ref);
     }
 
-    // ۶. ارسال تمام محتوا به /sync/content (بدون مقایسه با سینک قبلی)
+    // ۷. ارسال تمام محتوا به /sync/content (از ابتدا، بدون مقایسه با سینک قبلی)
     $content_result = ai_agent_push_sync_content($current_items);
 
     if ($content_result['status'] === 'error') {
+        /*
+        ارسال محتوا کاملاً ناموفق بود. توجه: جدول قبلاً خالی شده است؛
+        پس در سینک افزایشی بعدی، تمام محتوای فعلی به‌عنوان «جدید»
+        شناسایی و دوباره ارسال می‌شود و هیچ داده‌ای از دست نمی‌رود.
+        */
+        $error_message = 'حذف قبلی انجام شد اما ارسال محتوا ناموفق بود: ' . $content_result['message'];
+        if ($deleted_sent_count === 0) {
+            $error_message = $content_result['message'];
+        }
+
         wp_send_json_error(array(
-            'message'        => $content_result['message'],
+            'message'        => $error_message,
             'new_count'      => 0,
-            'deleted_count'  => 0,
+            'deleted_count'  => $deleted_sent_count,
             'total_count'    => count($current_items),
             'last_sync_time' => ai_agent_get_last_sync_all_time(),
         ));
@@ -640,57 +728,68 @@ function ai_agent_sync_all_data_handler() {
 
     $sent_count = intval($content_result['sent_count']);
 
-    if ($content_result['status'] === 'success' || $content_result['status'] === 'partial') {
-        $results_map = array();
-        foreach ($content_result['results'] as $r) {
-            $key = $r['content_type'] . '::' . $r['source_id'];
-            $results_map[$key] = $r['job_id'];
-        }
+    // ۸. ساخت نقشه‌ی source_id::content_type => job_id از پاسخ سرور
+    $results_map = array();
+    foreach ($content_result['results'] as $r) {
+        $key = $r['content_type'] . '::' . $r['source_id'];
+        $results_map[$key] = $r['job_id'];
+    }
 
-        if ($content_result['status'] === 'success') {
-            // فقط در موفقیت کامل، جدول را پاک و از نو با job_id ها پر می‌کنیم
-            ai_agent_clear_all_synced_items();
-            $synced_batch = array();
-            foreach ($current_items as $item) {
-                $key = $item['content_type'] . '::' . $item['source_id'];
-                if (isset($results_map[$key])) {
-                    $synced_batch[] = array(
-                        'source_id'    => $item['source_id'],
-                        'content_type' => $item['content_type'],
-                        'job_id'       => $results_map[$key],
-                        // ذخیره‌ی published_at برای پشتیبانی از شناسایی ویرایش‌ها
-                        // در سینک‌های بعدی Sync Now
-                        'published_at' => isset($item['published_at']) ? $item['published_at'] : null,
-                    );
-                }
-            }
-            ai_agent_mark_items_synced_batch($synced_batch);
+    /*
+    در هر دو حالت success و partial، فقط آیتم‌هایی که سرور آن‌ها را
+    پذیرفته (job_id برگردانده) در جدول ثبت می‌شوند. آیتم‌های ناموفق
+    ثبت نمی‌شوند تا در سینک افزایشی بعدی به‌صورت خودکار دوباره ارسال
+    شوند. (جدول در مرحله‌ی حذف خالی شده و از نو پر می‌شود.)
+    */
+    $synced_batch = array();
+    foreach ($current_items as $item) {
+        $key = $item['content_type'] . '::' . $item['source_id'];
+        if (isset($results_map[$key])) {
+            $synced_batch[] = array(
+                'source_id'    => $item['source_id'],
+                'content_type' => $item['content_type'],
+                'job_id'       => $results_map[$key],
+                // ذخیره‌ی published_at برای پشتیبانی از شناسایی ویرایش‌ها
+                // در سینک‌های بعدی Sync Now
+                'published_at' => isset($item['published_at']) ? $item['published_at'] : null,
+            );
         }
-    // در حالت partial، جدول را پاک نمی‌کنیم تا آیتم‌های قبلی حفظ شوند
-    // و در سینک بعدی افزایشی، فقط آیتم‌های جدید ارسال شوند.
+    }
+    ai_agent_mark_items_synced_batch($synced_batch);
 
-    // ۸. به‌روزرسانی تاریخ آخرین سینک کامل
+    // ۹. به‌روزرسانی تاریخ آخرین سینک کامل
     $sync_time = ai_agent_update_last_sync_all_time();
     ai_agent_update_last_sync_time($sync_time); // سینک کلی را هم به‌روز می‌کنیم
 
-    // ۹. ساخت پیام خلاصه
+    // ۱۰. ساخت پیام خلاصه
     $total = count($current_items);
 
     if ($content_result['status'] === 'partial') {
-        $message = $sent_count . ' از ' . $total . ' مورد با موفقیت ارسال شد. (' . $content_result['message'] . ')';
+        $message = $sent_count . ' از ' . $total . ' مورد با موفقیت ارسال شد';
     } else {
-        $message = 'سینک کامل با موفقیت انجام شد. مجموع ' . $sent_count . ' مورد به سرور ارسال شد.';
+        $message = 'سینک کامل با موفقیت انجام شد. مجموع ' . $sent_count . ' مورد به سرور ارسال شد';
+    }
+
+    if ($deleted_sent_count > 0) {
+        $message .= '. ابتدا ' . $deleted_sent_count . ' مورد قبلی از سرور حذف شد';
+    }
+
+    if ($delete_error !== '') {
+        $message .= ' — توجه (حذف): ' . $delete_error;
+    }
+
+    if ($content_result['status'] === 'partial') {
+        $message .= ' (' . $content_result['message'] . ')';
     }
 
     wp_send_json_success(array(
         'message'        => $message,
         'new_count'      => $sent_count,
-        'deleted_count'  => 0,
+        'deleted_count'  => $deleted_sent_count,
         'total_count'    => $total,
         'last_sync_time' => $sync_time,
         'sync_type'      => 'full',
     ));
-}
 }
 
 /*

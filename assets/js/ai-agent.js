@@ -529,6 +529,7 @@ jQuery(function ($) {
         // خالی کردن باکس ورودی و بازگرداندن ارتفاع آن به حالت اولیه
         input.val('');
         autoResizeInput();
+        updateSendButtonState(); // ورودی خالی شد → دکمه‌ی ارسال غیرفعال می‌شود
 
         // پاک کردن عکس‌های پیوست انتخاب‌شده (اگر موردی وجود دارد)
         clearAttachments();
@@ -855,14 +856,16 @@ jQuery(function ($) {
     function setChatDisabled(disabled) {
         if (disabled) {
             input.prop('disabled', true).attr('placeholder', 'این گفتگو بسته شده است...');
-            send.prop('disabled', true);
+            send.prop('disabled', true).addClass('is-empty');
             attachBtn.prop('disabled', true).addClass('is-disabled');
             $('#ai-agent-footer').addClass('is-disabled');
         } else {
             input.prop('disabled', false).attr('placeholder', 'پیام خود را بنویسید...');
-            send.prop('disabled', false);
             attachBtn.prop('disabled', false).removeClass('is-disabled');
             $('#ai-agent-footer').removeClass('is-disabled');
+            // دکمه‌ی ارسال فقط وقتی فعال می‌شود که متنی نوشته شده باشد؛
+            // بعد از برداشته‌شدن قفل فوتر، وضعیت بر اساس متن ورودی تعیین می‌شود
+            updateSendButtonState();
         }
     }
 
@@ -1381,8 +1384,12 @@ function buildReferencesListBox(references) {
         // کپی از عکس‌های انتخاب‌شده قبل از پاک شدن
         let imagesToSend = pendingImages.map(function (img) { return img.dataUrl; });
 
-        // اگر نه متن داریم و نه عکس، ارسال انجام نمی‌شود
-        if (!text && imagesToSend.length === 0) return;
+        /*
+        ارسال فقط با وجود متن انجام می‌شود. عکسِ به‌تنهایی «خالی» محسوب
+        می‌شود و برای ارسال پیام حتماً باید متنی توسط کاربر نوشته شده
+        باشد (مطابق سیاست غیرفعال‌سازی دکمه‌ی ارسال).
+        */
+        if (!text) return;
 
         // -------------------------------------------------------------
         // ۱) بررسی زنده‌ی وضعیت جلسه قبل از ارسال
@@ -1405,6 +1412,7 @@ function buildReferencesListBox(references) {
             addMessage("user", escapeHtml(text), null, imagesToSend);
             input.val("");
             autoResizeInput();
+            updateSendButtonState(); // ورودی خالی شد → دکمه‌ی ارسال غیرفعال می‌شود
             clearAttachments();
             addClosedMessage();
             // قفل کردن فوتر برای جلوگیری از ارسال پیام جدید
@@ -1420,6 +1428,7 @@ function buildReferencesListBox(references) {
         addMessage("user", escapeHtml(text), null, imagesToSend);
         input.val("");
         autoResizeInput(); // برگشت به ارتفاع پیش‌فرض بعد از ارسال
+        updateSendButtonState(); // ورودی خالی شد → دکمه‌ی ارسال غیرفعال می‌شود
 
         // پاک کردن عکس‌های انتخاب‌شده (نمایش آن‌ها در حباب کاربر کافی است)
         clearAttachments();
@@ -1673,13 +1682,42 @@ function buildReferencesListBox(references) {
         }
     }
 
+    /*
+    ============================================
+    مدیریت وضعیت فعال/غیرفعال دکمه‌ی ارسال
+
+    دکمه‌ی ارسال فقط زمانی فعال است که کاربر متنی (حتی یک کاراکتر)
+    نوشته باشد. عکسِ به‌تنهایی «خالی» محسوب می‌شود و باعث فعال شدن
+    دکمه نمی‌شود. اگر فوتر قفل باشد (گفتگو بسته شده)، دکمه در هر
+    حالتی غیرفعال می‌ماند.
+
+    این تابع باید پس از هر تغییری که در متن ورودی رخ می‌دهد فراخوانی
+    شود (تایپ، ارسال، چت جدید، پایان ضبط صدا و ...).
+    ============================================
+    */
+    function updateSendButtonState() {
+        // اگر فوتر قفل است (چت بسته شده)، دکمه باید غیرفعال بماند
+        if ($("#ai-agent-footer").hasClass("is-disabled")) {
+            send.prop('disabled', true).addClass('is-empty');
+            return;
+        }
+        // وجود متن شرط فعال بودن دکمه است (عکس به‌تنهایی کافی نیست)
+        const hasText = $.trim(input.val() || '').length > 0;
+        send.prop('disabled', !hasText);
+        send.toggleClass('is-empty', !hasText);
+    }
+
     send.on("click", function () {
+        // دکمه‌ی غیرفعال به‌هرحال کلیک نمی‌گیرد؛ این گارد صرفاً محافظ است
+        if (send.prop('disabled')) return;
         sendMessage();
     });
 
     input.on("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            // اگر دکمه‌ی ارسال غیرفعال است (متن خالی)، ارسال انجام نمی‌شود
+            if (send.prop('disabled')) return;
             sendMessage();
         }
     });
@@ -1706,8 +1744,12 @@ function buildReferencesListBox(references) {
         el.style.overflowY = contentHeight > AI_AGENT_INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
     }
 
-    input.on("input", autoResizeInput);
+    input.on("input", function () {
+        autoResizeInput();
+        updateSendButtonState(); // با هر تغییر متن، وضعیت دکمه‌ی ارسال به‌روز می‌شود
+    });
     autoResizeInput(); // تنظیم ارتفاع اولیه
+    updateSendButtonState(); // وضعیت اولیه: با ورودی خالی، دکمه‌ی ارسال غیرفعال است
 
     /*
     ============================================
@@ -2033,6 +2075,9 @@ function buildReferencesListBox(references) {
                 const finalText = buildFinalText();
                 input.val(finalText);
                 autoResizeInput();
+                // متن نهایی صدا در ورودی نوشته شد → در صورت خالی نبودن متن،
+                // دکمه‌ی ارسال فعال می‌شود
+                updateSendButtonState();
                 // نشاندن مکان‌نمای متن در انتهای متن نهایی
                 const el = input[0];
                 if (el && typeof el.setSelectionRange === 'function') {
