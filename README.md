@@ -87,10 +87,10 @@
 
 ```bash
 # ۱) کلون یا دانلود مخزن
-git clone https://github.com/ManiKamyabi/Hamgoftar-Plugin.git
+git clone https://github.com/DuniChat/wp-plugin.git
 
 # ۲) انتقال به پوشه‌ی پلاگین‌های وردپرس
-mv Hamgoftar-Plugin /path/to/wordpress/wp-content/plugins/
+mv DuniChat /path/to/wordpress/wp-content/plugins/
 ```
 
 سپس:
