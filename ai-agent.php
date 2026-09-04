@@ -3,11 +3,11 @@
 Plugin Name: Dunichat
 Plugin URI: https://dunichat.ir
 Description: دستیار هوشمند دانیچت محصولی از دانیجت
-Version: 1.0.1
+Version: 1.0.2
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Dunijet
-Author URI: https://dunichat.ir
+Author URI: https://dunijet.ir
 License: GPL v2 or later
 Text Domain: Dunichat
 Update URI: https://github.com/DuniChat/wp-plugin
