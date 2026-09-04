@@ -12,9 +12,9 @@ if (!defined('ABSPATH')) exit;
  * افزونه‌ها نمایش می‌دهد و فرآیند دانلود و نصب را خود وردپرس انجام می‌دهد.
  *
  * فرآیند انتشار نسخه‌ی جدید (چک‌لیست توسعه‌دهنده):
- *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده (مثلاً 1.0.4)
+ *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده (مثلاً 1.0.5)
  *   ۲) تغییرات را کامیت و پوش کن
- *   ۳) در گیت‌هاب یک Release با تگ vX.Y.Z (مثلاً v1.0.4) منتشر کن
+ *   ۳) در گیت‌هاب یک Release با تگ vX.Y.Z (مثلاً v1.0.5) منتشر کن
  *      - لازم نیست فایل زیپی پیوست کنی؛ اگر زیپی پیوست شود (با پسوند .zip)
  *        همان دانلود می‌شود وگرنه از زیپ سورسِ خود تگ استفاده می‌شود.
  *      - ریلیزهای Draft و Pre-release نادیده گرفته می‌شوند.
@@ -79,12 +79,6 @@ class Dunichat_GitHub_Updater
      * @var string|null
      */
     private $current_version = null;
-
-    /**
-     * آیا در این ریکوئست، ارزیابی read-filter انجام شده است؟
-     * @var bool
-     */
-    private $read_checked = false;
 
     public function __construct($plugin_file)
     {
@@ -156,10 +150,21 @@ class Dunichat_GitHub_Updater
      * نسخه‌ی سبک‌ترِ همان تزریق، ولی هنگام «خواندن» transient؛
      * باعث می‌شود ریلیز تازه بدون منتظر ماندن برای چرخه‌ی رسمی وردپرس دیده شود.
      *
-     * ⚠ نکته‌ی مهم: ورودی‌های قبلی (به‌خصوص no_update که از بررسی‌های قبل در
-     * transient ذخیره شده) ممکن است کهنه باشند؛ بنابراین هر بار که ورودی
-     * معتبری برای نسخه‌ی جدید ثبت نشده، دوباره با آخرین داده‌ی گیت‌هاب
-     * ارزیابی می‌کنیم.
+     * ⚠ نکته‌ی مهم (باگ نسخه‌ی 1.0.4 و قبل از آن): وردپرس در «هر ریکوئست» چندین
+     * بار این transient را می‌خواند و «اولین خواندن» داخل wp_update_plugins()
+     * انجام می‌شود؛ اگر کمتر از یک ساعت از آخرین چک گذشته باشد (throttle صفحه‌ی
+     * افزونه‌ها)، آن متد همان‌جا return می‌کند و نتیجه‌ی تزریقِ همان خواندنِ اول
+     * دور ریخته می‌شود. اگر گاردِ «فقط یک بار در هر ریکوئست» داشته باشیم،
+     * خواندن‌های بعدی (رندر جدول افزونه‌ها و نمایش اعلان آپدیت) دیگر تزریق
+     * نمی‌کنند و اعلان به‌روزرسانی نمایش داده نمی‌شود؛ در حالی که ردیف وضعیت،
+     * چکِ موفق را نشان می‌دهد! بنابراین عمداً هیچ گارد per-request وجود ندارد
+     * و هر خواندن مستقلاً تزریق می‌کند. هزینه‌ی این کار ناچیز است چون
+     * get_release() به کش transient متکی است و در هر ریکوئست حداکثر یک
+     * درخواست HTTP به گیت‌هاب زده می‌شود.
+     *
+     * همچنین ورودی‌های قبلی ذخیره‌شده در transient (no_update کهنه یا response
+     * قدیمی) ممکن است کهنه باشند؛ بنابراین مگر این‌که ورودیِ معتبرِ جدیدتری از
+     * نسخه‌ی نصب‌شده ثبت شده باشد، همیشه دوباره ارزیابی می‌کنیم.
      */
     public function inject_update_on_read($transient)
     {
@@ -167,19 +172,15 @@ class Dunichat_GitHub_Updater
             return $transient;
         }
 
-        // فقط اگر آپدیتِ معتبرِ جدیدتر از نسخه‌ی نصب‌شده از قبل ثبت شده، کاری نکن
-        if (isset($transient->response[$this->basename])
+        // فقط اگر آپدیتِ معتبرِ جدیدتری از نسخه‌ی نصب‌شده از قبل ثبت شده، کاری نکن
+        if (isset($transient->response)
+            && is_array($transient->response)
+            && isset($transient->response[$this->basename])
             && is_object($transient->response[$this->basename])
             && !empty($transient->response[$this->basename]->new_version)
             && version_compare($transient->response[$this->basename]->new_version, $this->get_current_version(), '>')) {
             return $transient;
         }
-
-        // در هر ریکوئست فقط یک بار
-        if ($this->read_checked) {
-            return $transient;
-        }
-        $this->read_checked = true;
 
         if (!isset($transient->response) || !is_array($transient->response)) {
             $transient->response = array();
@@ -201,6 +202,7 @@ class Dunichat_GitHub_Updater
             unset($transient->no_update[$this->basename]);
         } else {
             $transient->no_update[$this->basename] = $entry['object'];
+            unset($transient->response[$this->basename]);
         }
 
         return $transient;
