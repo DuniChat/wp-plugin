@@ -835,15 +835,37 @@ function ai_agent_settings_page(){
 
                     <?php
                     /*
-                    نوار ذخیره در بالای فرم است، نه ته صفحه. این فرم بلند
-                    است و کاربر بعد از هر تغییر باید تا انتها اسکرول می‌کرد
-                    تا دکمه‌ی ذخیره را پیدا کند.
+                    نوار ذخیره بالای فرم است و همان‌جا می‌چسبد؛ نسخه‌ی
+                    تکراری‌اش ته صفحه حذف شد. این فرم بلند است و کاربر
+                    بعد از هر تغییر باید تا انتها اسکرول می‌کرد تا دکمه‌ی
+                    ذخیره را پیدا کند.
+
+                    دکمه هم دکمه‌ی خودمان است، نه submit_button() وردپرس.
+                    آن تابع کلاس button-primary را می‌گذارد که آبیِ
+                    پیش‌فرض پیشخوان است و وسط یک پنل نارنجی وصله می‌زد.
                     */
                     ?>
                     <div class="ai-agent-sticky-actions">
                         <span class="ai-agent-sticky-actions-hint">پس از هر تغییر، تنظیمات را ذخیره کنید.</span>
-                        <?php submit_button('ذخیره تنظیمات افزونه', 'primary', 'submit', false); ?>
+                        <button type="submit" name="submit" class="ai-agent-btn ai-agent-btn-primary">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            ذخیره تنظیمات افزونه
+                        </button>
                     </div>
+
+                    <?php
+                    /*
+                    از این‌جا تا انتهای فرم یک کارت واحد است. قبلاً هر بخش
+                    کارت جداگانه‌ای با حاشیه و سایه‌ی خودش بود؛ صفحه به هفت
+                    جزیره‌ی شناور تقسیم می‌شد که هیچ‌کدام بر دیگری ارجحیتی
+                    نداشت و چشم مجبور بود هر بار از نو شروع کند. حالا یک
+                    ورق پیوسته است و بخش‌ها فقط با یک خط از هم جدا می‌شوند.
+
+                    نوار ذخیره بیرونِ ورق مانده، چون چسبنده است و باید
+                    هنگام اسکرول روی ورق بایستد.
+                    */
+                    ?>
+                    <div class="ai-agent-sheet">
 
                     <!-- ====== Job Status + Sync Operations (chart on LEFT) ====== -->
                     <section class="ai-agent-card">
@@ -1169,7 +1191,7 @@ function ai_agent_settings_page(){
                     </section>
 
                     <!-- ====== Appearance (Dual Colors + Timeout) ====== -->
-                    <section class="ai-agent-card ai-agent-grid-2">
+                    <section class="ai-agent-card">
                         <?php
                         /*
                         رنگ دستیار — دو رنگ مستقل دریافت می‌شود:
@@ -1179,8 +1201,7 @@ function ai_agent_settings_page(){
                         از رنگ همان حالت استفاده می‌شود (دکمه شناور، هدر،
                         حباب پیام کاربر و رنگ فوکِس فیلد متن).
                         */ ?>
-                        <div class="ai-agent-card-cell">
-                            <header class="ai-agent-card-header">
+                        <header class="ai-agent-card-header">
                                 <h2>
                                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
                                     رنگ دستیار
@@ -1203,9 +1224,11 @@ function ai_agent_settings_page(){
                                 </div>
                                 <p class="ai-agent-field-hint">وقتی چت در حالت روشن یا تاریک نمایش داده می‌شود، رنگ همان حالت روی دکمه شناور، هدر، حباب پیام کاربر و فوکِس فیلد متن اعمال می‌گردد.</p>
                             </div>
-                        </div>
-                        <div class="ai-agent-card-cell">
-                            <header class="ai-agent-card-header">
+                    </section>
+
+                    <!-- ====== Response timeout ====== -->
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
                                 <h2>
                                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                     حداکثر زمان انتظار پاسخ
@@ -1229,7 +1252,6 @@ function ai_agent_settings_page(){
                                     می‌شود. مقدار پیشنهادی ۱۵ ثانیه است.
                                 </p>
                             </div>
-                        </div>
                     </section>
 
                     <!-- ====== Widget Button Position (per device) ====== -->
@@ -1452,9 +1474,7 @@ function ai_agent_settings_page(){
                         </div>
                     </section>
 
-                    <div class="ai-agent-form-actions">
-                        <?php submit_button('ذخیره تنظیمات افزونه'); ?>
-                    </div>
+                    </div><!-- /.ai-agent-sheet -->
                 </form>
 
                 <?php
@@ -1526,23 +1546,23 @@ function ai_agent_settings_page(){
                              بالای خود است که تعداد جلسات در آن وضعیت را نشان می‌دهد. -->
                         <div class="ai-agent-status-filters" id="ai-agent-status-filters">
                             <button type="button" class="ai-agent-filter-btn is-active" data-status="">
-                                <span class="ai-agent-filter-count" data-count-status="">0</span>
+                                <span class="ai-agent-filter-count" hidden data-count-status="">0</span>
                                 همه
                             </button>
                             <button type="button" class="ai-agent-filter-btn" data-status="closed">
-                                <span class="ai-agent-filter-count" data-count-status="closed">0</span>
+                                <span class="ai-agent-filter-count" hidden data-count-status="closed">0</span>
                                 بسته‌شده
                             </button>
                             <button type="button" class="ai-agent-filter-btn" data-status="human">
-                                <span class="ai-agent-filter-count" data-count-status="human">0</span>
+                                <span class="ai-agent-filter-count" hidden data-count-status="human">0</span>
                                 پشتیبان
                             </button>
                             <button type="button" class="ai-agent-filter-btn" data-status="pending_human">
-                                <span class="ai-agent-filter-count" data-count-status="pending_human">0</span>
+                                <span class="ai-agent-filter-count" hidden data-count-status="pending_human">0</span>
                                 در انتظار پشتیبان
                             </button>
                             <button type="button" class="ai-agent-filter-btn" data-status="bot">
-                                <span class="ai-agent-filter-count" data-count-status="bot">0</span>
+                                <span class="ai-agent-filter-count" hidden data-count-status="bot">0</span>
                                 ربات
                             </button>
                         </div>
