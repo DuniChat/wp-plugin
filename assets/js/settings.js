@@ -214,8 +214,6 @@
             $.each(models, function(i, model) {
                 var value    = aiAgentGetModelValue(model);
                 var label    = aiAgentGetModelLabel(model);
-                var provider = (model && typeof model === 'object' && model.provider) ? model.provider : '';
-
                 // استایل‌ها به‌طور کامل از SettingsStyles.css استفاده می‌کنند؛ این‌جا فقط
                 // ساختار DOM ساخته می‌شود تا هم نمایش یکدست باشد و هم hover از طریق CSS.
                 var $item = $('<div class="ai-agent-model-item"></div>').attr('data-value', value);
@@ -236,30 +234,27 @@
                 }
 
                 $item.append($head);
-                $item.append($('<div class="ai-agent-model-item-id"></div>').text(value + (provider ? ' · ' + provider : '')));
+                // نام سازنده حذف شد: نام شرکتی را می‌گفت که کسی از او خرید
+                // نمی‌کند، و خود شناسه‌ی مدل همان را در خودش دارد.
+                $item.append($('<div class="ai-agent-model-item-id"></div>').text(value));
 
-                // Per-million is how providers quote, and how the panel shows
-                // it; the per-1000/5000 sample fields are kept as a fallback for
-                // an older server that does not send the per-million figures.
+                // هزینه‌ی یک چت پشتیبانی معمولی، نه قیمت هر یک میلیون توکن.
+                // یک میلیون توکن واحدی است که ارائه‌دهنده‌ها با آن قیمت
+                // می‌دهند، نه واحدی که صاحب یک فروشگاه بتواند با آن تصمیم
+                // بگیرد؛ همان مدل با آن واحد گران به نظر می‌رسید و با این
+                // واحد چیزی است که واقعاً خرج می‌شود. عددهای per_1m برای
+                // سروری نگه داشته شده‌اند که هنوز فیلد تازه را نمی‌فرستد.
                 if (model && typeof model === 'object') {
-                    var inPer1m = model.system_input_price_irr_per_1m_tokens;
-                    var outPer1m = model.system_output_price_irr_per_1m_tokens;
+                    var chatPrice = model.system_price_irr_per_support_chat;
 
-                    if (inPer1m == null && model.system_input_price_irr_per_1000_tokens != null) {
-                        inPer1m = model.system_input_price_irr_per_1000_tokens * 1000;
-                    }
-                    if (outPer1m == null && model.system_output_price_irr_per_5000_tokens != null) {
-                        outPer1m = model.system_output_price_irr_per_5000_tokens * 200;
+                    if (chatPrice == null && model.system_output_price_irr_per_5000_tokens != null) {
+                        chatPrice = model.system_output_price_irr_per_5000_tokens;
                     }
 
-                    var priceParts = [];
-                    if (inPer1m != null)  priceParts.push('ورودی ' + aiAgentFormatToman(inPer1m));
-                    if (outPer1m != null) priceParts.push('خروجی ' + aiAgentFormatToman(outPer1m));
-
-                    if (priceParts.length) {
+                    if (chatPrice != null) {
                         $item.append(
                             $('<div class="ai-agent-model-item-price"></div>')
-                                .text(priceParts.join(' · ') + ' به ازای هر یک میلیون توکن')
+                                .text(aiAgentFormatToman(chatPrice) + ' — هزینه‌ی میانگین یک چت پشتیبانی')
                         );
                     }
                 }
@@ -1096,7 +1091,16 @@
                                 var st = $(this).attr('data-count-status');
                                 if (typeof st === 'undefined') return;
                                 var c = (typeof counts[st] !== 'undefined') ? counts[st] : 0;
-                                $(this).text(aiAgentFaDigits(c));
+
+                                // یک badge قرمز روی هر فیلتر که عدد صفر را
+                                // نشان می‌داد، پنج نشانه‌ی هشدار می‌ساخت برای
+                                // چیزی که خبری در آن نبود. badge فقط وقتی
+                                // معنا دارد که واقعاً چیزی منتظر است.
+                                if (c > 0) {
+                                    $(this).text(aiAgentFaDigits(c)).removeAttr('hidden');
+                                } else {
+                                    $(this).text('').attr('hidden', 'hidden');
+                                }
                             });
                         }
                     },

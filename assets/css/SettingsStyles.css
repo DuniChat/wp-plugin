@@ -8,45 +8,61 @@ A modern, luxurious control panel experience.
 
 /* ----- Root tokens ----- */
 .ai-agent-app {
-    --ai-agent-primary: #F18359;
-    --ai-agent-primary-dark: #D86A40;
-    --ai-agent-primary-darker: #B8512C;
-    --ai-agent-primary-light: #FFEDE5;
-    --ai-agent-primary-lighter: #FFF7F2;
-    --ai-agent-primary-glow: rgba(241, 131, 89, 0.25);
+    /*
+    رنگ‌ها از خود dunichat.ir گرفته شده‌اند، نه از یک پالت جدا. این صفحه
+    ادامه‌ی همان محصول است و وقتی نارنجی، خاکستری‌ها و شعاع گوشه‌هایش با
+    داشبورد فرق می‌کرد، مثل افزونه‌ای از جای دیگر به نظر می‌رسید.
+    نام متغیرها دست‌نخورده مانده تا هزار خط پایین‌تر بازنویسی نشود.
+    */
+    --ai-agent-primary: #C2673F;        /* clay */
+    --ai-agent-primary-dark: #A8532F;   /* clay-dark */
+    --ai-agent-primary-darker: #8C4426;
+    --ai-agent-primary-light: #F1DCCB;  /* clay-light */
+    --ai-agent-primary-lighter: #FAF3ED;
+    --ai-agent-primary-glow: rgba(194, 103, 63, 0.18);
 
-    --ai-agent-bg: #F8F9FB;
-    --ai-agent-surface: #FFFFFF;
-    --ai-agent-surface-2: #FAFBFC;
-    --ai-agent-border: #EAECF0;
-    --ai-agent-border-strong: #D1D5DB;
+    --ai-agent-bg: #FAF9F5;             /* cream */
+    --ai-agent-surface: #FFFFFF;        /* paper */
+    --ai-agent-surface-2: #F4F1EA;      /* cream-dim */
+    --ai-agent-border: #E8E3D8;         /* line */
+    --ai-agent-border-strong: #D7CFBE;
 
-    --ai-agent-text: #1A1D26;
-    --ai-agent-text-secondary: #6B7280;
-    --ai-agent-text-muted: #9CA3AF;
+    --ai-agent-text: #30291F;           /* ink */
+    --ai-agent-text-secondary: #6B6355; /* ink-soft */
+    --ai-agent-text-muted: #9A9081;
 
-    --ai-agent-success: #16A34A;
-    --ai-agent-success-bg: #DCFCE7;
-    --ai-agent-warning: #F59E0B;
-    --ai-agent-warning-bg: #FEF3C7;
-    --ai-agent-error: #DC2626;
-    --ai-agent-error-bg: #FEE2E2;
-    --ai-agent-info: #3B82F6;
-    --ai-agent-info-bg: #DBEAFE;
-    --ai-agent-purple: #7C3AED;
-    --ai-agent-purple-bg: #EDE9FE;
+    --ai-agent-success: #6A7A5C;        /* olive */
+    --ai-agent-success-bg: #E4E9DD;     /* olive-light */
+    --ai-agent-warning: #B07C2E;
+    --ai-agent-warning-bg: #F6ECD8;
+    --ai-agent-error: #B3452F;          /* danger */
+    --ai-agent-error-bg: #F5DDD6;       /* danger-light */
+    /*
+    آبی و بنفشِ قبلی از این پالت بیرون بودند و هر دکمه‌ای که آن‌ها را
+    می‌گرفت، وصله‌ای روی صفحه می‌شد. هر دو به رنگ‌های خود سایت نگاشته
+    شده‌اند تا کلاس‌های موجود بدون تغییر کار کنند.
+    */
+    --ai-agent-info: #6B6355;
+    --ai-agent-info-bg: #F4F1EA;
+    --ai-agent-purple: #6B6355;
+    --ai-agent-purple-bg: #F4F1EA;
 
-    --ai-agent-radius-sm: 6px;
-    --ai-agent-radius: 10px;
-    --ai-agent-radius-lg: 14px;
-    --ai-agent-radius-xl: 18px;
+    /* همان شعاع‌هایی که داشبورد استفاده می‌کند: ۱۲ و ۱۶ پیکسل. */
+    --ai-agent-radius-sm: 8px;
+    --ai-agent-radius: 12px;
+    --ai-agent-radius-lg: 16px;
+    --ai-agent-radius-xl: 16px;
     --ai-agent-radius-pill: 999px;
 
-    --ai-agent-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-    --ai-agent-shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
-    --ai-agent-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.05), 0 2px 4px rgba(16, 24, 40, 0.03);
-    --ai-agent-shadow-lg: 0 12px 28px rgba(16, 24, 40, 0.08), 0 4px 10px rgba(16, 24, 40, 0.04);
-    --ai-agent-shadow-primary: 0 8px 20px rgba(241, 131, 89, 0.3);
+    /*
+    سایه‌ها بسیار سبک‌تر شده‌اند. سایت روی مرز تکیه می‌کند نه بر ارتفاع،
+    و سایه‌های قبلی هر کارت را چند میلی‌متر بالای صفحه شناور نشان می‌داد.
+    */
+    --ai-agent-shadow-xs: none;
+    --ai-agent-shadow-sm: 0 1px 2px rgba(48, 41, 31, 0.04);
+    --ai-agent-shadow-md: 0 1px 3px rgba(48, 41, 31, 0.05);
+    --ai-agent-shadow-lg: 0 8px 24px rgba(48, 41, 31, 0.08);
+    --ai-agent-shadow-primary: 0 4px 12px rgba(194, 103, 63, 0.18);
 
     --ai-agent-font: -apple-system, BlinkMacSystemFont, "Vazirmatn", "IRANSans", "Tahoma", "Segoe UI", Roboto, sans-serif;
     --ai-agent-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New", monospace;
@@ -67,20 +83,16 @@ A modern, luxurious control panel experience.
     justify-content: space-between;
     gap: 16px;
     padding: 20px 24px;
-    background: linear-gradient(135deg, var(--ai-agent-surface) 0%, var(--ai-agent-surface-2) 100%);
-    border-radius: var(--ai-agent-radius-xl);
-    box-shadow: var(--ai-agent-shadow-md);
+    /*
+    گرادیان و نوار رنگی بالای کارت حذف شد. داشبورد دانیچَت سطح ساده و یک
+    مرز نازک دارد؛ این سربرگ تنها جای این افزونه بود که تزئین داشت.
+    */
+    background: var(--ai-agent-surface);
+    border-radius: var(--ai-agent-radius-lg);
+    box-shadow: var(--ai-agent-shadow-sm);
     border: 1px solid var(--ai-agent-border);
-    margin-bottom: 22px;
+    margin-bottom: 18px;
     position: relative;
-    overflow: hidden;
-}
-.ai-agent-topbar::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--ai-agent-primary) 0%, var(--ai-agent-primary-dark) 50%, var(--ai-agent-primary) 100%);
 }
 
 .ai-agent-topbar-brand {
@@ -519,33 +531,6 @@ A modern, luxurious control panel experience.
     width: 34px;
     height: 34px;
     justify-content: center;
-}
-
-/* WP submit button override */
-.ai-agent-form-actions {
-    margin-top: 22px;
-    display: flex;
-    justify-content: flex-end;
-}
-.ai-agent-form-actions .button-primary,
-.ai-agent-form-actions input[type="submit"] {
-    background: linear-gradient(135deg, var(--ai-agent-primary) 0%, var(--ai-agent-primary-dark) 100%) !important;
-    border-color: var(--ai-agent-primary-dark) !important;
-    color: #fff !important;
-    padding: 12px 32px !important;
-    border-radius: var(--ai-agent-radius) !important;
-    font-size: 14px !important;
-    font-weight: 700 !important;
-    box-shadow: 0 4px 14px var(--ai-agent-primary-glow) !important;
-    text-shadow: none !important;
-    height: auto !important;
-    line-height: 1.4 !important;
-    transition: all var(--ai-agent-transition) !important;
-    cursor: pointer !important;
-}
-.ai-agent-form-actions .button-primary:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 8px 22px var(--ai-agent-primary-glow) !important;
 }
 
 /* Toggle API Key button */
@@ -1716,4 +1701,224 @@ A modern, luxurious control panel experience.
     margin-bottom: 10px;
     padding-top: 10px;
     border-top: 1px dashed var(--ai-agent-border);
+}
+
+/*
+==========================================================================
+یک ورق واحد
+
+قبلاً هر بخش از فرم تنظیمات یک کارت مستقل با مرز، شعاع، سایه و فاصله‌ی
+خودش بود. نتیجه هفت جزیره‌ی شناور بود که هیچ‌کدام بر دیگری ارجحیتی
+نداشت؛ چشم بین آن‌ها می‌پرید و هر بار باید از نو شروع می‌کرد. حالا همه
+داخل .ai-agent-sheet هستند: یک کارت بلند که بخش‌هایش فقط با یک خط
+افقی از هم جدا می‌شوند — همان الگویی که خود داشبورد دانیچَت دارد.
+
+این بلوک عمداً انتهای فایل است تا قواعد بالاتر را بازنویسی کند و
+تعریف‌های قبلی دست‌نخورده بمانند.
+==========================================================================
+*/
+.ai-agent-sheet {
+    background: var(--ai-agent-surface);
+    border: 1px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius-lg);
+    overflow: hidden;
+    margin-bottom: 22px;
+}
+
+/* هر .ai-agent-card داخل ورق، دیگر کارت نیست؛ یک بخش است. */
+.ai-agent-sheet .ai-agent-card {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    overflow: visible;
+    border-bottom: 1px solid var(--ai-agent-border);
+}
+.ai-agent-sheet .ai-agent-card:last-child {
+    border-bottom: 0;
+}
+.ai-agent-sheet .ai-agent-card:hover {
+    box-shadow: none;
+}
+
+/*
+سربرگ بخش‌ها دیگر نوار خاکستری با خط زیرین نیست. آن نوار وقتی معنا
+داشت که هر کارت واقعاً کارتی جدا بود؛ داخل یک ورق پیوسته فقط صفحه را
+راه‌راه می‌کرد.
+*/
+.ai-agent-sheet .ai-agent-card-header {
+    background: transparent;
+    border-bottom: 0;
+    padding: 20px 24px 0;
+}
+.ai-agent-sheet .ai-agent-card-header h2 {
+    font-size: 14.5px;
+    font-weight: 700;
+}
+.ai-agent-sheet .ai-agent-card-body {
+    padding: 14px 24px 24px;
+}
+
+@media (max-width: 782px) {
+    .ai-agent-sheet .ai-agent-card-header { padding: 16px 16px 0; }
+    .ai-agent-sheet .ai-agent-card-body { padding: 12px 16px 18px; }
+}
+
+/*
+==========================================================================
+آبیِ وردپرس
+
+پیشخوان وردپرس به هر <a> رنگ #2271b1 و به button-primary پس‌زمینه‌ی آبی
+می‌دهد. نتیجه این بود که دکمه‌ی «شارژ کیف‌پول» موقع hover آبی می‌شد و
+دکمه‌ی «ذخیره تنظیمات افزونه» اصلاً آبی بود — دو رنگ که در هیچ‌جای این
+محصول وجود ندارند. اینجا صریحاً بسته می‌شوند.
+==========================================================================
+*/
+.ai-agent-app a:not(.ai-agent-btn) {
+    color: var(--ai-agent-primary-dark);
+}
+.ai-agent-app a:not(.ai-agent-btn):hover,
+.ai-agent-app a:not(.ai-agent-btn):focus {
+    color: var(--ai-agent-primary-darker);
+    box-shadow: none;
+}
+.ai-agent-app a.ai-agent-btn:hover,
+.ai-agent-app a.ai-agent-btn:focus,
+.ai-agent-app a.ai-agent-btn:active {
+    /* رنگ متن دکمه از خود کلاس دکمه می‌آید، نه از قواعد لینک پیشخوان. */
+    color: inherit;
+    box-shadow: 0 6px 18px var(--ai-agent-primary-glow);
+}
+.ai-agent-app a.ai-agent-btn-primary,
+.ai-agent-app a.ai-agent-btn-primary:hover,
+.ai-agent-app a.ai-agent-btn-primary:focus,
+.ai-agent-app a.ai-agent-btn-primary:active {
+    color: #fff;
+}
+.ai-agent-app .ai-agent-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ai-agent-primary-glow);
+}
+
+/*
+==========================================================================
+نوار ذخیره
+
+دکمه‌ی ذخیره حالا فقط بالای فرم است و همان‌جا می‌ماند. تکرارش ته صفحه
+حذف شد.
+==========================================================================
+*/
+.ai-agent-sticky-actions .ai-agent-btn-primary {
+    height: 38px;
+}
+
+/*
+==========================================================================
+عملیات همگام‌سازی
+
+سه دکمه‌ی این بخش هرکدام رنگ خودشان را داشتند — نارنجی، قرمز و بنفش —
+انگار سه کار کاملاً متفاوت‌اند. هر سه یک کار می‌کنند: محتوا را به سرور
+می‌فرستند. حالا فقط «به‌روزرسانی محتوا» پر است، بقیه خنثی، و ایندکس
+کامل که تنها کار پرهزینه است در حالت عادی هم بسته می‌ماند.
+==========================================================================
+*/
+.ai-agent-sync-block {
+    background: transparent;
+    border: 1px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius);
+    padding: 16px 18px;
+}
+.ai-agent-sync-block-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ai-agent-text);
+    /* حروف بزرگ و فاصله‌ی حروف روی متن فارسی هیچ اثری جز کوچک‌تر شدن ندارد. */
+    text-transform: none;
+    letter-spacing: 0;
+    margin-bottom: 8px;
+}
+.ai-agent-sheet .ai-agent-btn-outline.ai-agent-btn-red,
+.ai-agent-sheet .ai-agent-btn-outline.ai-agent-btn-purple {
+    /*
+    ایندکس کامل و استعلام وضعیت دیگر قرمز و بنفش نیستند. قرمز برای کاری
+    است که چیزی را از بین می‌برد و این کار چیزی را از بین نمی‌برد؛ فقط
+    دوباره هزینه می‌گیرد، و متن خودش این را می‌گوید.
+    */
+    color: var(--ai-agent-text-secondary);
+    border-color: var(--ai-agent-border);
+}
+.ai-agent-sheet .ai-agent-btn-outline.ai-agent-btn-red:hover,
+.ai-agent-sheet .ai-agent-btn-outline.ai-agent-btn-purple:hover {
+    background: var(--ai-agent-surface-2);
+    color: var(--ai-agent-text);
+    border-color: var(--ai-agent-border-strong);
+}
+
+/*
+دکمه‌ها دیگر موقع hover بالا نمی‌پرند. این حرکت روی یک صفحه‌ی تنظیمات
+که چند دکمه کنار هم دارد، صفحه را بی‌قرار نشان می‌داد.
+*/
+.ai-agent-app .ai-agent-btn:hover,
+.ai-agent-app .ai-agent-btn:active {
+    transform: none;
+}
+
+/*
+==========================================================================
+badge شمارش جلسات
+
+عدد صفر روی همه‌ی فیلترها پنج نشانه‌ی قرمزِ هشدار می‌ساخت برای چیزی که
+هیچ خبری در آن نبود. badge حالا با hidden از سمت جاوااسکریپت پنهان
+می‌شود و فقط وقتی می‌آید که واقعاً چیزی منتظر است؛ رنگش هم قرمزِ خام
+نیست، همان danger سایت.
+==========================================================================
+*/
+.ai-agent-filter-count[hidden] {
+    display: none !important;
+}
+.ai-agent-filter-count {
+    background: var(--ai-agent-error);
+    box-shadow: none;
+}
+
+/*
+==========================================================================
+سطح‌های تخت
+
+دکمه‌ها، تب فعال و نشان برند همه گرادیان دو رنگی داشتند. داشبورد سایت
+همه‌جا رنگ تخت به کار می‌برد و اختلاف، حتی وقتی دو سرِ گرادیان به هم
+نزدیک‌اند، در کنار هم دیده می‌شود.
+==========================================================================
+*/
+.ai-agent-app .ai-agent-btn-primary,
+.ai-agent-app .ai-agent-tab.is-active,
+.ai-agent-app .ai-agent-brand-mark,
+.ai-agent-app .ai-agent-wallet-icon {
+    background: var(--ai-agent-primary);
+    border-color: var(--ai-agent-primary);
+}
+.ai-agent-app .ai-agent-btn-primary:hover,
+.ai-agent-app .ai-agent-tab.is-active:hover {
+    background: var(--ai-agent-primary-dark);
+    border-color: var(--ai-agent-primary-dark);
+}
+.ai-agent-app .ai-agent-btn-primary {
+    box-shadow: none;
+}
+.ai-agent-app .ai-agent-btn-primary:hover {
+    box-shadow: none;
+}
+
+/*
+همه‌ی دکمه‌ها یک اندازه‌اند. قبلاً ارتفاع و شعاع دکمه‌ها بسته به این‌که
+دکمه‌ی خودمان بودند یا دکمه‌ی وردپرس یا دکمه‌ی رنگ‌گزین، سه مقدار
+مختلف داشت و ردیف دکمه‌ها ناهموار می‌شد.
+==========================================================================
+*/
+.ai-agent-app .ai-agent-btn,
+.ai-agent-app .wp-picker-container .wp-color-result.button {
+    height: 38px;
+    border-radius: var(--ai-agent-radius);
+    font-size: 13px;
 }
