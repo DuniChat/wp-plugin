@@ -19,7 +19,6 @@ if (!defined('ABSPATH')) {
     {
         "message":       <پرامپت کاربر>,
         "model":         <مدل انتخابی از تنظیمات>,
-        "system_prompt": <پرامت سیستم از تنظیمات>,
         "stream":        true,
         "visitor_id":    <UUID ذخیره‌شده در کوکی مرورگر>
     }
@@ -77,7 +76,6 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
         {
             "message":       <پرامپت کاربر>,
             "model":         <مدل انتخابی>,
-            "system_prompt": <پرامت سیستم>,
             "stream":        true,
             "images":        [<data URL base64>, ...]
         }
@@ -86,11 +84,15 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
     از سمت کلاینت ارسال شده باشد. هر آیتم یک data URL کامل
     (مثلاً "data:image/png;base64,xxxx") است.
     */
+    /*
+    No system_prompt key. The instruction text is composed on the server from
+    the site's structured settings, and a prompt sent from here would be
+    ignored anyway -- sending one would only suggest it still had an effect.
+    */
     $body_args = array(
-        'message'       => $message,
-        'model'         => isset($settings['model']) ? $settings['model'] : '',
-        'system_prompt' => isset($settings['system_prompt']) ? $settings['system_prompt'] : '',
-        'stream'        => true,
+        'message' => $message,
+        'model'   => isset($settings['model']) ? $settings['model'] : '',
+        'stream'  => true,
     );
 
     if (!empty($images) && is_array($images)) {
@@ -414,7 +416,7 @@ function ai_agent_fetch_models($query = '', $limit = 10) {
 می‌شود و در این‌جا رمزگشایی شده و در هدر X-API-Key ارسال می‌شود.
 
 خروجی:
-- آرایه‌ی تنظیمات در صورت موفقیت (شامل selected_model, system_prompt, allowed_content_types, ...)
+- آرایه‌ی تنظیمات در صورت موفقیت (شامل selected_model, assistant_tone, allowed_content_types, ...)
 - false در صورت خطا یا نبود API Key
 ============================================
 */
@@ -535,8 +537,8 @@ function ai_agent_fetch_wallet_balance() {
 هدر X-API-Key ارسال می‌شود.
 
 ورودی: آرایه‌ای با کلیدهای مطابق بدنه‌ی درخواست PATCH:
-    selected_model, system_prompt, allowed_content_types,
-    allowed_statuses, daily_message_limit
+    selected_model, allowed_content_types, allowed_statuses,
+    daily_message_limit و فیلدهای شخصیت دستیار
 
 خروجی:
 - آرایه‌ی پاسخ سرور (decode شده) در صورت موفقیت

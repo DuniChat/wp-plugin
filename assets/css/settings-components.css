@@ -455,3 +455,89 @@ controls, chiefly).
     text-align: left;
     unicode-bidi: isolate;
 }
+
+/* --------------------------------------------------------------------------
+   Colour picker
+
+   The WordPress picker on its own gives a hex field and a "select colour"
+   button; nothing shows what the choice looks like on the widget until the
+   form is saved. A live dot beside the label and a row of presets cover the
+   common case without opening the picker at all.
+   -------------------------------------------------------------------------- */
+.ai-agent-color-preview {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    border: 2px solid var(--ai-agent-surface);
+    border-radius: var(--ai-agent-radius-pill);
+    box-shadow: 0 0 0 1px var(--ai-agent-border-strong);
+    vertical-align: -3px;
+}
+
+.ai-agent-color-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ai-agent-color-swatch {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--ai-agent-radius);
+    box-shadow: 0 0 0 1px var(--ai-agent-border);
+    cursor: pointer;
+    transition: transform var(--ai-agent-transition), border-color var(--ai-agent-transition);
+}
+
+.ai-agent-color-swatch:hover {
+    transform: scale(1.08);
+}
+
+.ai-agent-color-swatch.is-active {
+    border-color: var(--ai-agent-text);
+}
+
+.ai-agent-color-swatch:focus-visible {
+    outline: 2px solid var(--ai-agent-primary-dark);
+    outline-offset: 2px;
+}
+
+/* The picker's own hex field reads left to right like any other code. */
+.ai-agent-app .wp-picker-container input[type="text"].wp-color-picker {
+    direction: ltr;
+    text-align: left;
+    font-family: var(--ai-agent-mono);
+}
+
+/* --------------------------------------------------------------------------
+   Chat history tab
+
+   Counts, page numbers and page sizes are Persian digits like everywhere else;
+   these were the last place in the plugin still showing Latin numerals.
+   -------------------------------------------------------------------------- */
+.ai-agent-sessions-page-size select {
+    border-radius: var(--ai-agent-radius);
+    border: 1.5px solid var(--ai-agent-border);
+    padding: 5px 10px;
+    font-family: var(--ai-agent-font);
+}
+
+.ai-agent-sessions-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+@media screen and (max-width: 782px) {
+    .ai-agent-status-filters {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 4px;
+    }
+    .ai-agent-status-filters .ai-agent-filter-btn {
+        flex-shrink: 0;
+    }
+}

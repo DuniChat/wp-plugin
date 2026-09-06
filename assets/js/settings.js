@@ -58,7 +58,67 @@
             return html;
         }
 
-        $('.ai-agent-color-field').wpColorPicker();
+        /*
+        ============================================
+        انتخاب رنگ دستیار
+
+        علاوه بر انتخابگر استاندارد وردپرس، چند رنگ پیشنهادی به‌صورت
+        نمونه‌ی کلیک‌شدنی و یک پیش‌نمایش زنده اضافه شده است: قبلاً
+        کاربر باید کد رنگ را حدس می‌زد و تنظیمات را ذخیره می‌کرد تا
+        نتیجه را روی ویجت ببیند.
+        ============================================
+        */
+        var AI_AGENT_COLOR_PRESETS = [
+            '#F4865B', '#E2574C', '#D97706', '#16A34A',
+            '#0EA5E9', '#2563EB', '#7C3AED', '#111827'
+        ];
+
+        function aiAgentSetupColorField($field) {
+            var $row = $field.closest('.ai-agent-field-row');
+
+            // Live preview: the floating button, in the colour being chosen.
+            var $preview = $('<span class="ai-agent-color-preview" aria-hidden="true"></span>');
+            var $swatches = $('<div class="ai-agent-color-swatches"></div>');
+
+            $.each(AI_AGENT_COLOR_PRESETS, function(i, hex) {
+                $('<button type="button" class="ai-agent-color-swatch"></button>')
+                    .css('background', hex)
+                    .attr('title', hex)
+                    .attr('aria-label', 'رنگ ' + hex)
+                    .on('click', function(e) {
+                        e.preventDefault();
+                        $field.val(hex).trigger('change');
+                        // wpColorPicker keeps its own state, so it has to be
+                        // told rather than left to read the input back.
+                        if ($field.data('wpWpColorPicker') || $field.hasClass('wp-color-picker')) {
+                            $field.wpColorPicker('color', hex);
+                        }
+                        update(hex);
+                    })
+                    .appendTo($swatches);
+            });
+
+            function update(hex) {
+                if (!hex) return;
+                $preview.css('background', hex);
+                $swatches.children().each(function() {
+                    $(this).toggleClass('is-active', $(this).attr('title').toLowerCase() === String(hex).toLowerCase());
+                });
+            }
+
+            $field.wpColorPicker({
+                change: function(event, ui) { update(ui.color.toString()); },
+                clear:  function() { update('#F4865B'); }
+            });
+
+            $row.append($swatches);
+            $row.find('.ai-agent-field-label').append($preview);
+            update($field.val());
+        }
+
+        $('.ai-agent-color-field').each(function() {
+            aiAgentSetupColorField($(this));
+        });
 
         /*
         ============================================
@@ -1036,7 +1096,7 @@
                                 var st = $(this).attr('data-count-status');
                                 if (typeof st === 'undefined') return;
                                 var c = (typeof counts[st] !== 'undefined') ? counts[st] : 0;
-                                $(this).text(c);
+                                $(this).text(aiAgentFaDigits(c));
                             });
                         }
                     },
@@ -1051,11 +1111,12 @@
                 // اطلاعات صفحه
                 $('#ai-agent-sessions-page-info').text(
                     this.total > 0
-                        ? 'صفحه ' + this.currentPage + ' از ' + Math.ceil(this.total / this.pageSize)
+                        ? 'صفحه ' + aiAgentFaDigits(this.currentPage) +
+                          ' از ' + aiAgentFaDigits(Math.ceil(this.total / this.pageSize))
                         : ''
                 );
                 $('#ai-agent-sessions-total-info').text(
-                    this.total > 0 ? 'مجموع: ' + this.total + ' جلسه' : ''
+                    this.total > 0 ? 'مجموع: ' + aiAgentFaDigits(this.total) + ' جلسه' : ''
                 );
 
                 // دکمه‌های بالا

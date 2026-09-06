@@ -1621,3 +1621,71 @@ button.ai-references-title.ai-references-toggle {
         overflow: hidden;
     }
 }
+
+/*
+==========================================================================
+Widget refinements — 1.1.0
+==========================================================================
+*/
+
+/*
+Message text was 13.5px at weight 400 on a tinted bubble, which reads thin and
+low-contrast on a phone in daylight. A slightly larger size with a medium
+weight is legible without changing the bubble geometry.
+*/
+.user-message,
+.ai-message,
+.admin-message {
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.75;
+    letter-spacing: -0.1px;
+}
+
+.ai-message {
+    /* Darker than the previous #1e293b: the assistant bubble is white, so its
+       text carries the whole contrast burden. */
+    color: #111827;
+}
+
+/*
+The light/dark switch was a 15px icon with 2px of padding, sitting directly on
+the coloured header — effectively invisible, and well under the 24px minimum
+for a touch target. It is now a real button with its own surface.
+*/
+.ai-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    color: inherit;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease;
+}
+
+.ai-theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.ai-theme-toggle:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
+.ai-theme-icon svg {
+    width: 17px;
+    height: 17px;
+}
+
+/* The sun was amber on an orange header, which is close to unreadable; both
+   icons are simply white, like the rest of the header. */
+#ai-agent[data-theme="light"] .ai-theme-icon-sun,
+#ai-agent:not([data-theme]) .ai-theme-icon-sun {
+    color: #ffffff;
+}

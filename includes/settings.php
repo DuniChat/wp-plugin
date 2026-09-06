@@ -371,8 +371,8 @@ add_filter('pre_update_option_ai_agent_settings', 'ai_agent_persist_api_key_on_s
        - خطای ارتباطی / کد HTTP غیر 200
        - پاسخ شامل کلید detail (خطای سرور، مثل کلید API نامعتبر)
        - پاسخ فاقد هیچ‌کدام از کلیدهای مورد انتظار
-  ۴) در صورت موفقیت، مقادیر دریافتی (selected_model, system_prompt,
-     allowed_content_types, allowed_statuses, daily_message_limit)
+  ۴) در صورت موفقیت، مقادیر دریافتی (selected_model، فیلدهای شخصیت
+     دستیار، allowed_content_types، allowed_statuses و daily_message_limit)
      روی گزینه‌ی ai_agent_settings اعمال و ذخیره می‌شوند.
 
 خروجی: همیشه یک آرایه با کلیدهای:
@@ -1500,11 +1500,11 @@ function ai_agent_settings_page(){
                             <div class="ai-agent-sessions-page-size">
                                 <label for="ai-agent-sessions-per-page">نمایش در صفحه:</label>
                                 <select id="ai-agent-sessions-per-page">
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
+                                    <option value="5">۵</option>
+                                    <option value="10" selected>۱۰</option>
+                                    <option value="20">۲۰</option>
+                                    <option value="50">۵۰</option>
+                                    <option value="100">۱۰۰</option>
                                 </select>
                             </div>
                             <div class="ai-agent-sessions-page-nav">
@@ -1533,11 +1533,11 @@ function ai_agent_settings_page(){
                             <div class="ai-agent-sessions-page-size">
                                 <label for="ai-agent-sessions-per-page-bottom">نمایش در صفحه:</label>
                                 <select id="ai-agent-sessions-per-page-bottom">
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
+                                    <option value="5">۵</option>
+                                    <option value="10" selected>۱۰</option>
+                                    <option value="20">۲۰</option>
+                                    <option value="50">۵۰</option>
+                                    <option value="100">۱۰۰</option>
                                 </select>
                             </div>
                             <div class="ai-agent-sessions-page-nav">
