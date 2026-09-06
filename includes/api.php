@@ -2274,3 +2274,44 @@ function ai_agent_return_session_to_bot($session_id) {
         'data'    => is_array($resp_data) ? $resp_data : null,
     );
 }
+
+/*
+============================================
+واکشی اعلان‌های دانیچَت
+اندپوینت: GET https://api.dunichat.ir/api/v1/announcements
+
+این اندپوینت عمومی است و توکن نمی‌خواهد. پاسخ برای نیم ساعت در
+transient کش می‌شود: اعلان‌ها به‌ندرت تغییر می‌کنند و هر بار باز
+شدن صفحه‌ی تنظیمات نباید یک درخواست شبکه‌ی تازه بزند.
+
+خروجی:
+- آرایه‌ی اعلان‌ها در صورت موفقیت
+- false در صورت خطا
+============================================
+*/
+function ai_agent_fetch_announcements() {
+
+    $cached = get_transient('ai_agent_announcements');
+    if ($cached !== false) {
+        return $cached;
+    }
+
+    $response = wp_remote_get('https://api.dunichat.ir/api/v1/announcements?limit=10', array(
+        'timeout' => 10,
+        'headers' => array('Accept' => 'application/json'),
+    ));
+
+    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        return false;
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+
+    if (!is_array($data) || !isset($data['items']) || !is_array($data['items'])) {
+        return false;
+    }
+
+    set_transient('ai_agent_announcements', $data['items'], 30 * MINUTE_IN_SECONDS);
+
+    return $data['items'];
+}

@@ -3,7 +3,7 @@
 Plugin Name: Dunichat
 Plugin URI: https://dunichat.ir
 Description: دستیار هوشمند دانیچت محصولی از دانیجت
-Version: 1.0.7
+Version: 1.1.0
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Dunijet
@@ -17,10 +17,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Asset URLs are versioned with this, so a plugin update does not leave
+// browsers serving last release's CSS from cache.
+define('AI_AGENT_VERSION', '1.1.0');
 define('AI_AGENT_PATH', plugin_dir_path(__FILE__));
 define('AI_AGENT_URL', plugin_dir_url(__FILE__));
 
 
+require_once AI_AGENT_PATH.'includes/format.php';
 require_once AI_AGENT_PATH.'includes/db.php';
 require_once AI_AGENT_PATH.'includes/settings.php';
 require_once AI_AGENT_PATH.'includes/sync.php';
@@ -29,6 +33,7 @@ require_once AI_AGENT_PATH.'includes/api.php';
 require_once AI_AGENT_PATH.'includes/ajax.php';
 require_once AI_AGENT_PATH.'includes/widget.php';
 require_once AI_AGENT_PATH.'includes/updater.php';
+require_once AI_AGENT_PATH.'includes/scheduled-sync.php';
 
 // به‌روزرسان خودکار افزونه از طریق ریلیزهای گیت‌هاب (DuniChat/wp-plugin)
 new Dunichat_GitHub_Updater(__FILE__);
@@ -37,10 +42,16 @@ new Dunichat_GitHub_Updater(__FILE__);
 add_filter('plugin_action_links_'.plugin_basename(__FILE__), 'dunichat_plugin_action_links');
 function dunichat_plugin_action_links($links)
 {
-    array_unshift($links, '<a href="https://dunichat.ir" target="_blank" rel="noopener">خانه</a>');
+    array_unshift(
+        $links,
+        '<a href="'.esc_url(admin_url('admin.php?page=ai-agent-settings&tab=general')).'">تنظیمات</a>',
+        '<a href="https://dunichat.ir" target="_blank" rel="noopener">خانه</a>'
+    );
 
     return $links;
 }
 
 
 register_activation_hook(__FILE__, 'ai_agent_install');
+register_activation_hook(__FILE__, 'ai_agent_schedule_sync_on_activation');
+register_deactivation_hook(__FILE__, 'ai_agent_unschedule_sync_on_deactivation');
