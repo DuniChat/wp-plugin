@@ -58,7 +58,67 @@
             return html;
         }
 
-        $('.ai-agent-color-field').wpColorPicker();
+        /*
+        ============================================
+        انتخاب رنگ دستیار
+
+        علاوه بر انتخابگر استاندارد وردپرس، چند رنگ پیشنهادی به‌صورت
+        نمونه‌ی کلیک‌شدنی و یک پیش‌نمایش زنده اضافه شده است: قبلاً
+        کاربر باید کد رنگ را حدس می‌زد و تنظیمات را ذخیره می‌کرد تا
+        نتیجه را روی ویجت ببیند.
+        ============================================
+        */
+        var AI_AGENT_COLOR_PRESETS = [
+            '#F4865B', '#E2574C', '#D97706', '#16A34A',
+            '#0EA5E9', '#2563EB', '#7C3AED', '#111827'
+        ];
+
+        function aiAgentSetupColorField($field) {
+            var $row = $field.closest('.ai-agent-field-row');
+
+            // Live preview: the floating button, in the colour being chosen.
+            var $preview = $('<span class="ai-agent-color-preview" aria-hidden="true"></span>');
+            var $swatches = $('<div class="ai-agent-color-swatches"></div>');
+
+            $.each(AI_AGENT_COLOR_PRESETS, function(i, hex) {
+                $('<button type="button" class="ai-agent-color-swatch"></button>')
+                    .css('background', hex)
+                    .attr('title', hex)
+                    .attr('aria-label', 'رنگ ' + hex)
+                    .on('click', function(e) {
+                        e.preventDefault();
+                        $field.val(hex).trigger('change');
+                        // wpColorPicker keeps its own state, so it has to be
+                        // told rather than left to read the input back.
+                        if ($field.data('wpWpColorPicker') || $field.hasClass('wp-color-picker')) {
+                            $field.wpColorPicker('color', hex);
+                        }
+                        update(hex);
+                    })
+                    .appendTo($swatches);
+            });
+
+            function update(hex) {
+                if (!hex) return;
+                $preview.css('background', hex);
+                $swatches.children().each(function() {
+                    $(this).toggleClass('is-active', $(this).attr('title').toLowerCase() === String(hex).toLowerCase());
+                });
+            }
+
+            $field.wpColorPicker({
+                change: function(event, ui) { update(ui.color.toString()); },
+                clear:  function() { update('#F4865B'); }
+            });
+
+            $row.append($swatches);
+            $row.find('.ai-agent-field-label').append($preview);
+            update($field.val());
+        }
+
+        $('.ai-agent-color-field').each(function() {
+            aiAgentSetupColorField($(this));
+        });
 
         /*
         ============================================
@@ -124,11 +184,21 @@
             return String(model);
         }
 
-        // فرمت‌بندی مبلغ ریالی با جداکننده‌ی هزارگان (مثال: 150000 → 150,000 ریال)
-        function aiAgentFormatIrr(amount) {
-            var n = Number(amount);
-            if (isNaN(n)) return String(amount) + ' ریال';
-            return n.toLocaleString('en-US') + ' ریال';
+        // ----- ارقام و مبالغ -----
+        // همه‌ی اعداد این صفحه فارسی و تومانی‌اند. سرور همه‌جا ریال می‌فرستد،
+        // پس تبدیل فقط همین‌جا (لبه‌ی نمایش) انجام می‌شود.
+        function aiAgentFaDigits(value) {
+            return String(value).replace(/[0-9]/g, function (d) {
+                return '۰۱۲۳۴۵۶۷۸۹'[Number(d)];
+            }).replace(/,/g, '٬');
+        }
+
+        function aiAgentFormatToman(amountIrr) {
+            var n = Number(amountIrr);
+            if (isNaN(n)) return '—';
+            var toman = Math.round(n / 10);
+            var sign = toman < 0 ? '−' : '';
+            return sign + aiAgentFaDigits(Math.abs(toman).toLocaleString('en-US')) + ' تومان';
         }
 
         function aiAgentRenderModels(models) {
@@ -149,20 +219,48 @@
                 // استایل‌ها به‌طور کامل از SettingsStyles.css استفاده می‌کنند؛ این‌جا فقط
                 // ساختار DOM ساخته می‌شود تا هم نمایش یکدست باشد و هم hover از طریق CSS.
                 var $item = $('<div class="ai-agent-model-item"></div>').attr('data-value', value);
-                $item.append($('<div></div>').text(label));
-                $item.append($('<div></div>').text(value + (provider ? ' · ' + provider : '')));
 
-                // نمایش قیمت ورودی و خروجی مدل (به ازای هر ۱ میلیون توکن) تا کاربر بهتر انتخاب کند
+                var $head = $('<div class="ai-agent-model-item-head"></div>');
+                $head.append($('<span class="ai-agent-model-item-name"></span>').text(label));
+
                 if (model && typeof model === 'object') {
-                    var hasInPrice  = typeof model.system_input_price_irr_per_1000_tokens !== 'undefined' && model.system_input_price_irr_per_1000_tokens !== null;
-                    var hasOutPrice = typeof model.system_output_price_irr_per_5000_tokens !== 'undefined' && model.system_output_price_irr_per_5000_tokens !== null;
+                    // A green badge only when the model *is* reachable over the
+                    // national network. There is nothing useful to say when it
+                    // is not, and a grey "no" badge on every row is noise.
+                    if (model.active_in_national_network) {
+                        $head.append($('<span class="ai-agent-model-badge ai-agent-model-badge-ok"></span>').text('مناسب زمان نت ملی'));
+                    }
+                    if (model.supports_vision) {
+                        $head.append($('<span class="ai-agent-model-badge"></span>').text('ورودی تصویر'));
+                    }
+                }
 
-                    if (hasInPrice || hasOutPrice) {
-                        var priceParts = [];
-                        if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1000_tokens));
-                        if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_5000_tokens));
+                $item.append($head);
+                $item.append($('<div class="ai-agent-model-item-id"></div>').text(value + (provider ? ' · ' + provider : '')));
 
-                        $item.append($('<div></div>').text(priceParts.join(' · ') + ' (به ازای هر 1000 توکن)'));
+                // Per-million is how providers quote, and how the panel shows
+                // it; the per-1000/5000 sample fields are kept as a fallback for
+                // an older server that does not send the per-million figures.
+                if (model && typeof model === 'object') {
+                    var inPer1m = model.system_input_price_irr_per_1m_tokens;
+                    var outPer1m = model.system_output_price_irr_per_1m_tokens;
+
+                    if (inPer1m == null && model.system_input_price_irr_per_1000_tokens != null) {
+                        inPer1m = model.system_input_price_irr_per_1000_tokens * 1000;
+                    }
+                    if (outPer1m == null && model.system_output_price_irr_per_5000_tokens != null) {
+                        outPer1m = model.system_output_price_irr_per_5000_tokens * 200;
+                    }
+
+                    var priceParts = [];
+                    if (inPer1m != null)  priceParts.push('ورودی ' + aiAgentFormatToman(inPer1m));
+                    if (outPer1m != null) priceParts.push('خروجی ' + aiAgentFormatToman(outPer1m));
+
+                    if (priceParts.length) {
+                        $item.append(
+                            $('<div class="ai-agent-model-item-price"></div>')
+                                .text(priceParts.join(' · ') + ' به ازای هر یک میلیون توکن')
+                        );
                     }
                 }
 
@@ -319,8 +417,20 @@
                 success: function(response) {
                     $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
-                        $valueEl.text(aiAgentFormatIrr(response.data.balance_irr));
+                        // The server sends the formatted string so the digits and
+                        // the low-balance threshold match everywhere; the raw
+                        // number is only a fallback.
+                        $valueEl.text(response.data.balance_text || aiAgentFormatToman(response.data.balance_irr));
                         $statusEl.text('');
+
+                        // Running out mid-conversation is the failure customers
+                        // notice, so a low balance is called out here rather
+                        // than left for them to read off a number.
+                        var $card = $valueEl.closest('.ai-agent-wallet-card');
+                        $card.toggleClass('is-low', !!response.data.is_low);
+                        if (response.data.is_low) {
+                            $statusEl.text('موجودی کم است — برای قطع نشدن دستیار، کیف‌پول را شارژ کنید.');
+                        }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت موجودی کیف پول.';
                         $statusEl.text(msg);
@@ -342,6 +452,249 @@
         if ($('#ai-agent-wallet-balance-value').length) {
             aiAgentLoadWalletBalance(false);
         }
+
+        // ----- ذخیره‌ی توکن بدون ارسال کل فرم -----
+        // فرم تنظیمات بلند است و ثبت توکن نباید به ذخیره‌ی همه‌چیز گره بخورد.
+        // بعد از ذخیره، تنظیمات از سرور خوانده می‌شود تا معتبر بودن توکن
+        // همان‌جا معلوم شود، نه بعداً وقتی دستیار جواب نمی‌دهد.
+        $('#ai-agent-save-api-key').on('click', function(e) {
+            e.preventDefault();
+            var $btn      = $(this);
+            var $statusEl = $('#ai-agent-save-api-key-status');
+            var apiKey    = $.trim($('#ai_agent_api_key').val() || '');
+            var token     = $('#ai_agent_save_api_key_nonce_field').val();
+
+            if (!apiKey) {
+                $statusEl.removeClass('is-ok').addClass('is-error')
+                         .text('توکن را وارد کنید.');
+                return;
+            }
+
+            $btn.prop('disabled', true).addClass('is-loading');
+            $statusEl.removeClass('is-ok is-error').text('در حال ذخیره و بررسی توکن...');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'ai_agent_save_api_key',
+                    nonce: token,
+                    api_key: apiKey
+                },
+                success: function(response) {
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    if (response.success) {
+                        $statusEl.removeClass('is-error').addClass('is-ok')
+                                 .text(response.data.message || 'توکن ذخیره شد.');
+                        // Clear the field: the stored key is never rendered
+                        // back, so leaving it visible only invites a paste of
+                        // the same value.
+                        $('#ai_agent_api_key').val('');
+                        aiAgentLoadWalletBalance(false);
+                        // Reload so the rest of the page reflects the settings
+                        // that were just pulled from the server.
+                        window.setTimeout(function() { window.location.reload(); }, 1200);
+                    } else {
+                        $statusEl.removeClass('is-ok').addClass('is-error')
+                                 .text((response.data && response.data.message) || 'ذخیره‌ی توکن ناموفق بود.');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $statusEl.removeClass('is-ok').addClass('is-error')
+                             .text('خطای غیرمنتظره در ارتباط با وردپرس رخ داد.');
+                }
+            });
+        });
+
+        // ----- نوار اعلان‌ها -----
+        // اعلان‌های دانیچَت، از جمله تغییر خودکار قیمت مدل‌ها به دنبال تغییر نرخ
+        // تتر. یکی‌یکی و با فاصله نمایش داده می‌شوند؛ حرکت پیوسته متنی را که
+        // کاربر وسط خواندنش است جابه‌جا می‌کند.
+        (function aiAgentAnnouncements() {
+            var $bar = $('#ai-agent-announcements');
+            if (!$bar.length) return;
+
+            var $title = $('#ai-agent-announcement-title');
+            var $date  = $('#ai-agent-announcement-date');
+            var $dots  = $('#ai-agent-announcement-dots');
+            var items  = [];
+            var index  = 0;
+            var timer  = null;
+
+            function show(i) {
+                if (!items.length) return;
+                index = ((i % items.length) + items.length) % items.length;
+                var item = items[index];
+                $title.text(item.title || '');
+                $date.text(item.published_at ? aiAgentFaDigits(item.published_at.slice(0, 10)) : '');
+                $bar.attr('data-category', item.category || 'update');
+                $dots.children().each(function(n) {
+                    $(this).toggleClass('is-active', n === index);
+                });
+            }
+
+            function start() {
+                if (items.length < 2 || timer) return;
+                timer = window.setInterval(function() { show(index + 1); }, 7000);
+            }
+            function stop() {
+                if (timer) { window.clearInterval(timer); timer = null; }
+            }
+
+            $bar.on('mouseenter', stop).on('mouseleave', start);
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: { action: 'ai_agent_get_announcements' },
+                success: function(response) {
+                    if (!response.success || !response.data || !response.data.items || !response.data.items.length) {
+                        return;
+                    }
+                    items = response.data.items;
+                    $dots.empty();
+                    if (items.length > 1) {
+                        $.each(items, function(i) {
+                            $('<button type="button" class="ai-agent-announcement-dot"></button>')
+                                .attr('aria-label', 'اعلان ' + aiAgentFaDigits(i + 1))
+                                .on('click', function() { show(i); })
+                                .appendTo($dots);
+                        });
+                    }
+                    show(0);
+                    $bar.prop('hidden', false);
+                    start();
+                }
+            });
+        })();
+
+        // ----- انتخاب موقعیت آیکون با کشیدن -----
+        // هر دستگاه یک ماکت است و آیکون داخلش کشیدنی. کشیدن، هم سمت و هم فاصله
+        // را تعیین می‌کند؛ فیلدهای عددی همان مقادیر را نگه می‌دارند تا فرم بدون
+        // تغییرِ ساختار ارسال شود و اگر جاوااسکریپت اجرا نشد، بخش «تنظیم دقیق»
+        // همچنان کار کند.
+        (function aiAgentPositionPicker() {
+            var $stages = $('.ai-agent-stage');
+            if (!$stages.length) return;
+
+            // The offset is stored in real page pixels, but the mock is much
+            // smaller than a phone, so it is scaled for display. Without this a
+            // 200px offset would push the handle clean out of the mock.
+            var STAGE_RANGE = { mobile: 400, tablet: 500, desktop: 600 };
+
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
+            function apply($stage, side, offset, writeInputs) {
+                var device = $stage.data('stage');
+                var range  = STAGE_RANGE[device] || 400;
+                offset = clamp(Math.round(offset), -range, range);
+
+                $stage.attr('data-side', side).attr('data-offset', offset);
+
+                var $handle = $stage.find('.ai-agent-stage-handle');
+                var height  = $stage.height() || 1;
+                // Bottom-anchored, matching how the widget itself is placed.
+                var bottomPx = clamp((height * 0.08) + (offset / range) * (height * 0.7), 6, height - 46);
+
+                $handle.css({
+                    bottom: bottomPx + 'px',
+                    left:   side === 'left' ? '10px' : 'auto',
+                    right:  side === 'right' ? '10px' : 'auto'
+                });
+
+                $stage.closest('.ai-agent-device-panel')
+                      .find('[data-stage-readout]')
+                      .text(
+                          (side === 'left' ? 'سمت چپ' : 'سمت راست') +
+                          ' — جابه‌جایی عمودی ' + aiAgentFaDigits(offset) + ' پیکسل'
+                      );
+
+                if (writeInputs) {
+                    var $panel = $stage.closest('.ai-agent-device-panel');
+                    $panel.find('[data-position-side="' + device + '"][value="' + side + '"]').prop('checked', true);
+                    $panel.find('[data-position-offset="' + device + '"]').val(offset);
+                }
+            }
+
+            $stages.each(function() {
+                var $stage = $(this);
+                apply($stage, $stage.attr('data-side'), parseInt($stage.attr('data-offset'), 10) || 0, false);
+            });
+
+            // Dragging. Pointer events cover mouse, touch and pen in one path,
+            // and setPointerCapture keeps the drag alive when the cursor leaves
+            // the small mock -- which it constantly does.
+            $stages.each(function() {
+                var stage = this;
+                var $stage = $(stage);
+                var handle = $stage.find('.ai-agent-stage-handle')[0];
+                if (!handle) return;
+
+                var dragging = false;
+
+                handle.addEventListener('pointerdown', function(e) {
+                    dragging = true;
+                    handle.setPointerCapture(e.pointerId);
+                    $stage.addClass('is-dragging');
+                    e.preventDefault();
+                });
+
+                handle.addEventListener('pointermove', function(e) {
+                    if (!dragging) return;
+                    var rect   = stage.getBoundingClientRect();
+                    var device = $stage.data('stage');
+                    var range  = STAGE_RANGE[device] || 400;
+
+                    var side = (e.clientX - rect.left) < rect.width / 2 ? 'left' : 'right';
+                    var bottomPx = rect.bottom - e.clientY;
+                    var offset = ((bottomPx - rect.height * 0.08) / (rect.height * 0.7)) * range;
+
+                    apply($stage, side, offset, true);
+                });
+
+                function end(e) {
+                    if (!dragging) return;
+                    dragging = false;
+                    $stage.removeClass('is-dragging');
+                    if (e && e.pointerId != null && handle.hasPointerCapture && handle.hasPointerCapture(e.pointerId)) {
+                        handle.releasePointerCapture(e.pointerId);
+                    }
+                }
+                handle.addEventListener('pointerup', end);
+                handle.addEventListener('pointercancel', end);
+
+                // Keyboard: the handle is a real button, so arrows have to work
+                // for anyone who cannot drag.
+                handle.addEventListener('keydown', function(e) {
+                    var device = $stage.data('stage');
+                    var step   = e.shiftKey ? 50 : 10;
+                    var side   = $stage.attr('data-side');
+                    var offset = parseInt($stage.attr('data-offset'), 10) || 0;
+
+                    if (e.key === 'ArrowUp')         { apply($stage, side, offset + step, true); }
+                    else if (e.key === 'ArrowDown')  { apply($stage, side, offset - step, true); }
+                    else if (e.key === 'ArrowLeft')  { apply($stage, 'left', offset, true); }
+                    else if (e.key === 'ArrowRight') { apply($stage, 'right', offset, true); }
+                    else { return; }
+                    e.preventDefault();
+                });
+            });
+
+            // The numeric fields stay authoritative: editing one moves the mock.
+            $('[data-position-offset]').on('input change', function() {
+                var device = $(this).data('position-offset');
+                var $stage = $('.ai-agent-stage[data-stage="' + device + '"]');
+                apply($stage, $stage.attr('data-side'), parseInt($(this).val(), 10) || 0, false);
+            });
+            $('[data-position-side]').on('change', function() {
+                var device = $(this).data('position-side');
+                var $stage = $('.ai-agent-stage[data-stage="' + device + '"]');
+                apply($stage, $(this).val(), parseInt($stage.attr('data-offset'), 10) || 0, false);
+            });
+        })();
 
         // ----- دکمه «بارگذاری اطلاعات از سرور» (بازخوانی تنظیمات، نه سینک داده‌های امبدینگ) -----
         // دکمه‌ها اکنون SVG + متن دارند؛ برای حفظ SVG، به جای .text() از کلاس is-loading
@@ -743,7 +1096,7 @@
                                 var st = $(this).attr('data-count-status');
                                 if (typeof st === 'undefined') return;
                                 var c = (typeof counts[st] !== 'undefined') ? counts[st] : 0;
-                                $(this).text(c);
+                                $(this).text(aiAgentFaDigits(c));
                             });
                         }
                     },
@@ -758,11 +1111,12 @@
                 // اطلاعات صفحه
                 $('#ai-agent-sessions-page-info').text(
                     this.total > 0
-                        ? 'صفحه ' + this.currentPage + ' از ' + Math.ceil(this.total / this.pageSize)
+                        ? 'صفحه ' + aiAgentFaDigits(this.currentPage) +
+                          ' از ' + aiAgentFaDigits(Math.ceil(this.total / this.pageSize))
                         : ''
                 );
                 $('#ai-agent-sessions-total-info').text(
-                    this.total > 0 ? 'مجموع: ' + this.total + ' جلسه' : ''
+                    this.total > 0 ? 'مجموع: ' + aiAgentFaDigits(this.total) + ' جلسه' : ''
                 );
 
                 // دکمه‌های بالا

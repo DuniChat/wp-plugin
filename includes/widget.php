@@ -20,7 +20,7 @@ function ai_agent_widget(){
     <div id="ai-agent-window">
         <div id="ai-agent-header">
             <div class="ai-agent-header-title">
-                <span class="ai-theme-toggle" title="تغییر حالت شب/روز">
+                <button type="button" class="ai-theme-toggle" title="تغییر حالت شب/روز" aria-label="تغییر حالت شب/روز">
                     <span class="ai-theme-icon ai-theme-icon-moon">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 1 0 10.5 10.5z"/></svg>
                     </span>
@@ -37,7 +37,7 @@ function ai_agent_widget(){
                             <line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/>
                         </svg>
                     </span>
-                </span>
+                </button>
                 دانیچَت
             </div>
             <div class="ai-agent-header-actions">

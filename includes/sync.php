@@ -166,26 +166,25 @@ function ai_agent_check_sync_status_handler() {
   ۷) بازگرداندن نتیجه‌ی دقیق به فرانت‌اند (تعداد جدید/حذف‌شده)
 ================================================================
 */
-function ai_agent_sync_data_handler() {
+/*
+================================================================
+هسته‌ی همگام‌سازی افزایشی
 
-    // ۱. بررسی دسترسی
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array(
-            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
-        ));
-    }
+قبلاً این کد مستقیماً داخل هندلر AJAX بود و هر مسیر خروجی با
+wp_send_json تمام می‌شد؛ یعنی فقط با کلیک کاربر قابل اجرا بود. حالا
+همان منطق یک تابع معمولی است که آرایه برمی‌گرداند، تا هم دکمه‌ی
+«به‌روزرسانی محتوا» و هم زمان‌بندی خودکار (wp-cron) از یک مسیر
+استفاده کنند. منطق سینک دست‌نخورده است.
 
-    // ۲. بررسی nonce
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_nonce_action')) {
-        wp_send_json_error(array(
-            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
-        ));
-    }
+خروجی: array('success' => bool, 'data' => array(...))
+================================================================
+*/
+function ai_agent_run_incremental_sync() {
 
-    // ۳. بررسی API Key
+    // ۱. بررسی API Key
     $api_key = ai_agent_get_api_key();
     if (empty($api_key)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
         ));
     }
@@ -195,7 +194,7 @@ function ai_agent_sync_data_handler() {
     $sync_types = isset($settings['sync_types']) ? $settings['sync_types'] : array();
 
     if (empty($sync_types)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'لطفاً ابتدا حداقل یک منبع داده را تیک زده و ذخیره کنید.'
         ));
     }
@@ -207,7 +206,7 @@ function ai_agent_sync_data_handler() {
     $current_items = ai_agent_collect_sync_items($sync_types);
 
     if (empty($current_items)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
         ));
     }
@@ -520,7 +519,7 @@ if (!empty($new_items)) {
     if (empty($summary_parts)) {
         if ($content_error !== '' || $delete_error !== '' || $edited_error !== '') {
             $errors = array_filter(array($content_error, $delete_error, $edited_error));
-            wp_send_json_error(array(
+            return array('success' => false, 'data' => array(
                 'message'         => implode(' | ', $errors),
                 'new_count'       => 0,
                 'deleted_count'   => 0,
@@ -540,7 +539,7 @@ if (!empty($new_items)) {
         }
     }
 
-    wp_send_json_success(array(
+    return array('success' => true, 'data' => array(
         'message'             => $message,
         'new_count'           => $new_sent_count,
         'new_truly_new_count' => $truly_new_count,
@@ -551,6 +550,40 @@ if (!empty($new_items)) {
         'last_sync_time'      => $sync_time,
         'sync_type'           => 'incremental',
     ));
+}
+
+
+
+
+/*
+================================================================
+هندلر AJAX دکمه‌ی «به‌روزرسانی محتوا»
+
+فقط بررسی‌های مربوط به خودِ درخواست (دسترسی و nonce) این‌جاست؛
+کار اصلی در ai_agent_run_incremental_sync انجام می‌شود.
+================================================================
+*/
+function ai_agent_sync_data_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    $result = ai_agent_run_incremental_sync();
+
+    if (!empty($result['success'])) {
+        wp_send_json_success($result['data']);
+    }
+
+    wp_send_json_error($result['data']);
 }
 
 

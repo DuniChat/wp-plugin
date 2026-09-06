@@ -270,9 +270,96 @@ function ai_agent_get_wallet_balance_handler() {
         wp_send_json_error(array('message' => 'خطا در دریافت موجودی کیف پول از سرور.'));
     }
 
-    wp_send_json_success(array('balance_irr' => $result['balance_irr']));
+    /*
+    The formatted toman string is produced here rather than in JavaScript, so
+    the digits, grouping and low-balance threshold match the rest of the admin
+    screens instead of being reimplemented per call site.
+    */
+    $balance_irr = floatval($result['balance_irr']);
+
+    wp_send_json_success(array(
+        'balance_irr'    => $balance_irr,
+        'balance_text'   => ai_agent_format_toman($balance_irr),
+        'is_low'         => $balance_irr < AI_AGENT_LOW_BALANCE_IRR,
+        'low_threshold'  => ai_agent_format_toman(AI_AGENT_LOW_BALANCE_IRR),
+    ));
 }
 add_action('wp_ajax_ai_agent_get_wallet_balance', 'ai_agent_get_wallet_balance_handler');
+
+
+/*
+============================================
+هندلر AJAX ذخیره‌ی توکن سایت بدون ارسال کل فرم
+
+فرم تنظیمات بلند است و کاربر برای ثبت توکن مجبور بود کل فرم را
+ذخیره کند. این هندلر فقط همان یک مقدار را ذخیره می‌کند و بلافاصله
+تنظیمات را از سرور می‌خواند تا معتبر بودن توکن همان‌جا مشخص شود.
+============================================
+*/
+function ai_agent_save_api_key_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_save_api_key_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    $api_key = isset($_POST['api_key']) ? trim(sanitize_text_field(wp_unslash($_POST['api_key']))) : '';
+
+    if ($api_key === '') {
+        wp_send_json_error(array('message' => 'توکن خالی است. توکن سایت را از پنل دانیچَت کپی کنید.'));
+    }
+
+    ai_agent_save_api_key($api_key);
+
+    $settings = ai_agent_get_settings();
+    $settings['api_key'] = $api_key;
+    update_option('ai_agent_settings', $settings);
+
+    /*
+    Reading the settings back is the validation: an invalid token comes back
+    from the server as an error, so the user finds out here rather than
+    discovering later that the assistant never answered.
+    */
+    $result = ai_agent_sync_settings_from_server();
+
+    if ($result['status'] === 'success') {
+        wp_send_json_success(array('message' => 'توکن ذخیره شد و سایت شما فعال است.'));
+    }
+
+    wp_send_json_error(array(
+        'message' => 'توکن ذخیره شد، اما اتصال به سرور برقرار نشد: ' . $result['message'],
+    ));
+}
+add_action('wp_ajax_ai_agent_save_api_key', 'ai_agent_save_api_key_handler');
+
+
+/*
+============================================
+هندلر AJAX دریافت اعلان‌های دانیچَت
+
+اندپوینت عمومی است و توکن نمی‌خواهد، اما از سمت سرورِ وردپرس صدا
+زده می‌شود تا مرورگرِ ادمین درخواست cross-origin نزند و پاسخ هم
+برای همه‌ی ادمین‌ها یک‌جا کش شود.
+============================================
+*/
+function ai_agent_get_announcements_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    $items = ai_agent_fetch_announcements();
+
+    if ($items === false) {
+        wp_send_json_error(array('message' => 'دریافت اعلان‌ها ناموفق بود.'));
+    }
+
+    wp_send_json_success(array('items' => $items));
+}
+add_action('wp_ajax_ai_agent_get_announcements', 'ai_agent_get_announcements_handler');
 
 
 /*
