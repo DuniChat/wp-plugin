@@ -541,3 +541,50 @@ controls, chiefly).
         flex-shrink: 0;
     }
 }
+
+/* --------------------------------------------------------------------------
+   DuniChat's own support contacts
+
+   Someone whose assistant has stopped working is looking at this page, not at
+   the website, so the phone number and handles have to be reachable here.
+   -------------------------------------------------------------------------- */
+.ai-agent-support-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.ai-agent-support-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1.5px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius);
+    background: var(--ai-agent-surface);
+    color: var(--ai-agent-text);
+    font-size: 12.5px;
+    text-decoration: none;
+    transition: border-color var(--ai-agent-transition), background var(--ai-agent-transition);
+}
+
+.ai-agent-support-link:hover {
+    border-color: var(--ai-agent-primary);
+    background: var(--ai-agent-primary-lighter);
+    color: var(--ai-agent-primary-darker);
+}
+
+.ai-agent-support-link svg {
+    flex-shrink: 0;
+    color: var(--ai-agent-primary-dark);
+}
+
+/* Handles and phone numbers read left to right on this RTL page. */
+.ai-agent-support-value {
+    margin-right: 4px;
+    font-family: var(--ai-agent-mono);
+    font-size: 12px;
+    direction: ltr;
+    unicode-bidi: isolate;
+}

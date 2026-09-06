@@ -231,7 +231,7 @@
                         $head.append($('<span class="ai-agent-model-badge ai-agent-model-badge-ok"></span>').text('مناسب زمان نت ملی'));
                     }
                     if (model.supports_vision) {
-                        $head.append($('<span class="ai-agent-model-badge"></span>').text('ورودی تصویر'));
+                        $head.append($('<span class="ai-agent-model-badge"></span>').text('قابلیت جست‌وجوی تصویری'));
                     }
                 }
 

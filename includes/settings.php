@@ -1457,6 +1457,58 @@ function ai_agent_settings_page(){
                     </div>
                 </form>
 
+                <?php
+                /*
+                ============================================
+                پشتیبانی دانیچَت
+
+                کسی که دستیارش کار نمی‌کند همین صفحه را باز کرده، نه
+                سایت دانیچَت را؛ پس راه تماس باید همین‌جا در دسترس باشد.
+                این بخش بیرون از فرم است چون هیچ‌کدام از این‌ها تنظیمات
+                نیستند.
+                ============================================
+                */
+                ?>
+                <section class="ai-agent-card ai-agent-support-card">
+                    <header class="ai-agent-card-header">
+                        <h2>
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                            پشتیبانی دانیچَت
+                        </h2>
+                    </header>
+                    <div class="ai-agent-card-body">
+                        <p class="ai-agent-field-hint">
+                            به مشکلی خوردید یا سوالی دارید؟ زنگ بزنید یا پیام بدهید — همیشه در دسترسیم.
+                        </p>
+                        <div class="ai-agent-support-links">
+                            <a class="ai-agent-support-link" href="tel:+989900668721">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                            <span>
+                                امیرحسین محمدی
+                                <span class="ai-agent-support-value" dir="ltr"><?php echo esc_html(ai_agent_fa_digits('09900668721')); ?></span>
+                            </span>
+                            </a>
+                            <a class="ai-agent-support-link" href="https://t.me/dunijet_support" target="_blank" rel="noopener">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+                                <span>تلگرام <span class="ai-agent-support-value" dir="ltr">@dunijet_support</span></span>
+                            </a>
+                            <a class="ai-agent-support-link" href="https://instagram.com/dunichat.ir" target="_blank" rel="noopener">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8h.01"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
+                                <span>اینستاگرام <span class="ai-agent-support-value" dir="ltr">@dunichat.ir</span></span>
+                            </a>
+                            <a class="ai-agent-support-link" href="https://instagram.com/dunijet" target="_blank" rel="noopener">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8h.01"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
+                                <span>اینستاگرام <span class="ai-agent-support-value" dir="ltr">@dunijet</span></span>
+                            </a>
+                        </div>
+                        <p class="ai-agent-field-hint ai-agent-mt">
+                            دانیچَت محصولی از آژانس هوشمندسازی
+                            <a href="https://dunijet.ir" target="_blank" rel="noopener">دانیجت</a>
+                            است.
+                        </p>
+                    </div>
+                </section>
+
             <?php elseif ($current_tab === 'history') : ?>
                 <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
 
