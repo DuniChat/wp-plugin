@@ -7,7 +7,11 @@ jQuery(function ($) {
     const input = $("#ai-agent-input");
     const messages = $("#ai-agent-messages");
     const widget = $("#ai-agent");
-    const themeToggle = $(".ai-theme-toggle");
+    const drawer = $("#ai-agent-drawer");
+    const drawerList = $("#ai-agent-drawer-list");
+    const suggestionsBox = $("#ai-agent-suggestions");
+
+    const CONFIG = window.ai_agent || {};
 
     /*
     ============================================
@@ -39,47 +43,297 @@ jQuery(function ($) {
 
     /*
     ============================================
-    مدیریت دستی تم دارک/لایت
+    تم
 
-    مقدار اولیه از تنظیمات سیستم کاربر خوانده می‌شود؛ اما بعد از آن
-    کاربر می‌تواند با کلیک روی آیکون ماه/خورشید، مستقل از تنظیمات
-    سیستم، بین دو حالت جابجا شود. انتخاب کاربر در localStorage
-    ذخیره می‌شود تا در بازدیدهای بعدی هم حفظ شود.
+    دیگر انتخابِ بازدیدکننده نیست. آیکون ماه/خورشید داخل هدر حذف شد و
+    مقدارِ theme_mode از تنظیمات افزونه می‌آید:
+
+      auto  → از سایت میزبان پیروی کن
+      light → همیشه روشن
+      dark  → همیشه تاریک
+
+    در حالت auto اول به خود سایت نگاه می‌کنیم، نه به تنظیم سیستم‌عامل:
+    یک فروشگاهِ همیشه‌روشن روی گوشی‌ای که دارک‌مود دارد، نباید وسطش یک
+    ویجت مشکی داشته باشد. نشانه‌های زیر تقریباً همه‌ی قالب‌ها را پوشش
+    می‌دهند؛ اگر هیچ‌کدام نبود، به prefers-color-scheme برمی‌گردیم.
     ============================================
     */
-    const THEME_STORAGE_KEY = 'ai_agent_theme';
+    function detectSiteTheme() {
+        const root = document.documentElement;
+        const body = document.body;
+
+        // ۱) اعلام صریح خود سایت
+        const declared = (root.getAttribute('data-theme') ||
+                          root.getAttribute('data-color-scheme') ||
+                          body.getAttribute('data-theme') || '').toLowerCase();
+        if (declared.indexOf('dark') !== -1) return 'dark';
+        if (declared.indexOf('light') !== -1) return 'light';
+
+        // ۲) کلاس‌های مرسوم
+        const classes = (root.className + ' ' + body.className).toLowerCase();
+        if (/(^|\s|-)dark(-mode|-theme)?(\s|$)/.test(classes)) return 'dark';
+        if (/(^|\s|-)light(-mode|-theme)?(\s|$)/.test(classes)) return 'light';
+
+        // ۳) رنگ واقعی پس‌زمینه‌ی صفحه. قابل‌اعتمادترین نشانه است، چون
+        //    نتیجه‌ی هر کاری است که قالب واقعاً کرده، نه نامی که گذاشته.
+        try {
+            const bg = getComputedStyle(body).backgroundColor || '';
+            const m = bg.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+            if (m) {
+                const alpha = bg.match(/rgba\([^)]+,\s*([\d.]+)\s*\)/);
+                // پس‌زمینه‌ی کاملاً شفاف چیزی درباره‌ی تم نمی‌گوید
+                if (!alpha || parseFloat(alpha[1]) > 0.1) {
+                    const luminance = (0.2126 * (+m[1]) + 0.7152 * (+m[2]) + 0.0722 * (+m[3])) / 255;
+                    return luminance < 0.4 ? 'dark' : 'light';
+                }
+            }
+        } catch (e) {
+            // getComputedStyle در بعضی محیط‌ها خطا می‌دهد؛ می‌افتیم روی گام بعد
+        }
+
+        // ۴) تنظیم سیستم‌عامل
+        return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+    }
 
     function applyTheme(theme) {
-        widget.attr('data-theme', theme);
+        widget.attr('data-theme', theme === 'dark' ? 'dark' : 'light');
     }
 
     function initTheme() {
-        let saved = null;
-        try {
-            saved = localStorage.getItem(THEME_STORAGE_KEY);
-        } catch (e) {
-            saved = null;
-        }
-        if (saved === 'dark' || saved === 'light') {
-            applyTheme(saved);
+        const mode = CONFIG.theme_mode || 'auto';
+        if (mode === 'light' || mode === 'dark') {
+            applyTheme(mode);
             return;
         }
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        applyTheme(prefersDark ? 'dark' : 'light');
+        applyTheme(detectSiteTheme());
+
+        // اگر سایت تمش را عوض کرد (کلید شب/روزِ خود قالب)، ویجت هم دنبالش
+        // می‌رود. بدون این، کاربر تم سایت را عوض می‌کرد و چت روی حالت قبلی
+        // جا می‌ماند.
+        if (window.MutationObserver) {
+            const themeWatcher = new MutationObserver(function () {
+                applyTheme(detectSiteTheme());
+            });
+            themeWatcher.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme', 'data-color-scheme'],
+            });
+            themeWatcher.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme'],
+            });
+        }
+        if (window.matchMedia) {
+            const query = window.matchMedia('(prefers-color-scheme: dark)');
+            const onChange = function () { applyTheme(detectSiteTheme()); };
+            if (query.addEventListener) query.addEventListener('change', onChange);
+            else if (query.addListener) query.addListener(onChange);
+        }
     }
 
-    themeToggle.on('click', function () {
-        const current = widget.attr('data-theme') === 'dark' ? 'dark' : 'light';
-        const next = current === 'dark' ? 'light' : 'dark';
-        applyTheme(next);
-        try {
-            localStorage.setItem(THEME_STORAGE_KEY, next);
-        } catch (e) {
-            // اگر localStorage در دسترس نبود، فقط برای همین بازدید تم عوض می‌شود
-        }
-    });
-
     initTheme();
+
+    /*
+    ============================================
+    شناسه‌ی بازدیدکننده
+
+    یک توکن تصادفی که در مرورگر می‌ماند و هر گفت‌وگوی تازه با آن ساخته
+    می‌شود. تنها چیزی است که چتِ دومِ یک نفر را به چتِ اولش وصل می‌کند —
+    بدون آن، فهرست «گفت‌وگوهای پیشین» ممکن نبود، چون هر مکالمه شناسه‌ی
+    تصادفیِ جدا می‌گرفت.
+
+    هیچ‌کس را شناسایی نمی‌کند: نه ایمیل، نه شماره، نه چیزی که بشود از
+    آن به آدم رسید. فقط یک عدد تصادفی که مرورگر نگه می‌دارد.
+    ============================================
+    */
+    const VISITOR_STORAGE_KEY = 'ai_agent_visitor_id';
+    let visitorId = null;
+
+    function getVisitorId() {
+        if (visitorId) return visitorId;
+        try {
+            visitorId = localStorage.getItem(VISITOR_STORAGE_KEY);
+        } catch (e) {
+            visitorId = null;
+        }
+        if (!visitorId || !/^[0-9a-f]{16,64}$/.test(visitorId)) {
+            visitorId = randomHex(32);
+            try {
+                localStorage.setItem(VISITOR_STORAGE_KEY, visitorId);
+            } catch (e) {
+                // حالت مرور خصوصی: توکن فقط تا پایان همین بازدید زنده است،
+                // یعنی تاریخچه در بازدید بعدی خالی خواهد بود. این بهتر از
+                // خطا دادن است.
+            }
+        }
+        return visitorId;
+    }
+
+    /** ارقام لاتین به فارسی — همه‌ی عددهای داخل ویجت فارسی نوشته می‌شوند. */
+    function toFaDigits(value) {
+        const fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        return String(value).replace(/[0-9]/g, function (d) { return fa[+d]; });
+    }
+
+    function randomHex(chars) {
+        const bytes = new Uint8Array(chars / 2);
+        if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = Math.floor(Math.random() * 256);
+            }
+        }
+        return Array.prototype.map.call(bytes, function (b) {
+            return ('0' + b.toString(16)).slice(-2);
+        }).join('');
+    }
+
+    /*
+    ============================================
+    صفحه‌ی شروع
+
+    به‌جای «چطور می‌تونم کمکتون کنم؟» — جمله‌ای که کاربر را جلوی یک
+    فیلد خالی تنها می‌گذاشت — چند پیشنهاد قابل کلیک. متن‌شان در PHP از
+    روی همان اطلاعاتی ساخته می‌شود که مدیر در تنظیمات افزونه پر کرده،
+    پس روی سایتی که شماره‌ای ثبت نکرده، پیشنهادِ شماره‌ی تماس هم نیست.
+    ============================================
+    */
+    const CHIP_ARROW =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<polyline points="15 18 9 12 15 6"/></svg>';
+
+    function renderIntro() {
+        const starters = Array.isArray(CONFIG.starters) ? CONFIG.starters : [];
+
+        const $intro = $('<div class="ai-agent-intro"></div>');
+        $intro.append('<div class="ai-agent-intro-mark" aria-hidden="true"></div>');
+        $intro.append(
+            $('<div class="ai-agent-intro-title"></div>')
+                .text('آماده‌ای یه مکالمه هیجان‌انگیز داشته باشیم؟')
+        );
+
+        if (starters.length) {
+            const $chips = $('<div class="ai-agent-intro-chips"></div>');
+            starters.forEach(function (item) {
+                if (!item || !item.label) return;
+                const $chip = $('<button type="button" class="ai-agent-chip"></button>');
+                $chip.append($('<span></span>').text(item.label));
+                $chip.append(CHIP_ARROW);
+                $chip.on('click', function () {
+                    submitPrompt(item.prompt || item.label);
+                });
+                $chips.append($chip);
+            });
+            $intro.append($chips);
+        }
+
+        messages.empty().append($intro);
+    }
+
+    /** پاک کردن صفحه‌ی شروع به‌محض این‌که گفت‌وگو واقعاً شروع شود. */
+    function clearIntro() {
+        messages.find('.ai-agent-intro').remove();
+    }
+
+    /*
+    ارسال یک متن آماده (تراشه‌ی شروع یا پیشنهاد ادامه) بدون این‌که کاربر
+    مجبور باشد آن را تایپ کند. عمداً فوکوس نمی‌گیرد: روی موبایل باز شدن
+    کیبورد بلافاصله بعد از کلیک، پاسخی را که همان لحظه شروع به آمدن
+    کرده از دید پنهان می‌کند.
+    */
+    function submitPrompt(text) {
+        if (!text) return;
+        input.val(text);
+        autoResizeInput();
+        updateSendButtonState();
+        clearSuggestions();
+        sendMessage();
+    }
+
+    /*
+    ============================================
+    پیشنهادهای ادامه‌ی گفت‌وگو
+
+    سرور بعد از هر پاسخ یکی دو سؤال بعدی را می‌فرستد. با شروع پیام
+    بعدی پاک می‌شوند — پیشنهادی که به پاسخِ قبلی مربوط است، زیر یک
+    گفت‌وگوی جلورفته بی‌ربط می‌شود.
+    ============================================
+    */
+    function renderSuggestions(list) {
+        clearSuggestions();
+        if (!Array.isArray(list) || !list.length) return;
+
+        list.slice(0, 3).forEach(function (text) {
+            if (!text) return;
+            const $chip = $('<button type="button" class="ai-agent-chip"></button>').text(text);
+            $chip.on('click', function () { submitPrompt(text); });
+            suggestionsBox.append($chip);
+        });
+        suggestionsBox.prop('hidden', false);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        if (messages.length) messages.scrollTop(messages[0].scrollHeight);
+    }
+
+    function clearSuggestions() {
+        suggestionsBox.empty().prop('hidden', true);
+    }
+
+    /*
+    ============================================
+    دکمه‌های تماس زیر پاسخ
+
+    وقتی دستیار درباره‌ی راه‌های ارتباطی حرف زده، شماره یا آی‌دی را به
+    دکمه تبدیل می‌کنیم: روی گوشی، tel: برنامه‌ی تماس را باز می‌کند و
+    لینک‌های تلگرام/اینستاگرام مستقیم به همان اپ می‌روند.
+
+    فقط وقتی نشان داده می‌شوند که متنِ پاسخ واقعاً به آن راه ارتباطی
+    اشاره کرده باشد. چسباندن دکمه‌ی تماس زیر هر پاسخی، آن را به تبلیغ
+    ثابتِ ته صفحه تبدیل می‌کرد.
+    ============================================
+    */
+    const ACTION_ICONS = {
+        phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+        telegram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+        instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><line x1="17.5" y1="6.5" x2="17.5" y2="6.5"/></svg>',
+    };
+
+    // نشانه‌های متنی هر راه ارتباطی. اگر پاسخ هیچ‌کدام را نگفته باشد،
+    // دکمه‌ای هم ساخته نمی‌شود.
+    const ACTION_HINTS = {
+        phone: ['تماس', 'تلفن', 'شماره', 'زنگ'],
+        telegram: ['تلگرام', 'telegram'],
+        instagram: ['اینستاگرام', 'instagram', 'اینستا'],
+    };
+
+    function buildContactActions(answerText) {
+        const contacts = Array.isArray(CONFIG.contacts) ? CONFIG.contacts : [];
+        if (!contacts.length) return null;
+
+        const haystack = String(answerText || '').toLowerCase();
+        const matched = contacts.filter(function (c) {
+            const hints = ACTION_HINTS[c.type] || [];
+            return hints.some(function (h) { return haystack.indexOf(h) !== -1; });
+        });
+        if (!matched.length) return null;
+
+        const $wrap = $('<div class="ai-agent-actions"></div>');
+        matched.slice(0, 3).forEach(function (c) {
+            const $a = $('<a class="ai-agent-action" target="_blank" rel="noopener noreferrer"></a>')
+                .attr('href', c.url);
+            // tel: نباید در تب تازه باز شود؛ روی دسکتاپ یک صفحه‌ی خالی می‌ماند.
+            if (c.type === 'phone') $a.removeAttr('target').removeAttr('rel');
+            $a.append(ACTION_ICONS[c.type] || '');
+            $a.append($('<span></span>').text(c.label));
+            $wrap.append($a);
+        });
+        return $wrap;
+    }
 
     /*
     ============================================
@@ -508,37 +762,126 @@ jQuery(function ($) {
     */
     const newChatBtn = $("#ai-agent-new-chat");
 
-    newChatBtn.on("click", function () {
+    function startNewChat() {
         clearSessionId();
 
         // ریست وضعیت جلسه به حالت نامشخص (در واقع حالت ربات برای جلسه‌ی جدید)
         currentSessionStatus = '';
 
-        // توقف polling (اگر در حال اجرا بود)
         stopPolling();
-
-        // فعال‌سازی مجدد فوتر (اگر به خاطر بسته شدن چت غیرفعال شده بود)
         setChatDisabled(false);
+        closeDrawer();
+        clearSuggestions();
 
-        // پاک کردن پیام‌های فعلی و بازگرداندن پیام خوش‌آمدگویی پیش‌فرض
-        messages.empty();
-        messages.append(
-            '<div class="ai-message"><div class="ai-message-body">سلام 👋 چطور می‌تونم کمکتون کنم؟</div></div>'
-        );
+        // صفحه‌ی شروع، با پیشنهادهای ساخته‌شده از تنظیمات مدیر
+        renderIntro();
 
-        // خالی کردن باکس ورودی و بازگرداندن ارتفاع آن به حالت اولیه
         input.val('');
         autoResizeInput();
-        updateSendButtonState(); // ورودی خالی شد → دکمه‌ی ارسال غیرفعال می‌شود
-
-        // پاک کردن عکس‌های پیوست انتخاب‌شده (اگر موردی وجود دارد)
+        updateSendButtonState();
         clearAttachments();
 
         // اگر ضبط صدا در حال اجراست، لغو می‌شود (بدون نوشتن متن ناقص)
         $(document).trigger('ai-agent-chat-reset');
+    }
 
-        input.focus();
+    /*
+    «چت تازه» دیگر فوکوس نمی‌گیرد.
+
+    قبلاً input.focus() صدا زده می‌شد و روی موبایل بلافاصله کیبورد بالا
+    می‌آمد و نیمی از صفحه را می‌گرفت — در حالی که کاربر تازه یک چت خالی
+    باز کرده و اولین کاری که احتمالاً می‌کند نگاه کردن به پیشنهادهاست،
+    نه تایپ کردن. اگر بخواهد بنویسد، یک ضربه روی فیلد کافی است.
+    */
+    newChatBtn.on("click", startNewChat);
+
+    /*
+    ============================================
+    کشوی گفت‌وگوهای پیشین
+    ============================================
+    */
+    const historyBtn = $("#ai-agent-history");
+
+    function closeDrawer() {
+        drawer.prop('hidden', true);
+    }
+
+    function openDrawer() {
+        drawer.prop('hidden', false);
+        loadVisitorSessions();
+    }
+
+    historyBtn.on('click', function () {
+        if (drawer.prop('hidden')) openDrawer();
+        else closeDrawer();
     });
+
+    $("#ai-agent-drawer-close").on('click', closeDrawer);
+
+    function loadVisitorSessions() {
+        drawerList.html('<div class="ai-agent-drawer-empty">در حال بارگذاری...</div>');
+
+        $.ajax({
+            url: CONFIG.ajax_url,
+            method: 'GET',
+            data: {
+                action: 'ai_agent_visitor_sessions',
+                visitor_id: getVisitorId(),
+            },
+        }).done(function (res) {
+            const items = (res && res.success && res.data && Array.isArray(res.data.items))
+                ? res.data.items : [];
+            renderDrawer(items);
+        }).fail(function () {
+            drawerList.html(
+                '<div class="ai-agent-drawer-empty">فهرست گفت‌وگوها در دسترس نیست.</div>'
+            );
+        });
+    }
+
+    function renderDrawer(items) {
+        drawerList.empty();
+
+        if (!items.length) {
+            drawerList.html(
+                '<div class="ai-agent-drawer-empty">هنوز گفت‌وگویی نداشته‌اید.<br>' +
+                'هر گفت‌وگویی که شروع کنید این‌جا ذخیره می‌شود.</div>'
+            );
+            return;
+        }
+
+        const current = getSessionId();
+
+        items.forEach(function (item) {
+            const $row = $('<button type="button" class="ai-agent-drawer-item"></button>');
+            if (item.id === current) $row.addClass('is-current');
+
+            $row.append($('<span class="ai-agent-drawer-title"></span>').text(item.title || 'گفت‌وگو'));
+            $row.append(
+                $('<span class="ai-agent-drawer-meta"></span>')
+                    .text(toFaDigits(item.message_count || 0) + ' پیام')
+            );
+
+            $row.on('click', function () {
+                openSession(item.id);
+            });
+            drawerList.append($row);
+        });
+    }
+
+    /*
+    باز کردن یک گفت‌وگوی قدیمی: شناسه‌اش را جای شناسه‌ی فعلی می‌گذاریم و
+    تاریخچه را از همان مسیری می‌خوانیم که هنگام بازکردن دوباره‌ی ویجت
+    استفاده می‌شود، تا فقط یک راه برای بازسازی یک گفت‌وگو وجود داشته باشد.
+    */
+    function openSession(sessionId) {
+        if (!sessionId) return;
+        setSessionId(sessionId);
+        closeDrawer();
+        clearSuggestions();
+        messages.empty();
+        loadChatHistory();
+    }
 
     /*
     ============================================
@@ -1258,19 +1601,36 @@ function buildReferencesListBox(references) {
     برمی‌گرداند: { $wrapper, $content, $loading }
     ============================================
     */
+    /*
+    نشانگر انتظار: یک برچسبِ متنی با نبض ملایم، نه سه نقطه‌ی جهنده.
+
+    نقطه‌ها می‌گفتند «چیزی دارد تایپ می‌شود»، در حالی که مدل ممکن است
+    چند ثانیه مشغول جست‌وجو در محتوای سایت باشد و هنوز یک کلمه هم
+    ننوشته باشد. متن، همان چیزی را می‌گوید که واقعاً دارد اتفاق می‌افتد،
+    و رویداد tool_call در حین کار جمله را دقیق‌تر می‌کند.
+    */
+    function buildThinkingIndicator() {
+        return $(
+            '<div class="ai-agent-thinking" id="ai-loading-stream">' +
+            '<span class="ai-agent-thinking-dot" aria-hidden="true"></span>' +
+            '<span class="ai-agent-thinking-label">دارم فکر می‌کنم...</span>' +
+            '</div>'
+        );
+    }
+
     function addStreamingMessage() {
-    const $wrapper = $('<div class="ai-message fade-in-up"></div>');
-    const $body = $('<div class="ai-message-body"></div>');
-    const $content = $('<span class="ai-streaming-content"></span>');
-    const $loading = $(
-        '<div class="typing-dots" id="ai-loading-stream"><span></span><span></span><span></span></div>'
-    );
-    $body.append($content);
-    $body.append($loading);
-    $wrapper.append($body);
-    messages.append($wrapper);
-    return { $wrapper, $body, $content, $loading, references: [], rawText: '' }; // <-- rawText اضافه شد
-}
+        const $wrapper = $('<div class="ai-message fade-in-up"></div>');
+        const $body = $('<div class="ai-message-body"></div>');
+        const $content = $('<span class="ai-streaming-content"></span>');
+        const $loading = buildThinkingIndicator();
+
+        $body.append($content);
+        $body.append($loading);
+        $wrapper.append($body);
+        messages.append($wrapper);
+
+        return { $wrapper, $body, $content, $loading, references: [], rawText: '', suggestions: [] };
+    }
 
     function removeLoading() {
         $("#ai-loading, #ai-loading-stream").remove();
@@ -1425,6 +1785,12 @@ function buildReferencesListBox(references) {
         // -------------------------------------------------------------
         // ۲) نمایش پیام کاربر
         // -------------------------------------------------------------
+        // صفحه‌ی شروع و پیشنهادهای پاسخ قبلی جای خود را به گفت‌وگو می‌دهند.
+        // پیشنهادی که به پاسخِ قبلی مربوط بود، زیر یک گفت‌وگوی جلورفته
+        // بی‌ربط می‌شود.
+        clearIntro();
+        clearSuggestions();
+
         addMessage("user", escapeHtml(text), null, imagesToSend);
         input.val("");
         autoResizeInput(); // برگشت به ارتفاع پیش‌فرض بعد از ارسال
@@ -1456,6 +1822,9 @@ function buildReferencesListBox(references) {
             body.append('action', 'ai_agent_chat');
             body.append('message', text);
             body.append('session_id', sessionId || '');
+            // فقط هنگام ساخت گفت‌وگوی تازه به کار می‌آید، ولی همیشه فرستاده
+            // می‌شود: کلاینت نمی‌داند سرور جلسه‌ی فعلی را هنوز دارد یا نه.
+            body.append('visitor_id', getVisitorId());
 
             if (imagesToSend.length > 0) {
                 imagesToSend.forEach(function (dataUrl, i) {
@@ -1635,7 +2004,19 @@ function buildReferencesListBox(references) {
         stream.$body.append($refList);
         stream.referencesRendered = true;
     }
-} else if (data.type === 'session_init' && data.session_id) {
+} else if (data.type === 'tool_call') {
+            // تا وقتی هیچ متنی نیامده، برچسب انتظار دقیق‌تر می‌شود: کاربر
+            // می‌بیند که دستیار در حال گشتن در محتوای سایت است، نه این‌که
+            // بی‌دلیل معطل مانده.
+            if (!stream.rawText) {
+                stream.$loading.find('.ai-agent-thinking-label')
+                    .text(data.name === 'escalate' ? 'در حال ارجاع به پشتیبان...' : 'دارم توی سایت می‌گردم...');
+            }
+        } else if (data.type === 'suggestions') {
+            // پیشنهادهای ادامه‌ی گفت‌وگو. عمداً بعد از رسیدنِ کاملِ پاسخ
+            // نمایش داده می‌شوند، نه هم‌زمان با آن.
+            stream.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+        } else if (data.type === 'session_init' && data.session_id) {
             setSessionId(data.session_id);
         } else if (data.type === 'escalate') {
             stream.$loading.remove();
@@ -1666,6 +2047,13 @@ function buildReferencesListBox(references) {
     const $refList = buildReferencesListBox(stream.references);
     if ($refList) stream.$body.append($refList);
 }
+
+            // دکمه‌های تماس، فقط وقتی پاسخ واقعاً درباره‌ی راه ارتباطی
+            // حرف زده باشد.
+            const $actions = buildContactActions(stream.rawText);
+            if ($actions) stream.$body.append($actions);
+
+            renderSuggestions(stream.suggestions);
 
             if (data.chat_id) {
                 if (typeof onDone === 'function') onDone(data.chat_id);
@@ -2510,8 +2898,14 @@ function renderHistoryMessage(msg) {
                 const msgs = Array.isArray(data.messages) ? data.messages : [];
 
                 if (msgs.length > 0) {
-                    messages.empty(); // پیام خوش‌آمدگویی پیش‌فرض حذف می‌شود
+                    messages.empty();
                     msgs.forEach(renderHistoryMessage);
+                    scrollToBottom();
+                } else {
+                    // جلسه‌ای که هیچ پیامی ندارد (مثلاً ویجت باز شده و
+                    // چیزی نوشته نشده) باید صفحه‌ی شروع را نشان دهد، نه
+                    // یک صفحه‌ی کاملاً خالی.
+                    renderIntro();
                 }
 
                 // به‌روزرسانی کوکی تعداد پیام‌های دیده‌شده با تعداد کل پیام‌های جلسه
@@ -2534,9 +2928,16 @@ function renderHistoryMessage(msg) {
         });
     }
 
-    // تنها اگر session_id در کوکی موجود باشد، تاریخه چت را بارگذاری می‌کنیم
+    /*
+    شروع: اگر گفت‌وگوی قبلی وجود دارد ادامه‌اش را نشان می‌دهیم، وگرنه
+    صفحه‌ی شروع با پیشنهادهای مدیر. پیام خوش‌آمدگویی ثابتِ قبلی
+    («سلام، چطور می‌تونم کمکتون کنم؟») حذف شد: کاربر را جلوی یک فیلد
+    خالی تنها می‌گذاشت و هیچ راهی نشان نمی‌داد.
+    */
     if (sessionId) {
         loadChatHistory();
+    } else {
+        renderIntro();
     }
 
 });

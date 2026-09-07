@@ -11,6 +11,27 @@ function ai_agent_get_settings(){
         // color_dark : رنگ ویجت وقتی چت در حالت تاریک (Dark) است
         'color_light'         => '#F4865B',
         'color_dark'          => '#F4865B',
+
+        /*
+        ============================================
+        تم چت — از این‌جا کنترل می‌شود، نه از داخل ویجت
+
+        قبلاً یک آیکون ماه/خورشید داخل هدر چت بود و هر بازدیدکننده تم را
+        برای خودش عوض می‌کرد. این تصمیمِ بازدیدکننده نیست: چت باید شبیه
+        سایتی باشد که رویش نشسته، نه چیزی که وسطش تم جدا دارد. حالا:
+
+          - theme_mode = auto  : از تم خود سایت/سیستم پیروی می‌کند
+          - theme_mode = light : همیشه روشن
+          - theme_mode = dark  : همیشه تاریک
+
+        و رنگ پس‌زمینه‌ی صفحه‌ی چت در هر دو حالت این‌جا قابل تغییر است.
+        پیش‌فرض‌ها همان کاغذ گرم و مشکیِ گرمِ اپلیکیشن کلاد هستند.
+        ============================================
+        */
+        'theme_mode'          => 'auto',    // auto | light | dark
+        'chat_bg_light'       => '#FAF9F5',
+        'chat_bg_dark'        => '#1F1E1D',
+
         'timeout'             => 15,
         'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
         'api_key'             => '',      // کلید API کاربر برای احراز هویت با سرور همگام‌سازی
@@ -161,6 +182,16 @@ function ai_agent_sanitize_settings($input){
 
     // کلید قدیمی color برای سازگاری (معادل رنگ حالت روشن)
     $output['color'] = $color_light;
+
+    // تم چت: فقط سه مقدار مجاز است؛ هر چیز دیگری به auto برمی‌گردد.
+    $theme_mode = isset($input['theme_mode']) ? sanitize_text_field($input['theme_mode']) : 'auto';
+    $output['theme_mode'] = in_array($theme_mode, array('auto', 'light', 'dark'), true) ? $theme_mode : 'auto';
+
+    $bg_light = isset($input['chat_bg_light']) ? sanitize_hex_color($input['chat_bg_light']) : '';
+    $output['chat_bg_light'] = $bg_light ? $bg_light : '#FAF9F5';
+
+    $bg_dark = isset($input['chat_bg_dark']) ? sanitize_hex_color($input['chat_bg_dark']) : '';
+    $output['chat_bg_dark'] = $bg_dark ? $bg_dark : '#1F1E1D';
 
     $timeout = isset($input['timeout']) ? intval($input['timeout']) : 15;
     $output['timeout'] = $timeout > 0 ? $timeout : 15;
@@ -1222,8 +1253,76 @@ function ai_agent_settings_page(){
                                     </label>
                                     <input type="text" name="ai_agent_settings[color_dark]" id="ai_agent_color_dark" value="<?php echo esc_attr($settings['color_dark']); ?>" class="ai-agent-color-field" />
                                 </div>
-                                <p class="ai-agent-field-hint">وقتی چت در حالت روشن یا تاریک نمایش داده می‌شود، رنگ همان حالت روی دکمه شناور، هدر، حباب پیام کاربر و فوکِس فیلد متن اعمال می‌گردد.</p>
+                                <p class="ai-agent-field-hint">
+                                    رنگ اصلی روی دکمه‌ی شناور، هدر و دکمه‌ی ارسال می‌نشیند. هنگام نصب، این رنگ
+                                    یک‌بار از روی رنگ اصلی خودِ سایت شما خوانده و پیش‌فرض قرار می‌گیرد؛ از این‌جا
+                                    هر وقت خواستید عوضش کنید. رنگ حالت تاریک را جدا نگه داشته‌ایم چون رنگی که
+                                    روی کاغذ روشن درست به نظر می‌رسد، روی پس‌زمینه‌ی مشکی یا می‌سوزد یا گم می‌شود.
+                                </p>
                             </div>
+                    </section>
+
+                    <?php
+                    /*
+                    ============================================
+                    تم صفحه‌ی چت
+
+                    قبلاً یک آیکون ماه/خورشید داخل هدر چت بود و هر بازدیدکننده
+                    تم را برای خودش عوض می‌کرد. این تصمیمِ بازدیدکننده نیست:
+                    چت باید شبیه سایتی باشد که رویش نشسته، نه چیزی که وسطش
+                    تم جدا دارد. کنترلش آمده این‌جا.
+                    ============================================
+                    */
+                    ?>
+                    <section class="ai-agent-card">
+                        <header class="ai-agent-card-header">
+                            <h2>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/></svg>
+                                تم صفحه‌ی چت
+                            </h2>
+                        </header>
+                        <div class="ai-agent-card-body">
+                            <?php $theme_mode = isset($settings['theme_mode']) ? $settings['theme_mode'] : 'auto'; ?>
+                            <div class="ai-agent-field-row">
+                                <label class="ai-agent-field-label">حالت نمایش</label>
+                                <div class="ai-agent-segmented" role="radiogroup" aria-label="حالت نمایش چت">
+                                    <?php
+                                    $modes = array(
+                                        'auto'  => array('هماهنگ با سایت', 'حالت پیش‌فرض'),
+                                        'light' => array('همیشه روشن', 'بدون توجه به سایت'),
+                                        'dark'  => array('همیشه تاریک', 'بدون توجه به سایت'),
+                                    );
+                                    foreach ($modes as $value => $labels) : ?>
+                                        <label class="ai-agent-segment">
+                                            <input type="radio" name="ai_agent_settings[theme_mode]" value="<?php echo esc_attr($value); ?>" <?php checked($theme_mode, $value); ?> />
+                                            <span class="ai-agent-segment-body">
+                                                <span class="ai-agent-segment-title"><?php echo esc_html($labels[0]); ?></span>
+                                                <span class="ai-agent-segment-sub"><?php echo esc_html($labels[1]); ?></span>
+                                            </span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <p class="ai-agent-field-hint">
+                                    در حالت «هماهنگ با سایت»، افزونه تم قالب شما را تشخیص می‌دهد و اگر بازدیدکننده
+                                    کلید شب/روزِ سایت را بزند، چت هم با آن عوض می‌شود.
+                                </p>
+                            </div>
+
+                            <div class="ai-agent-field-grid ai-agent-mt">
+                                <div class="ai-agent-field-row">
+                                    <label for="ai_agent_chat_bg_light" class="ai-agent-field-label">پس‌زمینه‌ی چت در حالت روشن</label>
+                                    <input type="text" name="ai_agent_settings[chat_bg_light]" id="ai_agent_chat_bg_light" value="<?php echo esc_attr($settings['chat_bg_light']); ?>" class="ai-agent-color-field" />
+                                </div>
+                                <div class="ai-agent-field-row">
+                                    <label for="ai_agent_chat_bg_dark" class="ai-agent-field-label">پس‌زمینه‌ی چت در حالت تاریک</label>
+                                    <input type="text" name="ai_agent_settings[chat_bg_dark]" id="ai_agent_chat_bg_dark" value="<?php echo esc_attr($settings['chat_bg_dark']); ?>" class="ai-agent-color-field" />
+                                </div>
+                            </div>
+                            <p class="ai-agent-field-hint">
+                                عکس‌های پس‌زمینه‌ی قبلی حذف شدند؛ یک عکس پشتِ متنِ گفت‌وگو خواندن را سخت‌تر
+                                می‌کرد و چیزی اضافه نمی‌کرد. پیش‌فرض‌ها یک کاغذ گرم و یک مشکیِ گرم‌اند.
+                            </p>
+                        </div>
                     </section>
 
                     <!-- ====== Response timeout ====== -->

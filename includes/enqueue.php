@@ -87,6 +87,87 @@ function ai_agent_enqueue(){
     $rgb_light = ai_agent_hex_to_rgb($color_light);
     $rgb_dark  = ai_agent_hex_to_rgb($color_dark);
 
+    /*
+    ============================================
+    پرامپت‌های شروع و راه‌های تماس
+
+    وقتی یک چت تازه باز می‌شود، به‌جای «چطور می‌تونم کمکتون کنم؟» چند
+    پیشنهاد وسط صفحه نشان داده می‌شود. متن‌شان از همین تنظیمات ساخته
+    می‌شود — نه با یک درخواست به مدل: این‌ها هر بار که ویجت باز شود
+    لازم‌اند و گرفتن‌شان از مدل یعنی هزینه و تأخیر برای متنی که از
+    روی داده‌های خودِ مدیر قابل نوشتن است.
+
+    فقط پیشنهادهایی ساخته می‌شوند که مدیر داده‌اش را پر کرده باشد؛
+    «شماره تماس پشتیبانی چیه؟» روی سایتی که شماره‌ای ثبت نکرده،
+    سؤالی است که دستیار جوابش را ندارد.
+    ============================================
+    */
+    $starters = array();
+
+    if (!empty($settings['organization_name']) || !empty($settings['business_description'])) {
+        $starters[] = array(
+            'label'  => 'این مجموعه چه کاری انجام می‌دهد؟',
+            'prompt' => 'درباره‌ی این مجموعه و کاری که انجام می‌دهد توضیح بده.',
+        );
+    }
+    if (!empty($settings['support_phones'])) {
+        $starters[] = array(
+            'label'  => 'شماره تماس پشتیبانی',
+            'prompt' => 'برای تماس تلفنی با پشتیبانی، با چه شماره‌ای تماس بگیرم؟',
+        );
+    }
+    if (!empty($settings['telegram_id'])) {
+        $starters[] = array(
+            'label'  => 'پشتیبانی در تلگرام',
+            'prompt' => 'چطور می‌توانم در تلگرام با پشتیبانی در ارتباط باشم؟',
+        );
+    }
+    if (!empty($settings['instagram_id'])) {
+        $starters[] = array(
+            'label'  => 'صفحه‌ی اینستاگرام',
+            'prompt' => 'صفحه‌ی اینستاگرام شما کدام است و آن‌جا چه می‌گذارید؟',
+        );
+    }
+
+    /*
+    راه‌های تماس، برای دکمه‌های دیپ‌لینک زیر پاسخ‌ها. وقتی دستیار درباره‌ی
+    تماس یا شبکه‌های اجتماعی حرف زده، خواندن یک شماره از متن و تایپ
+    کردنش در گوشی کاری است که کاربر نباید انجام دهد.
+    */
+    $contacts = array();
+    if (!empty($settings['support_phones']) && is_array($settings['support_phones'])) {
+        foreach (array_slice($settings['support_phones'], 0, 3) as $phone) {
+            $digits = preg_replace('/[^0-9+]/', '', (string) $phone);
+            if ($digits === '') {
+                continue;
+            }
+            $contacts[] = array(
+                'type'  => 'phone',
+                'label' => 'تماس با ' . $phone,
+                'url'   => 'tel:' . $digits,
+            );
+        }
+    }
+    if (!empty($settings['telegram_id'])) {
+        $contacts[] = array(
+            'type'  => 'telegram',
+            'label' => 'گفت‌وگو در تلگرام',
+            'url'   => 'https://t.me/' . rawurlencode($settings['telegram_id']),
+        );
+    }
+    if (!empty($settings['instagram_id'])) {
+        $contacts[] = array(
+            'type'  => 'instagram',
+            'label' => 'اینستاگرام',
+            'url'   => 'https://instagram.com/' . rawurlencode($settings['instagram_id']),
+        );
+    }
+
+    $theme_mode = isset($settings['theme_mode']) ? $settings['theme_mode'] : 'auto';
+    if (!in_array($theme_mode, array('auto', 'light', 'dark'), true)) {
+        $theme_mode = 'auto';
+    }
+
     wp_localize_script(
     'ai-agent-js',
     'ai_agent',
@@ -97,7 +178,13 @@ function ai_agent_enqueue(){
         'color'            => $color_light,
         'color_light'      => $color_light,
         'color_dark'       => $color_dark,
+        // تم دیگر داخل ویجت انتخاب نمی‌شود؛ این مقدار تعیین می‌کند که از
+        // سایت پیروی کند یا روی یکی از دو حالت قفل باشد.
+        'theme_mode'       => $theme_mode,
         'session_cookie'   => AI_AGENT_SESSION_COOKIE,
+        'org_name'         => isset($settings['organization_name']) ? $settings['organization_name'] : '',
+        'starters'         => $starters,
+        'contacts'         => $contacts,
         // حداکثر تعداد عکس‌های مجاز در هر پیام چت (سنجاق)
         'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 4,
     )
