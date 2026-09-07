@@ -338,11 +338,11 @@ $parser_line = function($line) use (
     // ۳) کد HTTP غیر موفق
     if ($code < 200 || $code >= 300) {
         if (is_callable($on_error)) {
-            $on_error('سرور با کد خطای ' . intval($code) . ' پاسخ داد.');
+            $on_error($code === 401 ? 'کلید API نامعتبر است. لطفاً در تنظیمات افزونه بررسی کنید.' : 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.');
         }
         return array(
             'status'  => 'error',
-            'message' => 'کد خطای سرور: ' . intval($code),
+            'message' => ai_agent_http_error_message($code),
         );
     }
 
@@ -461,7 +461,11 @@ function ai_agent_fetch_sync_settings() {
 
     if ($code !== 200) {
         error_log('AI_AGENT_DEBUG sync_settings HTTP ' . intval($code) . ' body=' . $body);
-        return false;
+        // با کلید '__http_error' برگردانده می‌شود (نه false، و نه 'detail' که
+        // برای خطاهای JSON واقعی سرور رزرو شده) تا فراخوان بتواند بین خطای
+        // ارتباطی واقعی و رد شدن کلید API از سمت سرور تمایز بگذارد و برای
+        // حالت دوم پیام قابل‌فهم‌تری نشان دهد (کد ۴۰۱ ⇒ کلید نامعتبر است).
+        return array('__http_error' => ai_agent_http_error_message($code, 'سرور همگام‌سازی'));
     }
 
     $data = json_decode($body, true);
@@ -882,7 +886,7 @@ function ai_agent_fetch_session_status($session_id) {
     if ($code !== 200) {
         return array(
             'status'            => 'error',
-            'message'           => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'message'           => ai_agent_http_error_message($code),
             'session_status'    => '',
             'last_message_role' => '',
         );
@@ -1033,7 +1037,7 @@ function ai_agent_fetch_media($key) {
     if ($code !== 200) {
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'message' => ai_agent_http_error_message($code),
         );
     }
 
@@ -1273,7 +1277,7 @@ function ai_agent_push_sync_content($items) {
                 error_log('AI_AGENT_SYNC content batch #' . ($batch_index + 1) . ' HTTP ' . intval($code) . ' body=' . $resp_body);
             }
             if ($first_error === '') {
-                $first_error = 'سرور همگام‌سازی با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : '');
+                $first_error = ai_agent_http_error_message($code, 'سرور همگام‌سازی') . ($err_detail !== '' ? ' ' . $err_detail : '');
             }
             continue; // رد شدن این دسته، ادامه‌ی دسته‌های بعدی
         }
@@ -1576,7 +1580,7 @@ function ai_agent_push_sync_delete($items) {
         if ($code < 200 || $code >= 300) {
             $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
             if ($first_error === '') {
-                $first_error = 'سرور حذف با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : '');
+                $first_error = ai_agent_http_error_message($code, 'سرور حذف') . ($err_detail !== '' ? ' ' . $err_detail : '');
             }
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('AI_AGENT_SYNC delete batch #' . ($batch_index + 1) . ' HTTP ' . intval($code) . ' body=' . $resp_body);
@@ -1715,7 +1719,7 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
         $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
         return array(
             'status'  => 'error',
-            'message' => 'سرور استعلام وضعیت با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'message' => ai_agent_http_error_message($code, 'سرور استعلام وضعیت') . ($err_detail !== '' ? ' ' . $err_detail : ''),
             'results' => array(),
             'summary' => null,
         );
@@ -1811,7 +1815,7 @@ function ai_agent_fetch_chat_sessions($page = 1, $page_size = 10, $status_filter
     if ($code !== 200) {
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'message' => ai_agent_http_error_message($code),
             'items'   => array(),
             'total'   => 0,
             'page'    => 1,
@@ -2011,7 +2015,7 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
     if ($code !== 200) {
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.',
+            'message' => ai_agent_http_error_message($code),
             'items'   => array(),
             'total'   => 0,
             'page'    => 1,
@@ -2181,7 +2185,7 @@ function ai_agent_send_session_reply($session_id, $message) {
         $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'message' => ai_agent_http_error_message($code) . ($err_detail !== '' ? ' ' . $err_detail : ''),
         );
     }
 
@@ -2247,7 +2251,7 @@ function ai_agent_close_session($session_id) {
         $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'message' => ai_agent_http_error_message($code) . ($err_detail !== '' ? ' ' . $err_detail : ''),
         );
     }
 
@@ -2329,7 +2333,7 @@ function ai_agent_return_session_to_bot($session_id) {
         $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
         return array(
             'status'  => 'error',
-            'message' => 'سرور با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
+            'message' => ai_agent_http_error_message($code) . ($err_detail !== '' ? ' ' . $err_detail : ''),
         );
     }
 

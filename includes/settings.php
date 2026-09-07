@@ -174,11 +174,14 @@ function ai_agent_sanitize_settings($input){
     }
     $output['color_light'] = $color_light;
 
-    $color_dark = isset($input['color_dark']) ? sanitize_hex_color($input['color_dark']) : '';
-    if (!$color_dark) {
-        $color_dark = (isset($old['color_dark']) && sanitize_hex_color($old['color_dark'])) ? sanitize_hex_color($old['color_dark']) : '#F4865B';
-    }
-    $output['color_dark'] = $color_dark;
+    /*
+    رنگ حالت تاریک دیگر از فرم دریافت نمی‌شود؛ کاربر فقط رنگ روشن را
+    انتخاب می‌کند و این‌جا همیشه خودکار از همان ساخته می‌شود (همان
+    تابعی که هنگام فعال‌سازی افزونه هم برای پیش‌فرض استفاده می‌شود).
+    */
+    $output['color_dark'] = function_exists('ai_agent_lighten_hex')
+        ? ai_agent_lighten_hex($color_light, 0.18)
+        : $color_light;
 
     // کلید قدیمی color برای سازگاری (معادل رنگ حالت روشن)
     $output['color'] = $color_light;
@@ -439,12 +442,21 @@ function ai_agent_sync_settings_from_server(){
     // ۲. کال به اندپوینت همگام‌سازی (GET)
     $remote = ai_agent_fetch_sync_settings();
 
-    // ۳. خطای ارتباطی یا کد HTTP غیر 200
+    // ۳. خطای ارتباطی واقعی (شبکه/DNS/SSL) — این‌جا واقعاً کلید مشخص نیست
     if ($remote === false) {
         $in_progress = false;
         return array(
             'status'  => 'error',
-            'message' => 'ارتباط با سرور همگام‌سازی برقرار نشد. لطفاً اتصال اینترنت یا اعتبار API Key را بررسی کنید.',
+            'message' => 'ارتباط با سرور همگام‌سازی برقرار نشد. لطفاً اتصال اینترنت را بررسی کنید.',
+        );
+    }
+
+    // ۳.۵. سرور کد HTTP غیر ۲۰۰ برگردانده (مثلاً ۴۰۱ ⇒ کلید API نامعتبر است)
+    if (isset($remote['__http_error'])) {
+        $in_progress = false;
+        return array(
+            'status'  => 'error',
+            'message' => $remote['__http_error'],
         );
     }
 
@@ -680,6 +692,52 @@ function ai_agent_reload_settings_handler(){
 add_action('wp_ajax_ai_agent_reload_settings', 'ai_agent_reload_settings_handler');
 
 /*
+============================================
+ذخیره‌ی خودکار فرم تنظیمات (بدون دکمه‌ی ذخیره)
+
+از سمت جاوااسکریپت (settings.js → aiAgentAutoSave) با یک تأخیر کوتاه
+بعد از هر تغییر در فرم فراخوانی می‌شود؛ کل فرم (همان‌طور که برای
+options.php سریالایز می‌شد) این‌جا ارسال و مستقیماً با update_option()
+ذخیره می‌شود.
+
+نکته‌ی مهم: update_option() برای گزینه‌ای که با register_setting()
+ثبت شده، همان فیلتر sanitize_option_ai_agent_settings (یعنی
+ai_agent_sanitize_settings) را خودکار صدا می‌زند — دقیقاً همان تابعی
+که فرم عادی options.php هم استفاده می‌کرد. پس این‌جا نیازی به
+پاک‌سازی یا فراخوانی دستیِ منطق ذخیره نیست؛ همان مسیر واحد (شامل
+PATCH/GET با سرور همگام‌سازی در ai_agent_after_settings_saved) دوباره
+اجرا می‌شود.
+============================================
+*/
+function ai_agent_ajax_save_settings_handler(){
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_autosave_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود. لطفاً صفحه را تازه کنید.'));
+    }
+
+    $input = (isset($_POST['ai_agent_settings']) && is_array($_POST['ai_agent_settings']))
+        ? wp_unslash($_POST['ai_agent_settings'])
+        : array();
+
+    update_option('ai_agent_settings', $input);
+
+    // نتیجه‌ی PATCH/GET سرور همگام‌سازی (اگر توکن ثبت شده باشد) در همین
+    // درخواست انجام شده و در transient نشسته؛ همان را برای نمایش وضعیت
+    // در رابط کاربری برمی‌گردانیم.
+    $sync_result = get_transient('ai_agent_sync_result');
+
+    wp_send_json_success(array(
+        'message' => 'ذخیره شد.',
+        'sync'    => $sync_result !== false ? $sync_result : null,
+    ));
+}
+add_action('wp_ajax_ai_agent_save_settings', 'ai_agent_ajax_save_settings_handler');
+
+/*
 ==========================================================================
 منوی پیشخوان: یک منوی اصلی «دانیچَت» + دو زیرمنو (تنظیمات افزونه و
 تاریخچه چت‌ها) تا کاربر هم از طریق زیرمنوها و هم از طریق تب‌های درون
@@ -698,21 +756,21 @@ function ai_agent_add_menu(){
         AI_AGENT_URL . 'assets/images/favicon20x20.png',
         80
     );
-    // زیرمنوی اول: تنظیمات افزونه (همان صفحه اصلی، تب general)
+    // زیرمنوی اول: تنظیمات پلاگین (همان صفحه اصلی، تب general)
     add_submenu_page(
         'ai-agent-settings',
-        'تنظیمات افزونه',
-        'تنظیمات افزونه',
+        'تنظیمات پلاگین',
+        'تنظیمات پلاگین',
         'manage_options',
         'ai-agent-settings',
         'ai_agent_settings_page'
     );
-    // زیرمنوی دوم: تاریخچه چت‌ها (همان callback، اما با slug مجزا تا
+    // زیرمنوی دوم: پشتیبانی و پیام‌ها (همان callback، اما با slug مجزا تا
     // در منوی پیشخوان به‌صورت یک آیتم جداگانه نمایش داده شود)
     add_submenu_page(
         'ai-agent-settings',
-        'تاریخچه چت‌ها',
-        'تاریخچه چت‌ها',
+        'پشتیبانی و پیام‌ها',
+        'پشتیبانی و پیام‌ها',
         'manage_options',
         'ai-agent-settings-history',
         'ai_agent_settings_page'
@@ -767,7 +825,12 @@ function ai_agent_settings_page(){
             $settings     = $save_result['data'];
             $sync_notice  = '<div class="ai-agent-notice ai-agent-notice-success"><p>آخرین مقادیر با موفقیت از سرور همگام‌سازی دریافت شد.</p></div>';
         } elseif ($save_result['status'] === 'skipped') {
-            $sync_notice = '<div class="ai-agent-notice ai-agent-notice-warning"><p>' . esc_html($save_result['message']) . '</p></div>';
+            /*
+            «skipped» یعنی هنوز کلید API ثبت نشده — این حالتِ عادیِ اولین
+            بار است، نه یک خطا. کارت «توکن سایت» پایین‌تر همین را با
+            نشان «ثبت نشده» می‌گوید؛ یک بنر قرمز/زرد بالای صفحه فقط
+            برای چیزی که کاربر خودش هنوز فرصت نکرده پر کند، لازم نیست.
+            */
         } else { // error
             $sync_notice = '<div class="ai-agent-notice ai-agent-notice-error"><p>خطا در همگام‌سازی: ' . esc_html($save_result['message']) . '</p></div>';
         }
@@ -787,57 +850,19 @@ function ai_agent_settings_page(){
                 </div>
             </div>
             <div class="ai-agent-topbar-tools">
-                <!-- موجودی کیف پول (سمت چپ بالا) -->
-                <div class="ai-agent-wallet-card">
-                    <div class="ai-agent-wallet-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 1-1 1v0a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/>
-                        </svg>
-                    </div>
-                    <div class="ai-agent-wallet-info">
-                        <span class="ai-agent-wallet-label">موجودی کیف‌پول</span>
-                        <span id="ai-agent-wallet-balance-value" class="ai-agent-wallet-amount">—</span>
-                    </div>
-                    <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="ai-agent-sync-icon-btn" aria-label="به‌روزرسانی موجودی" title="به‌روزرسانی موجودی">
-                        <svg class="ai-agent-sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                            <path d="M3 3v5h5"/>
-                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                            <path d="M16 16h5v5"/>
-                        </svg>
-                    </button>
+                <!-- موجودی کیف پول: فقط یک خط متن + دکمه‌ی متنیِ شارژ. بدون دکمه‌ی
+                     دستیِ بروزرسانی — موجودی خودش هر چند ثانیه یک‌بار به‌روز می‌شود
+                     (رجوع کنید به aiAgentLoadWalletBalance در settings.js). -->
+                <div class="ai-agent-wallet-inline">
+                    <span class="ai-agent-wallet-label">موجودی کیف‌پول</span>
+                    <strong id="ai-agent-wallet-balance-value" class="ai-agent-wallet-amount">—</strong>
                     <span id="ai-agent-wallet-balance-status" class="ai-agent-wallet-status"></span>
                     <?php wp_nonce_field('ai_agent_wallet_balance_nonce_action', 'ai_agent_wallet_balance_nonce_field'); ?>
                 </div>
-                <a class="ai-agent-btn ai-agent-btn-primary ai-agent-topbar-cta" href="https://dunichat.ir/dashboard/wallet" target="_blank" rel="noopener">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    شارژ کیف‌پول
-                </a>
+                <a class="ai-agent-text-btn" href="https://dunichat.ir/dashboard/wallet" target="_blank" rel="noopener">شارژ کیف‌پول</a>
+                <span class="ai-agent-autosave-hint" id="ai-agent-autosave-hint">تنظیمات خودکار ذخیره می‌شوند</span>
             </div>
         </header>
-
-        <?php
-        /*
-        ============================================
-        نوار اعلان‌ها
-
-        اعلان‌های دانیچَت (از جمله تغییر خودکار قیمت مدل‌ها به دنبال
-        تغییر نرخ تتر) این‌جا نمایش داده می‌شوند. قیمت‌ها بدون اطلاع
-        صاحب سایت تغییر می‌کردند و اولین جایی که متوجه می‌شد، صورت‌حساب
-        بود.
-        ============================================
-        */
-        ?>
-        <div id="ai-agent-announcements" class="ai-agent-announcements" hidden>
-            <div class="ai-agent-announcements-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h3l7-5v12l-7-5H3z"/><path d="M17 8a5 5 0 0 1 0 8"/></svg>
-            </div>
-            <div class="ai-agent-announcements-body">
-                <span id="ai-agent-announcement-title" class="ai-agent-announcement-title"></span>
-                <span id="ai-agent-announcement-date" class="ai-agent-announcement-date"></span>
-            </div>
-            <div id="ai-agent-announcement-dots" class="ai-agent-announcement-dots"></div>
-        </div>
 
         <!-- ====== Tabs (تب تاریخچه چت‌ها اول آمده است) ====== -->
         <nav class="ai-agent-tabs">
@@ -845,14 +870,14 @@ function ai_agent_settings_page(){
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                تاریخچه چت‌ها
+                پشتیبانی و پیام‌ها
             </a>
             <a href="?page=ai-agent-settings&tab=general" class="ai-agent-tab <?php echo $current_tab === 'general' ? 'is-active' : ''; ?>">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
-                تنظیمات افزونه
+                تنظیمات پلاگین
             </a>
         </nav>
 
@@ -866,23 +891,14 @@ function ai_agent_settings_page(){
 
                     <?php
                     /*
-                    نوار ذخیره بالای فرم است و همان‌جا می‌چسبد؛ نسخه‌ی
-                    تکراری‌اش ته صفحه حذف شد. این فرم بلند است و کاربر
-                    بعد از هر تغییر باید تا انتها اسکرول می‌کرد تا دکمه‌ی
-                    ذخیره را پیدا کند.
-
-                    دکمه هم دکمه‌ی خودمان است، نه submit_button() وردپرس.
-                    آن تابع کلاس button-primary را می‌گذارد که آبیِ
-                    پیش‌فرض پیشخوان است و وسط یک پنل نارنجی وصله می‌زد.
+                    دکمه‌ی ذخیره حذف شده: هر تغییری در فرم (با یک تأخیر کوتاه
+                    برای دسته‌کردن چند تغییر پشت‌سرهم) خودش با AJAX ذخیره
+                    می‌شود — رجوع کنید به aiAgentAutoSave در settings.js. اعلانِ
+                    این رفتار بالای صفحه، کنار موجودی کیف‌پول، نشسته است؛
+                    اینجا فقط نانس لازم برای همان درخواست است.
                     */
+                    wp_nonce_field('ai_agent_autosave_nonce_action', 'ai_agent_autosave_nonce_field');
                     ?>
-                    <div class="ai-agent-sticky-actions">
-                        <span class="ai-agent-sticky-actions-hint">پس از هر تغییر، تنظیمات را ذخیره کنید.</span>
-                        <button type="submit" name="submit" class="ai-agent-btn ai-agent-btn-primary">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                            ذخیره تنظیمات افزونه
-                        </button>
-                    </div>
 
                     <?php
                     /*
@@ -911,18 +927,14 @@ function ai_agent_settings_page(){
                             <!-- RIGHT column: controls & status -->
                             <div class="ai-agent-sync-actions">
 
-                                <div class="ai-agent-sync-block">
-                                    <div class="ai-agent-sync-block-title">بازخوانی تنظیمات</div>
-                                    <div class="ai-agent-sync-block-actions">
-                                        <button type="button" id="ai-agent-reload-settings-btn" class="ai-agent-btn ai-agent-btn-primary">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                                            بارگذاری از سرور
-                                        </button>
-                                        <span id="ai-agent-reload-settings-status" class="ai-agent-status-text"></span>
-                                        <?php wp_nonce_field('ai_agent_reload_settings_nonce_action', 'ai_agent_reload_settings_nonce_field'); ?>
-                                    </div>
-                                </div>
-
+                                <?php
+                                /*
+                                دکمه‌ی «بارگذاری از سرور» حذف شد: همین اطلاعات با
+                                باز شدن صفحه‌ی تنظیمات (تب پلاگین) خودکار از سرور
+                                خوانده می‌شود — رجوع کنید به فراخوانی
+                                ai_agent_sync_settings_from_server() در همین فایل.
+                                */
+                                ?>
                                 <div class="ai-agent-sync-block">
                                     <div class="ai-agent-sync-block-title">آخرین همگام‌سازی</div>
                                     <?php
@@ -990,7 +1002,7 @@ function ai_agent_settings_page(){
                                             لازم است که پاسخ‌های دستیار با محتوای سایت جور در نمی‌آید.
                                         </p>
                                         <div class="ai-agent-sync-block-actions">
-                                            <button type="button" id="ai-agent-sync-all-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-red">
+                                            <button type="button" id="ai-agent-sync-all-btn" class="ai-agent-btn ai-agent-btn-outline">
                                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
                                                 ایندکس کامل از نو
                                             </button>
@@ -1007,7 +1019,7 @@ function ai_agent_settings_page(){
                                 <div class="ai-agent-chart-wrap">
                                     <canvas id="ai-agent-status-chart" height="220"></canvas>
                                 </div>
-                                <button type="button" id="ai-agent-check-status-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-purple">
+                                <button type="button" id="ai-agent-check-status-btn" class="ai-agent-btn ai-agent-btn-outline">
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                     استعلام وضعیت
                                 </button>
@@ -1048,8 +1060,8 @@ function ai_agent_settings_page(){
                                 <div class="ai-agent-input-group">
                                     <input type="password" name="ai_agent_settings[api_key]" id="ai_agent_api_key"
                                            value="" class="ai-agent-input"
-                                           autocomplete="off" data-lpignore="true" data-1p-ignore
-                                           placeholder="<?php echo !empty(ai_agent_get_api_key()) ? 'کلید ذخیره شده — برای تغییر، کلید جدید را وارد کنید' : 'sk_live_...'; ?>" />
+                                           autocomplete="new-password" data-lpignore="true" data-1p-ignore
+                                           placeholder="sk_live_..." />
                                     <button type="button" id="ai-agent-toggle-api-key">نمایش</button>
                                     <button type="button" id="ai-agent-save-api-key" class="ai-agent-btn ai-agent-btn-primary">ذخیره‌ی توکن</button>
                                 </div>
@@ -1062,11 +1074,7 @@ function ai_agent_settings_page(){
                                 با ذخیره‌ی توکن، سایت شما به‌صورت خودکار فعال می‌شود و نیازی به فعال‌سازی جداگانه نیست.
                             </p>
                             <div class="ai-agent-inline-actions">
-                                <a class="ai-agent-btn ai-agent-btn-outline" href="https://dunichat.ir/login" target="_blank" rel="noopener">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                                    دریافت توکن از دانیچَت
-                                </a>
-                                <a class="ai-agent-btn ai-agent-btn-ghost" href="https://dunichat.ir/docs" target="_blank" rel="noopener">راهنمای راه‌اندازی</a>
+                                <a class="ai-agent-btn ai-agent-btn-outline" href="https://dunichat.ir/login" target="_blank" rel="noopener">دریافت توکن از دانیچَت</a>
                             </div>
                         </div>
                     </section>
@@ -1087,7 +1095,16 @@ function ai_agent_settings_page(){
                                         <span class="ai-agent-combobox-icon" aria-hidden="true">
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                                         </span>
-                                        <input type="text" id="ai_agent_model_search" autocomplete="off" placeholder="جستجو یا انتخاب مدل..." value="<?php echo esc_attr($settings['model']); ?>" class="ai-agent-combobox-input" />
+                                        <?php
+                                        /*
+                                        readonly، نه یک فیلد جستجوی آزاد: کاربر نمی‌تواند
+                                        اسم مدل را دستی تایپ/عوض کند، فقط از لیستی که از
+                                        سرور دانیچَت می‌آید انتخاب می‌کند. کلیک روی خودِ
+                                        فیلد هم مثل کلیک روی دکمه‌ی کشویی، لیست را باز
+                                        می‌کند (نگاه کنید به settings.js).
+                                        */
+                                        ?>
+                                        <input type="text" id="ai_agent_model_search" readonly autocomplete="off" placeholder="در حال بارگذاری مدل‌ها..." value="<?php echo esc_attr($settings['model']); ?>" class="ai-agent-combobox-input" />
                                         <button type="button" class="ai-agent-combobox-toggle" id="ai-agent-combobox-toggle" aria-label="نمایش لیست مدل‌ها">
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                                         </button>
@@ -1095,7 +1112,6 @@ function ai_agent_settings_page(){
                                     <input type="hidden" name="ai_agent_settings[model]" id="ai_agent_model" value="<?php echo esc_attr($settings['model']); ?>" />
                                     <?php wp_nonce_field('ai_agent_models_nonce_action', 'ai_agent_models_nonce_field'); ?>
                                     <div id="ai-agent-models-list" class="ai-agent-combobox-list" role="listbox"></div>
-                                    <div class="ai-agent-combobox-foot">مدل فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></div>
                                 </div>
                             </div>
                         </div>
@@ -1149,7 +1165,27 @@ function ai_agent_settings_page(){
                                         </label>
                                     <?php endforeach; ?>
                                 </div>
-                                <p class="ai-agent-field-hint">حالت پیش‌فرض «متعادل» است — نه خشک، نه بیش از حد صمیمی.</p>
+                                <?php
+                                /*
+                                یک نمونه‌جمله‌ی واقعی برای همان لحنی که انتخاب شده،
+                                نه یک توضیح انتزاعی مثل «حالت پیش‌فرض». با هر بار
+                                کلیک روی aiAgentToneExamples در settings.js عوض
+                                می‌شود.
+                                */
+                                $ai_agent_tone_examples = array(
+                                    'formal'       => 'سفارش شما ثبت شد. کد پیگیری ۱۲۳۴۵ است.',
+                                    'professional' => 'سفارشتون ثبت شد؛ کد پیگیری ۱۲۳۴۵ است. اگر سوالی بود در خدمتم.',
+                                    'neutral'      => 'سفارشت ثبت شد! کد پیگیریت ۱۲۳۴۵ه. کاری بود بگو.',
+                                    'friendly'     => 'ثبت شد ✅ کد پیگیریت ۱۲۳۴۵ه — هر سوالی داشتی همین‌جا بپرس.',
+                                    'warm'         => 'ثبت شد عزیزم! 😍 کد پیگیریت ۱۲۳۴۵ه، خیالت راحت باشه؛ هر وقت خواستی هستم.',
+                                );
+                                ?>
+                                <p class="ai-agent-field-hint">
+                                    مثال:
+                                    <span id="ai-agent-tone-example" data-examples="<?php echo esc_attr(wp_json_encode($ai_agent_tone_examples)); ?>">
+                                        <?php echo esc_html(isset($ai_agent_tone_examples[$settings['assistant_tone']]) ? $ai_agent_tone_examples[$settings['assistant_tone']] : $ai_agent_tone_examples['neutral']); ?>
+                                    </span>
+                                </p>
                             </div>
 
                             <div class="ai-agent-field-row ai-agent-mt">
@@ -1194,11 +1230,33 @@ function ai_agent_settings_page(){
 
                             <div class="ai-agent-field-grid ai-agent-mt">
                                 <div class="ai-agent-field-row">
-                                    <label for="ai_agent_support_phones" class="ai-agent-field-label">شماره‌های تماس پشتیبانی</label>
-                                    <textarea class="ai-agent-textarea" rows="3" dir="ltr"
-                                              name="ai_agent_settings[support_phones]" id="ai_agent_support_phones"
-                                              placeholder="02128421452"><?php echo esc_textarea(implode("\n", (array) $settings['support_phones'])); ?></textarea>
-                                    <p class="ai-agent-field-hint">هر شماره در یک خط — حداکثر ۵ شماره.</p>
+                                    <label class="ai-agent-field-label">شماره‌های تماس پشتیبانی</label>
+                                    <?php
+                                    /*
+                                    ردیف‌های جدا به‌جای یک textarea چندخطی: یک قابلیت
+                                    Add واقعی (به‌جای اینکه کاربر خودش Enter بزند) و یک
+                                    دکمه‌ی حذف کنار هر شماره. حداکثر پنج ردیف — هم اینجا
+                                    با جاوااسکریپت و هم روی سرور در
+                                    ai_agent_sanitize_settings محدود شده است.
+                                    */
+                                    $ai_agent_phones = (array) $settings['support_phones'];
+                                    if (empty($ai_agent_phones)) {
+                                        $ai_agent_phones = array('');
+                                    }
+                                    ?>
+                                    <div class="ai-agent-phone-rows" id="ai-agent-phone-rows">
+                                        <?php foreach ($ai_agent_phones as $ai_agent_phone) : ?>
+                                        <div class="ai-agent-phone-row">
+                                            <input type="tel" class="ai-agent-input" dir="ltr"
+                                                   name="ai_agent_settings[support_phones][]"
+                                                   value="<?php echo esc_attr($ai_agent_phone); ?>"
+                                                   placeholder="02128421452" />
+                                            <button type="button" class="ai-agent-phone-remove" aria-label="حذف این شماره">−</button>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <button type="button" id="ai-agent-phone-add" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-sm">+ افزودن شماره</button>
+                                    <p class="ai-agent-field-hint">هر شماره در یک ردیف — حداکثر ۵ شماره.</p>
                                 </div>
                                 <div class="ai-agent-field-row">
                                     <label for="ai_agent_telegram_id" class="ai-agent-field-label">آیدی تلگرام پشتیبانی</label>
@@ -1239,25 +1297,43 @@ function ai_agent_settings_page(){
                                 </h2>
                             </header>
                             <div class="ai-agent-card-body">
+                                <?php $ai_agent_site_colors = function_exists('ai_agent_get_site_colors') ? ai_agent_get_site_colors() : array(); ?>
+                                <?php if (!empty($ai_agent_site_colors)) : ?>
                                 <div class="ai-agent-field-row">
-                                    <label for="ai_agent_color_light" class="ai-agent-field-label">
-                                        <span class="ai-agent-color-dot ai-agent-color-dot-light" aria-hidden="true"></span>
-                                        رنگ در حالت روشن (Light)
-                                    </label>
-                                    <input type="text" name="ai_agent_settings[color_light]" id="ai_agent_color_light" value="<?php echo esc_attr($settings['color_light']); ?>" class="ai-agent-color-field" />
+                                    <label class="ai-agent-field-label">رنگ‌های سایت خودت (وردپرس<?php echo (did_action('elementor/loaded') || defined('ELEMENTOR_VERSION')) ? ' / المنتور' : ''; ?>)</label>
+                                    <div class="ai-agent-site-colors">
+                                        <?php foreach ($ai_agent_site_colors as $ai_agent_site_color) : ?>
+                                        <button type="button" class="ai-agent-site-color-btn" data-hex="<?php echo esc_attr($ai_agent_site_color['hex']); ?>">
+                                            <span class="ai-agent-site-color-dot" style="background:<?php echo esc_attr($ai_agent_site_color['hex']); ?>" aria-hidden="true"></span>
+                                            <span class="ai-agent-site-color-text">
+                                                <span class="ai-agent-site-color-name"><?php echo esc_html($ai_agent_site_color['label']); ?></span>
+                                                <span class="ai-agent-site-color-hex" dir="ltr"><?php echo esc_html(strtoupper($ai_agent_site_color['hex'])); ?></span>
+                                            </span>
+                                        </button>
+                                        <?php endforeach; ?>
+                                    </div>
                                 </div>
+                                <?php endif; ?>
+
                                 <div class="ai-agent-field-row ai-agent-mt">
-                                    <label for="ai_agent_color_dark" class="ai-agent-field-label">
-                                        <span class="ai-agent-color-dot ai-agent-color-dot-dark" aria-hidden="true"></span>
-                                        رنگ در حالت تاریک (Dark)
-                                    </label>
-                                    <input type="text" name="ai_agent_settings[color_dark]" id="ai_agent_color_dark" value="<?php echo esc_attr($settings['color_dark']); ?>" class="ai-agent-color-field" />
+                                    <label for="ai_agent_color_light" class="ai-agent-field-label">رنگ پرایمری چت‌بات</label>
+                                    <input type="text" name="ai_agent_settings[color_light]" id="ai_agent_color_light" value="<?php echo esc_attr($settings['color_light']); ?>" class="ai-agent-color-field" placeholder="#C96442" />
                                 </div>
-                                <p class="ai-agent-field-hint">
+
+                                <div class="ai-agent-field-row ai-agent-mt">
+                                    <label class="ai-agent-field-label">رنگ حالت تاریک — خودکار ساخته می‌شود</label>
+                                    <div class="ai-agent-color-readonly">
+                                        <span class="ai-agent-color-dot" id="ai-agent-color-dark-dot" style="background:<?php echo esc_attr($settings['color_dark']); ?>" aria-hidden="true"></span>
+                                        <span id="ai-agent-color-dark-value" dir="ltr"><?php echo esc_html(strtoupper($settings['color_dark'])); ?></span>
+                                    </div>
+                                </div>
+
+                                <p class="ai-agent-field-hint ai-agent-mt">
                                     رنگ اصلی روی دکمه‌ی شناور، هدر و دکمه‌ی ارسال می‌نشیند. هنگام نصب، این رنگ
                                     یک‌بار از روی رنگ اصلی خودِ سایت شما خوانده و پیش‌فرض قرار می‌گیرد؛ از این‌جا
-                                    هر وقت خواستید عوضش کنید. رنگ حالت تاریک را جدا نگه داشته‌ایم چون رنگی که
-                                    روی کاغذ روشن درست به نظر می‌رسد، روی پس‌زمینه‌ی مشکی یا می‌سوزد یا گم می‌شود.
+                                    هر وقت خواستید عوضش کنید. رنگ حالت تاریک را خودمان از همین رنگ می‌سازیم — رنگی
+                                    که روی کاغذ روشن درست به نظر می‌رسد، روی پس‌زمینه‌ی مشکی یا می‌سوزد یا گم می‌شود،
+                                    برای همین دست‌کاری‌اش نمی‌گذاریم.
                                 </p>
                             </div>
                     </section>
@@ -1742,15 +1818,13 @@ function ai_agent_admin_enqueue($hook){
     $page = isset($_GET['page']) ? $_GET['page'] : '';
     if (!in_array($page, array('ai-agent-settings', 'ai-agent-settings-history'), true)) return;
 
-    wp_enqueue_style('wp-color-picker');
-    wp_enqueue_script('wp-color-picker');
     wp_enqueue_script('ai-agent-chartjs', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', array(), '4.4.0', true);
 
     // استایل اختصاصی صفحه‌ی تنظیمات (قبلاً inline بود، اکنون فایل مجزا)
     wp_enqueue_style(
         'ai-agent-settings-css',
         AI_AGENT_URL . 'assets/css/SettingsStyles.css',
-        array('wp-color-picker'),
+        array(),
         AI_AGENT_VERSION
     );
 
@@ -1767,11 +1841,11 @@ function ai_agent_admin_enqueue($hook){
     );
 
     // اسکریپت اختصاصی صفحه‌ی تنظیمات (قبلاً inline بود، اکنون فایل مجزا)
-    // وابسته به jquery, wp-color-picker و Chart.js تا قبل از اجرا بارگذاری شده باشند
+    // وابسته به jquery و Chart.js تا قبل از اجرا بارگذاری شده باشند
     wp_enqueue_script(
         'ai-agent-settings-js',
         AI_AGENT_URL . 'assets/js/settings.js',
-        array('jquery', 'wp-color-picker', 'ai-agent-chartjs'),
+        array('jquery', 'ai-agent-chartjs'),
         AI_AGENT_VERSION,
         true
     );

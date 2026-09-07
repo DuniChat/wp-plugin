@@ -51,6 +51,21 @@ function ai_agent_format_number($value) {
 }
 
 /**
+ * An HTTP status from the DuniChat API as a message a site owner can act on.
+ *
+ * 401 only ever means one thing here: the API key is missing or wrong. Saying
+ * so directly is more useful than "server replied with error code 401", which
+ * reads like something the owner has to debug rather than a field to fill in.
+ */
+function ai_agent_http_error_message($code, $prefix = 'سرور') {
+    $code = intval($code);
+    if ($code === 401) {
+        return 'کلید API خودتون رو وارد کنین.';
+    }
+    return $prefix . ' با کد خطای ' . $code . ' پاسخ داد.';
+}
+
+/**
  * Below this balance (in rial) the plugin warns the owner. 50,000 toman is
  * roughly a few days of a small site's usage, which is enough notice to top up
  * before the assistant stops answering.

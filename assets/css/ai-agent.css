@@ -276,10 +276,11 @@ hover هر دو دکمه را قرمز و ۹۰ درجه می‌چرخاند — 
 }
 
 /*
-پاسخ دستیار — بدون حباب.
+پاسخ دستیار — بدون حباب و بدون نشان/آواتار.
 
-متنِ خود صفحه است، با یک نشان کوچک دانیچَت بالای آن. راست‌چین، چون
-پاسخ فارسی است و از سمت راست خوانده می‌شود.
+متنِ خود صفحه است، درست مثل پاسخ‌های کلاد: هیچ نشانی بالای آن نیست که
+بگوید «این از طرف رباته» — رنگ و لحنِ متن خودش این را می‌گوید. راست‌چین،
+چون پاسخ فارسی است و از سمت راست خوانده می‌شود.
 */
 .ai-message {
     align-self: stretch;
@@ -293,20 +294,6 @@ hover هر دو دکمه را قرمز و ۹۰ درجه می‌چرخاند — 
     display: flex;
     flex-direction: column;
     gap: 8px;
-}
-
-/* نشان دانیچَت بالای پاسخ */
-.ai-message::before {
-    content: "";
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background-image: var(--ai-agent-favicon);
-    background-size: cover;
-    background-position: center;
-    flex: 0 0 auto;
-    align-self: flex-start;
-    opacity: 0.95;
 }
 
 .ai-message-body {
@@ -1736,6 +1723,25 @@ weight is legible without changing the bubble geometry.
     border-color: rgba(var(--ai-agent-theme-color-rgb), 0.55);
 }
 
+/* امضای کوچک دانیچَت زیر کامپوزر — معرفی، نه تبلیغ. */
+#ai-agent-footer-credit {
+    margin: 8px 0 0;
+    text-align: center;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--ai-text-faint);
+}
+
+#ai-agent-footer-credit a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#ai-agent-footer-credit a:hover {
+    color: var(--ai-agent-theme-color);
+}
+
 #ai-agent-input {
     flex: 1 1 auto;
     min-width: 0;
@@ -1858,15 +1864,6 @@ weight is legible without changing the bubble geometry.
     gap: 14px;
 }
 
-.ai-agent-intro-mark {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-image: var(--ai-agent-favicon);
-    background-size: cover;
-    background-position: center;
-}
-
 .ai-agent-intro-title {
     font-size: 17px;
     font-weight: 700;
@@ -1875,12 +1872,28 @@ weight is legible without changing the bubble geometry.
     max-width: 20rem;
 }
 
-.ai-agent-intro-chips {
+/*
+سؤال‌های پیشنهادی زیر جمله‌ی شروع: لینک‌های ریز، نه دکمه‌های کادردار —
+همان‌قدر قابل‌کلیک، بدون اینکه صفحه‌ی شروع را شلوغ کنند.
+*/
+.ai-agent-intro-links {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
     max-width: 20rem;
+}
+
+.ai-agent-intro-link {
+    font-size: 12.5px;
+    color: var(--ai-text-faint);
+    text-decoration: none;
+    line-height: 1.6;
+}
+
+.ai-agent-intro-link:hover {
+    color: var(--ai-agent-theme-color);
+    text-decoration: underline;
 }
 
 /*

@@ -98,7 +98,7 @@ function ai_agent_check_sync_status_handler() {
 
     if (empty($job_ids)) {
         wp_send_json_error(array(
-            'message' => 'هیچ job_id ای در دیتابیس یافت نشد. ابتدا از دکمه‌ی «همگام‌سازی اطلاعات» استفاده کنید.'
+            'message' => 'هنوز چیزی برای بررسی نیست — اول یک‌بار «به‌روزرسانی محتوا» را بزنید.'
         ));
     }
 

@@ -131,10 +131,11 @@ function ai_agent_widget(){
 
                 <?php
                 /*
-                دکمه میکروفون: Web Speech API را فعال می‌کند و گفتار فارسی
-                را در لحظه داخل #ai-agent-input می‌نویسد. در مرورگرهای بدون
-                پشتیبانی، خودکار مخفی می‌شود.
-                */ ?>
+                دکمه‌ی ورودی صوتی فعلاً از رابط کاربری برداشته شده (کدش
+                کامنت شده، نه حذف — دوباره فعالش می‌کنیم). کد جاوااسکریپت
+                مربوطه در ai-agent.js دست‌نخورده مانده و به‌محض نبودِ
+                #ai-agent-voice در صفحه، بی‌اثر باقی می‌ماند.
+
                 <button id="ai-agent-voice" title="ورودی صوتی" type="button" aria-label="ورودی صوتی">
                     <svg class="ai-voice-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -146,6 +147,8 @@ function ai_agent_widget(){
                         <rect x="6" y="6" width="12" height="12" rx="2"/>
                     </svg>
                 </button>
+                */
+                ?>
 
                 <textarea id="ai-agent-input" rows="1" placeholder="پیام خود را بنویسید..."></textarea>
 
@@ -177,6 +180,17 @@ function ai_agent_widget(){
             کلیکِ این المان را trigger می‌کند تا پنجره‌ی Browse باز شود.
             */ ?>
             <input type="file" id="ai-agent-file-input" accept="image/*" multiple hidden />
+
+            <?php
+            /*
+            معرفی دانیچَت: یک خط ریز و وسط‌چین زیر فیلدِ پیام، همیشه —
+            نه فقط در صفحه‌ی شروع. تبلیغ نیست، فقط امضای کوچک همان چیزی
+            که این پنجره را ساخته.
+            */ ?>
+            <p id="ai-agent-footer-credit">
+                چت‌بات هوشمند پشتیبان خودت رو بساز —
+                <a href="https://dunichat.ir" target="_blank" rel="noopener">dunichat.ir</a>
+            </p>
         </div>
     </div>
 </div>

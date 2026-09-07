@@ -352,14 +352,17 @@ function ai_agent_enqueue(){
             --ai-agent-theme-color: var(--ai-agent-color-light);
             --ai-agent-theme-color-rgb: var(--ai-agent-color-light-rgb);
         }
-        /* عناصر رنگی ویجت از رنگِ همان حالت پیروی می‌کنند */
+        /*
+        عناصر رنگی ویجت از رنگِ همان حالت پیروی می‌کنند — دکمه‌ی شناور،
+        هدر و دکمه‌ی ارسال. حباب پیام کاربر عمداً این‌جا نیست: رنگ برند
+        روی یک بلوکِ پررنگ کنار متنِ خودِ کاربر می‌نشست و سنگین‌ترین چیز
+        روی صفحه می‌شد؛ رنگ خنثی‌اش (--ai-bubble در ai-agent.css) دست‌نخورده
+        می‌ماند.
+        */
         #ai-agent-button {
             background: var(--ai-agent-theme-color, {$color_light});
         }
         #ai-agent-header {
-            background: var(--ai-agent-theme-color, {$color_light});
-        }
-        .user-message {
             background: var(--ai-agent-theme-color, {$color_light});
         }
         {$position_css}
