@@ -1,0 +1,114 @@
+# ساخت خودکار ریلیز هنگام push روی master
+#
+# قبلاً هر ریلیز دستی ساخته می‌شد: تگ زدن، زیپ گرفتن و آپلود Dunichat.zip.
+# نتیجه این بود که نسخه‌ی داخل ai-agent.php جلو می‌رفت ولی ریلیزی ساخته
+# نمی‌شد، و هم به‌روزرسان خودکار افزونه و هم دکمه‌ی دانلود روی dunichat.ir
+# — که هر دو آخرین ریلیز گیت‌هاب را می‌خوانند — روی نسخه‌ی قدیمی می‌ماندند.
+#
+# منبع نسخه، هدر Version در ai-agent.php است، نه چیزی که اینجا نوشته شود؛
+# همان عددی که وردپرس برای تشخیص «آپدیت موجود است» با آن مقایسه می‌کند.
+# اگر تگ آن نسخه از قبل باشد، این workflow کاری نمی‌کند و خطا هم نمی‌دهد:
+# اکثر پوش‌ها نسخه را بالا نمی‌برند و نباید شکست بخورند.
+
+name: Release
+
+on:
+  push:
+    branches: [master]
+  # برای ساختن دستی ریلیز بدون پوش تازه.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # کل تاریخچه لازم است تا بشود تگ‌ها را دید و متن ریلیز را از
+          # کامیت‌های بعد از تگ قبلی ساخت.
+          fetch-depth: 0
+
+      - name: خواندن نسخه از هدر افزونه
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 -oP '^\s*Version:\s*\K[0-9]+(\.[0-9]+)*' ai-agent.php)"
+          if [ -z "$version" ]; then
+            echo "::error file=ai-agent.php::هدر Version پیدا نشد"
+            exit 1
+          fi
+          echo "version=$version"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$version"      >> "$GITHUB_OUTPUT"
+
+      - name: بررسی این‌که این نسخه قبلاً ریلیز شده یا نه
+        id: check
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "این نسخه ($TAG) قبلاً تگ خورده؛ ریلیز تازه‌ای ساخته نمی‌شود."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: ساخت Dunichat.zip
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          # فایل‌ها داخل یک پوشه‌ی dunichat/ بسته می‌شوند. وردپرس هنگام نصب
+          # دستی، پوشه‌ی بالای زیپ را عیناً به wp-content/plugins می‌برد؛
+          # زیپِ بدون پوشه‌ی والد، فایل‌ها را وسط plugins/ خالی می‌کند.
+          mkdir -p build/dunichat
+          rsync -a ./ build/dunichat/ \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'build' \
+            --exclude '.gitignore' \
+            --exclude '.gitattributes'
+          cd build
+          zip -r -q ../Dunichat.zip dunichat
+          cd ..
+          unzip -l Dunichat.zip | tail -5
+
+      - name: نوشتن متن ریلیز از کامیت‌های بعد از تگ قبلی
+        if: steps.check.outputs.exists == 'false'
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          {
+            echo "## تغییرات نسخه‌ی $VERSION"
+            echo
+            if [ -n "$previous" ]; then
+              git log --no-merges --pretty='- %s' "$previous"..HEAD
+            else
+              git log --no-merges --pretty='- %s' -20
+            fi
+            echo
+            echo "### نصب"
+            echo
+            echo "فایل \`Dunichat.zip\` را از همین ریلیز بگیرید و از مسیر"
+            echo "«افزونه‌ها ← افزودن ← بارگذاری افزونه» در وردپرس نصب کنید."
+            echo "اگر افزونه از قبل نصب است، خودش از همین‌جا به‌روزرسانی را"
+            echo "پیشنهاد می‌دهد."
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: ساخت تگ و ریلیز
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          # نام ریلیز از همان الگوی ریلیزهای قبلی پیروی می‌کند.
+          name: Dunichat Plugin v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          target_commitish: ${{ github.sha }}
+          files: Dunichat.zip
+          make_latest: true
