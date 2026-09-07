@@ -52,6 +52,12 @@ function ai_agent_chat() {
 // ۴) سanitize ورودی‌ها
     $message    = isset($_POST['message'])    ? sanitize_text_field($_POST['message'])    : '';
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+    // توکن بازدیدکننده که ویجت در مرورگر نگه می‌دارد؛ برای وصل کردن
+    // گفت‌وگوهای یک نفر به هم. اگر شکلش درست نبود خالی می‌ماند.
+    $visitor_id = isset($_POST['visitor_id']) ? strtolower(sanitize_text_field($_POST['visitor_id'])) : '';
+    if (!preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        $visitor_id = '';
+    }
 
     // ۴.۵) دریافت عکس‌های ارسالی کاربر (آرایه‌ای از data URL های base64)
     // هر آیتم باید با "data:image/" شروع شود تا فقط عکس پذیرفته باشد.
@@ -145,7 +151,7 @@ function ai_agent_chat() {
     // ۱۰) فراخوانی تابع استریم در api.php
     // آرایه‌ی images (data URL های base64) به تابع استریم پاس داده می‌شود
     // تا در بدنه‌ی JSON درخواست به /api/v1/chat/messages قرار گیرد.
-    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references, $images);
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references, $images, $visitor_id);
     //DEBUG
     error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
     // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done
@@ -434,6 +440,49 @@ function ai_agent_get_history_handler() {
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
 add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');
+
+/*
+============================================
+هندلر AJAX: فهرست گفت‌وگوهای پیشینِ همین بازدیدکننده
+
+کلید API هرگز به مرورگر نمی‌رسد؛ درخواست از این‌جا با کلید سایت به
+سرور زده می‌شود و فقط عنوان و تعداد پیام هر گفت‌وگو برمی‌گردد.
+
+نانس ندارد و برای کاربر مهمان هم باز است، چون بازدیدکننده‌ی یک
+فروشگاه لاگین نکرده. چیزی که دسترسی را محدود می‌کند خودِ توکن
+است: بدون آن، این اندپوینت چیزی برنمی‌گرداند.
+============================================
+*/
+function ai_agent_visitor_sessions_handler()
+{
+    $visitor_id = isset($_GET['visitor_id']) ? strtolower(sanitize_text_field($_GET['visitor_id'])) : '';
+    if (!preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        wp_send_json_success(array('items' => array()));
+    }
+
+    $result = ai_agent_fetch_visitor_sessions($visitor_id, 20);
+
+    $items = (is_array($result) && isset($result['items']) && is_array($result['items']))
+        ? $result['items']
+        : array();
+
+    // فقط همان چند فیلدی که کشو نشان می‌دهد به مرورگر می‌رود.
+    $clean = array();
+    foreach ($items as $item) {
+        if (!is_array($item) || empty($item['id'])) {
+            continue;
+        }
+        $clean[] = array(
+            'id'            => (string) $item['id'],
+            'title'         => isset($item['title']) ? (string) $item['title'] : '',
+            'message_count' => isset($item['message_count']) ? intval($item['message_count']) : 0,
+        );
+    }
+
+    wp_send_json_success(array('items' => $clean));
+}
+add_action('wp_ajax_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
+add_action('wp_ajax_nopriv_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
 
 /*
 ============================================

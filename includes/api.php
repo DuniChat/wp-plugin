@@ -52,7 +52,7 @@ if (!defined('ABSPATH')) {
     escalate_conversation_id  : شناسه‌ی گفتگو در سیستم پشتیبان (در صورت escalate)
 ============================================
 */
-function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null, $images = array()) {
+function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null, $images = array(), $visitor_id = '') {
 
     $settings = ai_agent_get_settings();
     $api_key  = ai_agent_get_api_key();
@@ -106,6 +106,16 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
         if (!empty($clean_images)) {
             $body_args['images'] = array_values($clean_images);
         }
+    }
+
+    /*
+    توکن بازدیدکننده. فقط هنگام ساخته‌شدن یک گفت‌وگوی تازه به کار می‌آید:
+    سرور آن را شناسه‌ی همان گفت‌وگو می‌کند تا بعداً بشود فهرست
+    «گفت‌وگوهای پیشین» همین مرورگر را گرفت. اگر مقدارش شکل درستی نداشت
+    اصلاً فرستاده نمی‌شود و گفت‌وگو مثل قبل ناشناس ساخته می‌شود.
+    */
+    if (is_string($visitor_id) && preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        $body_args['metadata'] = array('visitor_id' => $visitor_id);
     }
 
     $body = wp_json_encode($body_args);
@@ -523,6 +533,59 @@ function ai_agent_fetch_wallet_balance() {
     }
 
     return $data;
+}
+
+/*
+============================================
+فهرست گفت‌وگوهای پیشینِ یک بازدیدکننده
+اندپوینت: GET https://api.dunichat.ir/api/v1/chat/my-sessions
+
+کشوی «گفت‌وگوهای پیشین» داخل ویجت از این تابع تغذیه می‌شود. توکن
+بازدیدکننده را مرورگر نگه می‌دارد و از طریق admin-ajax به این‌جا
+می‌رسد؛ کلید API هرگز به مرورگر نمی‌رود.
+
+خروجی: آرایه‌ی پاسخ سرور، یا false در صورت نبود کلید / خطای ارتباطی.
+============================================
+*/
+function ai_agent_fetch_visitor_sessions($visitor_id, $limit = 20) {
+
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        return false;
+    }
+
+    if (!preg_match('/^[0-9a-f]{16,64}$/', (string) $visitor_id)) {
+        return false;
+    }
+
+    $url = add_query_arg(
+        array(
+            'visitor_id' => $visitor_id,
+            'limit'      => max(1, min(50, intval($limit))),
+        ),
+        'https://api.dunichat.ir/api/v1/chat/my-sessions'
+    );
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 15,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        error_log('AI_AGENT_DEBUG visitor_sessions WP_Error: ' . $response->get_error_message());
+        return false;
+    }
+
+    if (wp_remote_retrieve_response_code($response) !== 200) {
+        return false;
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+
+    return is_array($data) ? $data : false;
 }
 
 /*

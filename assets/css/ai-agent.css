@@ -1,48 +1,107 @@
-/* فونت و ریست‌های پایه چت‌روم */
+/*
+==========================================================================
+ویجت چت دانیچَت
+
+پالت از اپلیکیشن کلاد گرفته شده: کاغذ گرم در حالت روشن، مشکیِ گرم در
+حالت تاریک، و یک نارنجی که تنها رنگِ صفحه است. هیچ عکس پس‌زمینه‌ای در
+کار نیست — عکس پشتِ متنِ گفت‌وگو خواندن را سخت می‌کرد و چیزی اضافه
+نمی‌کرد.
+
+دو تصمیم ساختاری که بقیه‌ی فایل از آن‌ها پیروی می‌کند:
+
+  ۱) پیام کاربر حباب دارد، پاسخ دستیار ندارد. در یک گفت‌وگوی دونفره
+     همیشه معلوم است کدام طرف حرف می‌زند؛ حباب دور پاسخ‌های بلندِ
+     دستیار فقط متن را در یک قوطی باریک می‌فشرد. پاسخ، متنِ صفحه است.
+
+  ۲) تم انتخابِ بازدیدکننده نیست. آیکون ماه/خورشید حذف شد و data-theme
+     از سایت میزبان (یا از تنظیمات افزونه) می‌آید.
+==========================================================================
+*/
 #ai-agent, #ai-agent * {
     box-sizing: border-box;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 /*
-============================================
-رنگ دستیار — سیستم متغیرهای رنگ (لایت/دارک)
+انیمیشن روی همه‌چیز (transition: all) حذف شد: باعث می‌شد هر تغییر
+ارتفاعِ فیلد متن و هر رندر دوباره‌ی استریم، به‌جای فوری بودن، پرش کند.
+حالا فقط چیزهایی که واقعاً حرکت می‌کنند transition دارند.
+*/
+#ai-agent-button,
+#ai-agent-window,
+.ai-agent-icon-btn,
+.ai-agent-chip,
+.ai-agent-drawer,
+.ai-agent-drawer-item,
+#ai-agent-send,
+#ai-agent-attach,
+#ai-agent-voice {
+    transition: background-color 0.18s ease, color 0.18s ease,
+                border-color 0.18s ease, transform 0.18s ease,
+                opacity 0.18s ease, box-shadow 0.18s ease;
+}
 
-کاربر در صفحه‌ی تنظیمات دو رنگ مستقل انتخاب می‌کند:
-  - --ai-agent-color-light  : رنگ ویجت در حالت روشن
-  - --ai-agent-color-dark   : رنگ ویجت در حالت تاریک
+/*
+==========================================================================
+متغیرهای رنگ
 
-مقدار این دو متغیر توسط PHP (enqueue.php) به‌صورت inline CSS
-روی #ai-agent تزریق می‌شود؛ مقادیر زیر فقط fallback هستند.
+--ai-agent-color-light / -dark  : رنگ برند سایت (از تنظیمات افزونه)
+--ai-agent-chat-bg-light / -dark: رنگ پس‌زمینه‌ی صفحه‌ی چت (از تنظیمات)
+هر دو جفت به‌صورت inline از PHP تزریق می‌شوند؛ مقادیر زیر fallback‌اند.
 
-متغیر --ai-agent-theme-color بر اساس data-theme (که توسط JS با
-کلیک روی آیکون ماه/خورشید تغییر می‌کند) به رنگ همان حالت اشاره
-می‌کند و همه‌ی عناصر رنگی ویجت (دکمه شناور، هدر، حباب پیام کاربر
-و رنگ فوکِس فیلد متن) از آن پیروی می‌کنند.
-
-دو متغیر -rgb برای ساخت سایه‌های شفاف rgba(var(...)) استفاده می‌شوند.
-============================================
+بقیه‌ی متغیرها (سطح، متن، مرز) از پالت کلاد می‌آیند و قابل تنظیم
+نیستند — یک پالت خوانا با کنتراست سنجیده، نه فهرستی از رنگ که هر کسی
+بتواند به‌هم بریزد.
+==========================================================================
 */
 #ai-agent {
-    --ai-agent-color-light: #F4865B;
-    --ai-agent-color-dark: #F4865B;
-    --ai-agent-color-light-rgb: 244, 134, 91;
-    --ai-agent-color-dark-rgb: 244, 134, 91;
+    --ai-agent-color-light: #D97757;
+    --ai-agent-color-dark: #D97757;
+    --ai-agent-color-light-rgb: 217, 119, 87;
+    --ai-agent-color-dark-rgb: 217, 119, 87;
+    --ai-agent-chat-bg-light: #FAF9F5;
+    --ai-agent-chat-bg-dark: #1F1E1D;
 }
 
-#ai-agent[data-theme="dark"] {
-    --ai-agent-theme-color: var(--ai-agent-color-dark);
-    --ai-agent-theme-color-rgb: var(--ai-agent-color-dark-rgb);
-}
-
+/* ---- حالت روشن (پیش‌فرض) ---- */
 #ai-agent[data-theme="light"],
 #ai-agent:not([data-theme]) {
     --ai-agent-theme-color: var(--ai-agent-color-light);
     --ai-agent-theme-color-rgb: var(--ai-agent-color-light-rgb);
+
+    --ai-chat-bg: var(--ai-agent-chat-bg-light);
+    --ai-surface: #FFFFFF;
+    --ai-surface-2: #F0EEE9;
+    --ai-bubble: #EFEDE7;
+    --ai-text: #262624;
+    --ai-text-soft: #6F6E6A;
+    --ai-text-faint: #96948E;
+    --ai-border: #E5E2DA;
+    --ai-shadow: 0 10px 40px rgba(31, 30, 29, 0.14);
 }
 
-/* دکمه شناور دایره‌ای مدرن */
+/*
+---- حالت تاریک ----
+رنگ برند در حالت تاریک جداگانه انتخاب می‌شود. یک نارنجی که روی کاغذ
+روشن درست است، روی مشکی یا می‌سوزد یا گم می‌شود؛ به همین دلیل هدر و
+دکمه‌ها در این حالت رنگ dark را می‌گیرند و نه همان رنگ حالت روشن.
+*/
+#ai-agent[data-theme="dark"] {
+    --ai-agent-theme-color: var(--ai-agent-color-dark);
+    --ai-agent-theme-color-rgb: var(--ai-agent-color-dark-rgb);
+
+    --ai-chat-bg: var(--ai-agent-chat-bg-dark);
+    --ai-surface: #2A2926;
+    --ai-surface-2: #35332F;
+    --ai-bubble: #302F2C;
+    --ai-text: #F5F4EE;
+    --ai-text-soft: #B4B2AA;
+    --ai-text-faint: #8B8981;
+    --ai-border: #3A3835;
+    --ai-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* دکمه شناور */
 #ai-agent-button {
     position: fixed;
     right: 30px;
@@ -50,18 +109,18 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: var(--ai-agent-theme-color, #2563eb);
+    background: var(--ai-agent-theme-color);
     cursor: pointer;
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 8px 24px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.35);
+    box-shadow: 0 8px 24px rgba(var(--ai-agent-theme-color-rgb), 0.32);
     z-index: 999999;
 }
 
 #ai-agent-button:hover {
-    transform: scale(1.1) translateY(-3px);
-    box-shadow: 0 12px 30px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(var(--ai-agent-theme-color-rgb), 0.42);
 }
 
 #ai-agent-button img {
@@ -70,33 +129,30 @@
     object-fit: contain;
 }
 
-/* پنجره هوشمند اصلی چت */
+/* پنجره‌ی چت */
 #ai-agent-window {
     position: fixed;
     right: 30px;
     bottom: 105px;
-    width: 380px;
-    height: 580px; /* ارتفاع ثابت پنجره */
-    max-height: calc(100vh - 120px); /* برای گوشی‌ها و صفحات کوچک */
-    background: #ffffff;
-    
-    /* تغییر مهم: نمایش همیشه رو حالت flex باقی می‌ماند تا ساختار نشکند */
-    display: flex; 
-    flex-direction: column; /* چیدمان ستونی برای تفکیک هدر، وسط و فوتر */
-    justify-content: space-between; /* هل دادن هدر به بالا و فوتر به پایین */
-    
+    width: 400px;
+    height: 620px;
+    max-height: calc(100vh - 120px);
+    background: var(--ai-chat-bg);
+
+    display: flex;
+    flex-direction: column;
+
     border-radius: 20px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--ai-shadow);
     z-index: 999999;
     overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.8);
-    direction: rtl; /* اطمینان از راست‌چین بودن اصولی المان‌های فارسی */
+    border: 1px solid var(--ai-border);
+    direction: rtl;
+    color: var(--ai-text);
 
-    /* انیمیشن پاپ‌آپ و فید شدن بسیار نرم بدون آسیب به ساختار Flexbox */
     opacity: 0;
     visibility: hidden;
-    transform: translateY(15px);
-    transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
+    transform: translateY(12px);
 }
 
 #ai-agent-window.ai-agent-open {
@@ -105,177 +161,184 @@
     transform: translateY(0);
 }
 
-/* هدر شیک و مینیمال چت */
+/*
+==========================================================================
+هدر
+
+سه دکمه‌ی هم‌اندازه در دو سر و نام مجموعه در وسط. قبلاً ضربدرِ بستن یک
+کاراکتر متنی (✕) بود که کنار SVG‌ها بزرگ‌تر و ناهم‌تراز می‌نشست، و
+hover هر دو دکمه را قرمز و ۹۰ درجه می‌چرخاند — حرکتی که برای «بستن»
+هشدارآمیز بود و برای «چت تازه» بی‌معنی.
+==========================================================================
+*/
 #ai-agent-header {
-    flex-shrink: 0; /* جلوگیری از تغییر اندازه */
-    background: var(--ai-agent-theme-color, #2563eb);
+    flex-shrink: 0;
+    background: var(--ai-agent-theme-color);
     color: #ffffff;
-    padding: 16px 20px;
-    font-weight: 600;
-    font-size: 15px;
+    padding: 10px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     user-select: none;
 }
 
 .ai-agent-header-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-weight: 700;
+    font-size: 14.5px;
+    letter-spacing: -0.01em;
+    text-align: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-
 
 .ai-agent-header-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
-#ai-agent-new-chat,
-#ai-agent-close {
-    cursor: pointer;
-    font-size: 15px;
-    line-height: 1;
-    width: 22px;
-    height: 22px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    transition: 0.2s;
-}
-
-#ai-agent-new-chat svg {
-    width: 14px;
-    height: 14px;
-}
-
-#ai-agent-new-chat:hover,
-#ai-agent-close:hover {
-    background: #ef4444;
-    transform: rotate(90deg);
-}
-
-/* آیکون ماه/خورشید هدر: با کلیک، تم به‌صورت دستی بین دارک و لایت تغییر می‌کند */
-.ai-theme-toggle {
+.ai-agent-icon-btn {
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
-    cursor: pointer;
-    padding: 2px;
-    border-radius: 6px;
-}
-
-.ai-theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.12);
-}
-
-.ai-theme-icon {
-    display: none;
-    align-items: center;
     justify-content: center;
+    border: 0;
+    padding: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
 }
 
-.ai-theme-icon svg {
-    width: 15px;
-    height: 15px;
+.ai-agent-icon-btn svg {
+    width: 18px;
+    height: 18px;
     display: block;
 }
 
-/* پیش‌فرض: لایت‌مود -> خورشید نمایش داده می‌شود */
-#ai-agent[data-theme="light"] .ai-theme-icon-sun,
-#ai-agent:not([data-theme]) .ai-theme-icon-sun {
-    display: flex;
-    color: #fbbf24;
+.ai-agent-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
 }
 
-/* دارک‌مود -> ماه نمایش داده می‌شود */
-#ai-agent[data-theme="dark"] .ai-theme-icon-moon {
-    display: flex;
-    color: #e2e8f0;
-}
-
-/* باکس اصلی لوپ چت‌ها */
+/*
+==========================================================================
+ناحیه‌ی پیام‌ها
+==========================================================================
+*/
 #ai-agent-messages {
-    flex: 1 1 auto; /* پر کردن تمام فضای خالی بین هدر و فوتر */
-    overflow-y: auto; /* فعال کردن اسکرول برای کاربر */
-    min-height: 0; /* فوق‌العاده حیاتی: به مرورگر اجازه می‌دهد ارتفاع این بخش را محدود کرده و اسکرول را فعال کند */
-    padding: 20px;
-    /* یک لایه‌ی نیمه‌شفاف روی عکس بک‌گراند تا حباب‌های پیام خوانا بمانند */
-    background-image: linear-gradient(180deg, rgba(248, 250, 252, 0.88), rgba(248, 250, 252, 0.88)), var(--ai-agent-bg-light);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 18px 16px 8px;
+    background: var(--ai-chat-bg);
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    gap: 14px;
+    gap: 18px;
 
-    /* مخفی‌سازی کامل اسکرول‌بار ناحیه‌ی پیام‌ها (اسکرول همچنان کار می‌کند، فقط نوار آن دیده نمی‌شود) */
-    scrollbar-width: none;      /* فایرفاکس */
-    -ms-overflow-style: none;   /* IE/Edge قدیمی */
-}
-
-#ai-agent[data-theme="dark"] #ai-agent-messages {
-    background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.6)), var(--ai-agent-bg-dark);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
 #ai-agent-messages::-webkit-scrollbar {
-    display: none;              /* کروم/سافاری/اج جدید */
+    display: none;
 }
 
-/* استایل مشترک حباب پیام‌ها */
-.user-message, .ai-message, .admin-message {
-    padding: 12px 16px;
-    font-size: 13.5px;
-    line-height: 1.6;
-    max-width: 85%;
-    word-break: break-word;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-}
+/*
+حباب پیام کاربر — گرد از هر چهار طرف، بدون دم.
 
-/* حباب پیام کاربر — از رنگ دستیارِ همان حالت (لایت/دارک) پیروی می‌کند */
+دمِ حباب وقتی معنا دارد که چند نفر هم‌زمان حرف بزنند و باید معلوم شود
+حباب به چه کسی وصل است. این‌جا دو طرف بیشتر نیست و سمتِ حباب خودش
+جواب می‌دهد؛ آن گوشه‌ی تیز فقط یک ناهمواری بود.
+
+رنگش هم دیگر رنگ برند نیست. یک بلوک نارنجیِ پررنگ کنار متن سیاه،
+سنگین‌ترین چیز روی صفحه می‌شد در حالی که فقط چیزی است که کاربر خودش
+تایپ کرده.
+*/
 .user-message {
-    background: var(--ai-agent-theme-color, #2563eb);
-    color: #ffffff;
-    border-radius: 16px 16px 16px 4px;
+    background: var(--ai-bubble);
+    color: var(--ai-text);
+    border-radius: 18px;
     align-self: flex-start;
     text-align: right;
+    max-width: 82%;
+    padding: 10px 14px;
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.75;
+    word-break: break-word;
 }
 
-/* حباب پیام هوش مصنوعی */
+/*
+پاسخ دستیار — بدون حباب.
+
+متنِ خود صفحه است، با یک نشان کوچک دانیچَت بالای آن. راست‌چین، چون
+پاسخ فارسی است و از سمت راست خوانده می‌شود.
+*/
 .ai-message {
-    background: #ffffff;
-    color: #1e293b;
-    border-radius: 16px 16px 4px 16px;
-    align-self: flex-end;
+    align-self: stretch;
+    max-width: 100%;
     text-align: right;
-    border: 1px solid #f1f5f9;
+    color: var(--ai-text);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.95;
+    word-break: break-word;
     display: flex;
-    align-items: flex-start;
+    flex-direction: column;
     gap: 8px;
 }
 
-/* آواتار دایره‌ای فاویکون، کنار پیام‌های ربات - بالا و سمت چپ پیام */
+/* نشان دانیچَت بالای پاسخ */
 .ai-message::before {
     content: "";
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background-image: var(--ai-agent-favicon);
     background-size: cover;
     background-position: center;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
-    order: 2;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    opacity: 0.95;
 }
 
-/* محتوای پیام (متن + دکمه‌های فیدبک) کنار آواتار */
 .ai-message-body {
-    flex: 1 1 auto;
     min-width: 0;
-    order: 1;
+}
+
+.ai-message-body strong {
+    font-weight: 700;
+}
+
+.ai-message-body a {
+    color: var(--ai-agent-theme-color);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* پیام کارشناس انسانی — حباب دارد، چون طرفِ سومِ گفت‌وگوست */
+.admin-message {
+    align-self: stretch;
+    background: var(--ai-surface);
+    border: 1px solid var(--ai-border);
+    color: var(--ai-text);
+    border-radius: 18px;
+    padding: 12px 14px;
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.8;
+    word-break: break-word;
+}
+
+.user-message-prompt {
+    white-space: pre-wrap;
 }
 
 /* پیام سیستمی «انتقال به پشتیبان انسانی» — از پیام‌های ai/user/admin جداست
@@ -538,14 +601,7 @@
     box-shadow: none !important;
 }
 
-#ai-agent-send img {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-    display: block;
-    pointer-events: none;
-    transition: transform .3s cubic-bezier(.34,1.56,.64,1);
-}
+
 
 #ai-agent-send:hover img {
     transform: translateX(-3px) scale(1.12);   /* افکت حرکت به سمت چپ (جهت ارسال در RTL) */
@@ -625,10 +681,7 @@
     pointer-events: none;
 }
 
-#ai-agent-footer.is-disabled #ai-agent-send img {
-    filter: grayscale(1);
-    opacity: 0.6;
-}
+#ai-agent-footer.is-disabled 
 
 /* باکس رفرنس‌ها (محصولات/صفحات مرتبط) — انتهای پیام هوش مصنوعی */
 .ai-references-box {
@@ -1649,43 +1702,506 @@ weight is legible without changing the bubble geometry.
 }
 
 /*
-The light/dark switch was a 15px icon with 2px of padding, sitting directly on
-the coloured header — effectively invisible, and well under the 24px minimum
-for a touch target. It is now a real button with its own surface.
+==========================================================================
+بازطراحی — لایه‌ی نهایی
+
+این بلوک عمداً انتهای فایل است تا قواعد قدیمی‌تر بالاتر را بازنویسی کند
+بدون این‌که هزار خط پیش از خودش دست بخورد.
+==========================================================================
 */
-.ai-theme-toggle {
-    display: inline-flex;
+
+/* ---- فوتر و فیلد نوشتن ---- */
+#ai-agent-footer {
+    flex-shrink: 0;
+    padding: 8px 12px 12px;
+    background: var(--ai-chat-bg);
+    border-top: 0;
+}
+
+/*
+کل ردیفِ نوشتن یک کارت است، مثل کامپوزر کلاد: فیلد متن و دکمه‌ها داخل
+یک سطح گرد می‌نشینند، نه سه المان جدا که هرکدام مرز خودشان را دارند.
+*/
+.ai-agent-footer-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    background: var(--ai-surface);
+    border: 1px solid var(--ai-border);
+    border-radius: 22px;
+    padding: 6px;
+}
+
+.ai-agent-footer-row:focus-within {
+    border-color: rgba(var(--ai-agent-theme-color-rgb), 0.55);
+}
+
+#ai-agent-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: var(--ai-text) !important;
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.7;
+    padding: 8px 6px;
+    resize: none;
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    direction: rtl;
+}
+
+#ai-agent-input::-webkit-scrollbar { display: none; }
+
+#ai-agent-input::placeholder {
+    color: var(--ai-text-faint);
+    font-weight: 500;
+}
+
+/* سه دکمه‌ی کامپوزر: دایره‌ای و هم‌اندازه */
+#ai-agent-attach,
+#ai-agent-voice,
+#ai-agent-send {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    border-radius: 50%;
+    border: 0;
+    padding: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.16);
-    color: inherit;
     cursor: pointer;
-    transition: background 160ms ease, border-color 160ms ease;
+    position: relative;
+    flex-shrink: 0;
 }
 
-.ai-theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.3);
-    border-color: rgba(255, 255, 255, 0.6);
+#ai-agent-attach,
+#ai-agent-voice {
+    background: var(--ai-surface-2);
+    color: var(--ai-text-soft);
 }
 
-.ai-theme-toggle:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: 2px;
+#ai-agent-attach:hover,
+#ai-agent-voice:hover {
+    color: var(--ai-text);
 }
 
-.ai-theme-icon svg {
+#ai-agent-attach svg,
+#ai-agent-voice svg,
+#ai-agent-send svg {
     width: 17px;
     height: 17px;
+    display: block;
 }
 
-/* The sun was amber on an orange header, which is close to unreadable; both
-   icons are simply white, like the rest of the header. */
-#ai-agent[data-theme="light"] .ai-theme-icon-sun,
-#ai-agent:not([data-theme]) .ai-theme-icon-sun {
-    color: #ffffff;
+#ai-agent-send {
+    background: var(--ai-agent-theme-color);
+    color: #fff;
+}
+
+#ai-agent-send:hover {
+    filter: brightness(0.94);
+}
+
+/*
+دکمه‌ی ارسالِ خالی محو می‌شود ولی سر جایش می‌ماند. حذفش باعث می‌شد
+ردیف با هر کاراکتر تایپ‌شده جابه‌جا شود.
+*/
+#ai-agent-send.is-empty {
+    background: var(--ai-surface-2);
+    color: var(--ai-text-faint);
+    cursor: default;
+    pointer-events: none;
+}
+
+#ai-agent-attach .ai-attach-badge {
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--ai-agent-theme-color);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    display: none;
+}
+
+#ai-agent-attach.has-attachments .ai-attach-badge {
+    display: block;
+}
+
+/*
+==========================================================================
+صفحه‌ی شروع
+
+به‌جای «چطور می‌تونم کمکتون کنم؟» — جمله‌ای که کاربر را جلوی یک فیلد
+خالی تنها می‌گذاشت — چند پیشنهاد قابل کلیک از روی داده‌های خود مدیر.
+==========================================================================
+*/
+.ai-agent-intro {
+    margin: auto 0;
+    padding: 8px 4px 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.ai-agent-intro-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-image: var(--ai-agent-favicon);
+    background-size: cover;
+    background-position: center;
+}
+
+.ai-agent-intro-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ai-text);
+    line-height: 1.7;
+    max-width: 20rem;
+}
+
+.ai-agent-intro-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 20rem;
+}
+
+/*
+==========================================================================
+تراشه‌ها — هم برای پیشنهادهای شروع، هم برای ادامه‌ی گفت‌وگو
+==========================================================================
+*/
+.ai-agent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    text-align: right;
+    justify-content: space-between;
+    background: var(--ai-surface);
+    border: 1px solid var(--ai-border);
+    color: var(--ai-text);
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.6;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.ai-agent-chip:hover {
+    border-color: rgba(var(--ai-agent-theme-color-rgb), 0.6);
+    background: var(--ai-surface-2);
+}
+
+.ai-agent-chip svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--ai-text-faint);
+}
+
+/* پیشنهادهای ادامه — بالای کامپوزر، جمع‌وجورتر و در یک ردیف افقی */
+.ai-agent-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 2px 8px;
+}
+
+.ai-agent-suggestions .ai-agent-chip {
+    width: auto;
+    border-radius: 999px;
+    padding: 7px 13px;
+    font-size: 12.5px;
+}
+
+/*
+==========================================================================
+دکمه‌های تماس (دیپ‌لینک)
+
+زیر پاسخی که درباره‌ی راه‌های ارتباطی حرف زده. خواندن یک شماره از متن
+و تایپ کردنش در گوشی کاری است که کاربر نباید انجام دهد.
+==========================================================================
+*/
+.ai-agent-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.ai-agent-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(var(--ai-agent-theme-color-rgb), 0.12);
+    border: 1px solid rgba(var(--ai-agent-theme-color-rgb), 0.35);
+    color: var(--ai-agent-theme-color);
+    border-radius: 999px;
+    padding: 7px 13px;
+    font-size: 12.5px;
+    font-weight: 700;
+    text-decoration: none !important;
+    cursor: pointer;
+}
+
+.ai-agent-action:hover {
+    background: rgba(var(--ai-agent-theme-color-rgb), 0.2);
+}
+
+.ai-agent-action svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+/*
+==========================================================================
+نشانگر «در حال فکر کردن»
+
+سه نقطه‌ی جهنده جای خود را به یک برچسبِ متنی با نبض ملایم داده — همان
+کاری که کلاد می‌کند. نقطه‌ها می‌گفتند «چیزی دارد تایپ می‌شود» در حالی
+که مدل ممکن است چند ثانیه در حال جست‌وجو در محتوای سایت باشد و هنوز
+یک کلمه هم ننوشته باشد.
+==========================================================================
+*/
+.ai-agent-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ai-text-faint);
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.ai-agent-thinking-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ai-agent-theme-color);
+    animation: ai-agent-thinking-pulse 1.4s ease-in-out infinite;
+}
+
+.ai-agent-thinking-label {
+    animation: ai-agent-thinking-fade 1.8s ease-in-out infinite;
+}
+
+@keyframes ai-agent-thinking-pulse {
+    0%, 100% { transform: scale(0.7); opacity: 0.45; }
+    50%      { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes ai-agent-thinking-fade {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-agent-thinking-dot,
+    .ai-agent-thinking-label {
+        animation: none;
+    }
+}
+
+/*
+==========================================================================
+کشوی گفت‌وگوهای پیشین
+
+روی خود پنجره باز می‌شود، نه کنارش: در موبایل پنجره تمام‌صفحه است و
+ستون دومی وجود ندارد.
+==========================================================================
+*/
+.ai-agent-drawer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: var(--ai-chat-bg);
+    display: flex;
+    flex-direction: column;
+}
+
+.ai-agent-drawer[hidden] {
+    display: none;
+}
+
+.ai-agent-drawer-head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--ai-agent-theme-color);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14.5px;
+}
+
+.ai-agent-drawer-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-width: none;
+}
+
+.ai-agent-drawer-list::-webkit-scrollbar { display: none; }
+
+.ai-agent-drawer-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    text-align: right;
+    width: 100%;
+    background: var(--ai-surface);
+    border: 1px solid var(--ai-border);
+    border-radius: 14px;
+    padding: 11px 14px;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--ai-text);
+}
+
+.ai-agent-drawer-item:hover {
+    border-color: rgba(var(--ai-agent-theme-color-rgb), 0.6);
+}
+
+.ai-agent-drawer-item.is-current {
+    border-color: var(--ai-agent-theme-color);
+    background: rgba(var(--ai-agent-theme-color-rgb), 0.08);
+}
+
+.ai-agent-drawer-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    line-height: 1.7;
+}
+
+.ai-agent-drawer-meta {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--ai-text-faint);
+}
+
+.ai-agent-drawer-empty {
+    text-align: center;
+    color: var(--ai-text-faint);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 32px 12px;
+    line-height: 2;
+}
+
+/*
+==========================================================================
+گالری عکس‌های پیوست — پیش‌نمایش کامپوزر
+==========================================================================
+*/
+#ai-agent-attachments {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 2px 8px;
+}
+
+#ai-agent-attachments.has-items {
+    display: flex;
+}
+
+.ai-attach-thumb {
+    position: relative;
+    width: 54px;
+    height: 54px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--ai-border);
+    background: var(--ai-surface-2);
+}
+
+.ai-attach-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.ai-attach-thumb-remove {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+/* گالری عکس داخل حباب کاربر */
+.user-message-gallery {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.user-message-gallery:has(> :only-child) {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.user-message-gallery .user-gallery-item {
+    display: block;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--ai-surface-2);
+    cursor: zoom-in;
+}
+
+.user-message-gallery .user-gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* ---- موبایل: پنجره تمام‌صفحه ---- */
+@media (max-width: 768px) {
+    #ai-agent-window {
+        border-radius: 0;
+        border: 0;
+    }
+
+    .ai-agent-intro-title { font-size: 16px; }
 }

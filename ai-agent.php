@@ -3,7 +3,7 @@
 Plugin Name: Dunichat
 Plugin URI: https://dunichat.ir
 Description: دستیار هوشمند دانیچت محصولی از دانیجت
-Version: 1.1.0
+Version: 1.2.0
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Dunijet
@@ -19,12 +19,13 @@ if (!defined('ABSPATH')) {
 
 // Asset URLs are versioned with this, so a plugin update does not leave
 // browsers serving last release's CSS from cache.
-define('AI_AGENT_VERSION', '1.1.0');
+define('AI_AGENT_VERSION', '1.2.0');
 define('AI_AGENT_PATH', plugin_dir_path(__FILE__));
 define('AI_AGENT_URL', plugin_dir_url(__FILE__));
 
 
 require_once AI_AGENT_PATH.'includes/format.php';
+require_once AI_AGENT_PATH.'includes/site-color.php';
 require_once AI_AGENT_PATH.'includes/db.php';
 require_once AI_AGENT_PATH.'includes/settings.php';
 require_once AI_AGENT_PATH.'includes/sync.php';
@@ -53,5 +54,7 @@ function dunichat_plugin_action_links($links)
 
 
 register_activation_hook(__FILE__, 'ai_agent_install');
+// یک بار، هنگام فعال‌سازی: رنگ اصلی سایت میزبان پیش‌فرض دستیار می‌شود.
+register_activation_hook(__FILE__, 'ai_agent_seed_color_from_site');
 register_activation_hook(__FILE__, 'ai_agent_schedule_sync_on_activation');
 register_deactivation_hook(__FILE__, 'ai_agent_unschedule_sync_on_deactivation');
