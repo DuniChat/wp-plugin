@@ -200,34 +200,32 @@ jQuery(function ($) {
     پس روی سایتی که شماره‌ای ثبت نکرده، پیشنهادِ شماره‌ی تماس هم نیست.
     ============================================
     */
-    const CHIP_ARROW =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<polyline points="15 18 9 12 15 6"/></svg>';
-
+    /*
+    بدون نشان دانیچَت بالای این جمله؛ خودِ صفحه‌ی شروع، صفحه است، نه یک
+    اعلانِ برند. سؤال‌های پیشنهادی هم دیگر دکمه‌ی کادردار با فلش نیستند
+    — لینک‌های ریز زیر جمله، شبیه پانویس‌های قابل‌کلیک.
+    */
     function renderIntro() {
         const starters = Array.isArray(CONFIG.starters) ? CONFIG.starters : [];
 
         const $intro = $('<div class="ai-agent-intro"></div>');
-        $intro.append('<div class="ai-agent-intro-mark" aria-hidden="true"></div>');
         $intro.append(
             $('<div class="ai-agent-intro-title"></div>')
                 .text('آماده‌ای یه مکالمه هیجان‌انگیز داشته باشیم؟')
         );
 
         if (starters.length) {
-            const $chips = $('<div class="ai-agent-intro-chips"></div>');
+            const $links = $('<div class="ai-agent-intro-links"></div>');
             starters.forEach(function (item) {
                 if (!item || !item.label) return;
-                const $chip = $('<button type="button" class="ai-agent-chip"></button>');
-                $chip.append($('<span></span>').text(item.label));
-                $chip.append(CHIP_ARROW);
-                $chip.on('click', function () {
+                const $link = $('<a href="#" class="ai-agent-intro-link"></a>').text(item.label);
+                $link.on('click', function (e) {
+                    e.preventDefault();
                     submitPrompt(item.prompt || item.label);
                 });
-                $chips.append($chip);
+                $links.append($link);
             });
-            $intro.append($chips);
+            $intro.append($links);
         }
 
         messages.empty().append($intro);

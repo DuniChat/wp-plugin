@@ -67,82 +67,7 @@ controls, chiefly).
     }
 }
 
-/* --------------------------------------------------------------------------
-   Announcement bar
-   -------------------------------------------------------------------------- */
-.ai-agent-announcements {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 18px;
-    padding: 10px 16px;
-    border: 1px solid var(--ai-agent-border);
-    border-radius: var(--ai-agent-radius-lg);
-    background: var(--ai-agent-surface);
-}
-
-.ai-agent-announcements[data-category="pricing"] {
-    border-color: rgba(245, 158, 11, 0.45);
-    background: var(--ai-agent-warning-bg);
-}
-
-.ai-agent-announcements-icon {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: var(--ai-agent-radius-pill);
-    background: var(--ai-agent-primary-light);
-    color: var(--ai-agent-primary-dark);
-}
-
-.ai-agent-announcements-body {
-    display: flex;
-    flex: 1;
-    align-items: baseline;
-    gap: 10px;
-    min-width: 0;
-}
-
-.ai-agent-announcement-title {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ai-agent-text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ai-agent-announcement-date {
-    flex-shrink: 0;
-    font-size: 11.5px;
-    color: var(--ai-agent-text-muted);
-}
-
-.ai-agent-announcement-dots {
-    display: flex;
-    flex-shrink: 0;
-    gap: 5px;
-}
-
-.ai-agent-announcement-dot {
-    width: 7px;
-    height: 7px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--ai-agent-radius-pill);
-    background: var(--ai-agent-border-strong);
-    cursor: pointer;
-    transition: background var(--ai-agent-transition);
-}
-
-.ai-agent-announcement-dot.is-active {
-    background: var(--ai-agent-primary);
-}
+/* Announcement bar removed — see settings.php and settings.js. */
 
 /* --------------------------------------------------------------------------
    Segmented controls — tone, emoji level, schedule, widget side
@@ -213,11 +138,69 @@ controls, chiefly).
 
 /* --------------------------------------------------------------------------
    Two-column field grid
+
+   A bit more room than the single-column rows above: two label+field pairs
+   sitting close together read as one crowded block without it.
    -------------------------------------------------------------------------- */
 .ai-agent-field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    align-items: start;
+    gap: 22px 24px;
+}
+
+/* --------------------------------------------------------------------------
+   Support phone rows: one input + a remove button per number, a real
+   "add" action instead of asking someone to press Enter in a textarea.
+   -------------------------------------------------------------------------- */
+.ai-agent-phone-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ai-agent-phone-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-agent-phone-row .ai-agent-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ai-agent-phone-remove {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1.5px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius);
+    background: var(--ai-agent-surface);
+    color: var(--ai-agent-text-secondary);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color var(--ai-agent-transition), background var(--ai-agent-transition);
+}
+
+.ai-agent-phone-remove:hover {
+    border-color: var(--ai-agent-primary);
+    background: var(--ai-agent-primary-lighter);
+}
+
+.ai-agent-btn-sm {
+    height: 32px !important;
+    padding: 0 12px !important;
+    font-size: 12.5px !important;
+}
+
+.ai-agent-btn-sm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .ai-agent-inline-actions {
@@ -360,6 +343,25 @@ controls, chiefly).
 }
 
 /* --------------------------------------------------------------------------
+   Model picker input: a select, not a text field
+
+   The field is readonly — the model id is an English slug, so it reads left
+   to right even on this RTL page — and the pointer cursor is what tells
+   someone this opens a list rather than accepts typing.
+   -------------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-combobox-input {
+    direction: ltr;
+    text-align: left;
+    unicode-bidi: isolate;
+    cursor: pointer;
+    caret-color: transparent;
+}
+
+.ai-agent-app .ai-agent-combobox-control {
+    cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
    Model picker rows
    -------------------------------------------------------------------------- */
 .ai-agent-model-item-head {
@@ -457,6 +459,23 @@ controls, chiefly).
 }
 
 /* --------------------------------------------------------------------------
+   The API key field, unstyled by the browser
+
+   Chrome matches this field against saved passwords and paints it pale
+   yellow, which reads as "there's already something in here" even on an
+   empty field. The box-shadow trick below is the standard way to override
+   that fill without fighting the browser on every keystroke.
+   -------------------------------------------------------------------------- */
+.ai-agent-app #ai_agent_api_key:-webkit-autofill,
+.ai-agent-app #ai_agent_api_key:-webkit-autofill:hover,
+.ai-agent-app #ai_agent_api_key:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ai-agent-text);
+    -webkit-box-shadow: 0 0 0 1000px var(--ai-agent-surface) inset;
+    box-shadow: 0 0 0 1000px var(--ai-agent-surface) inset;
+    transition: background-color 999999s ease-in-out 0s;
+}
+
+/* --------------------------------------------------------------------------
    Colour picker
 
    The WordPress picker on its own gives a hex field and a "select colour"
@@ -506,12 +525,6 @@ controls, chiefly).
     outline-offset: 2px;
 }
 
-/* The picker's own hex field reads left to right like any other code. */
-.ai-agent-app .wp-picker-container input[type="text"].wp-color-picker {
-    direction: ltr;
-    text-align: left;
-    font-family: var(--ai-agent-mono);
-}
 
 /* --------------------------------------------------------------------------
    Chat history tab
@@ -570,14 +583,18 @@ controls, chiefly).
 }
 
 .ai-agent-support-link:hover {
-    border-color: var(--ai-agent-primary);
-    background: var(--ai-agent-primary-lighter);
-    color: var(--ai-agent-primary-darker);
+    border-color: var(--ai-agent-border-strong);
+    background: var(--ai-agent-surface-2);
 }
 
+/*
+اینجا رنگ برند به کار نمی‌رود: این خط تماس با خودِ دانیچَت است، نه یک
+عمل روی چت‌بات کاربر، پس نارنجی برند بی‌ربط است — مشکی خنثی، مثل بقیه‌ی
+متن صفحه.
+*/
 .ai-agent-support-link svg {
     flex-shrink: 0;
-    color: var(--ai-agent-primary-dark);
+    color: var(--ai-agent-text-secondary);
 }
 
 /* Handles and phone numbers read left to right on this RTL page. */
@@ -587,4 +604,167 @@ controls, chiefly).
     font-size: 12px;
     direction: ltr;
     unicode-bidi: isolate;
+}
+
+/* --------------------------------------------------------------------------
+   Wallet: one line of text, not a card
+
+   A gradient card with its own icon and a bordered refresh button made a
+   single number look like the busiest thing on the page. The balance now
+   refreshes itself in the background (see aiAgentLoadWalletBalance in
+   settings.js), so there is nothing left to put a border around.
+   -------------------------------------------------------------------------- */
+.ai-agent-wallet-inline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ai-agent-text-secondary);
+}
+
+.ai-agent-wallet-inline .ai-agent-wallet-amount {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ai-agent-text);
+}
+
+.ai-agent-wallet-inline .ai-agent-wallet-status {
+    font-size: 11.5px;
+    color: var(--ai-agent-text-muted);
+}
+
+.ai-agent-wallet-inline .ai-agent-wallet-status.is-error {
+    color: var(--ai-agent-error);
+}
+
+/* A link that reads as an action, not a button — the only "chrome" it gets
+   is the brand colour and a bit of weight, same as a plain text link. */
+.ai-agent-text-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ai-agent-primary);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.ai-agent-text-btn:hover {
+    color: var(--ai-agent-primary-dark);
+    text-decoration: underline;
+}
+
+.ai-agent-autosave-hint {
+    font-size: 12.5px;
+    color: var(--ai-agent-text-muted);
+    transition: color var(--ai-agent-transition);
+}
+
+.ai-agent-autosave-hint.is-saving,
+.ai-agent-autosave-hint.is-ok {
+    color: var(--ai-agent-success);
+}
+
+.ai-agent-autosave-hint.is-error {
+    color: var(--ai-agent-error);
+}
+
+@media screen and (max-width: 782px) {
+    .ai-agent-topbar-tools {
+        flex-wrap: wrap;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Site colours (WordPress theme.json / Elementor global colours)
+
+   The same row-button pattern as the data-source checklist: a coloured dot,
+   a name, and the hex code underneath it — so picking "your site's primary
+   colour" doesn't require already knowing what that hex code is.
+   -------------------------------------------------------------------------- */
+.ai-agent-site-colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ai-agent-site-color-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 13px;
+    border: 1.5px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius);
+    background: var(--ai-agent-surface);
+    cursor: pointer;
+    text-align: right;
+    transition: border-color var(--ai-agent-transition), background var(--ai-agent-transition);
+}
+
+.ai-agent-site-color-btn:hover {
+    border-color: var(--ai-agent-primary);
+}
+
+.ai-agent-site-color-btn.is-active {
+    border-color: var(--ai-agent-primary);
+    background: var(--ai-agent-primary-light);
+}
+
+.ai-agent-site-color-dot {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: var(--ai-agent-radius-pill);
+    border: 1px solid rgba(0, 0, 0, .12);
+}
+
+.ai-agent-site-color-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ai-agent-site-color-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ai-agent-text);
+}
+
+.ai-agent-site-color-hex {
+    font-size: 11px;
+    color: var(--ai-agent-text-muted);
+    font-family: var(--ai-agent-mono);
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+/* --------------------------------------------------------------------------
+   Dark-mode colour: shown, not edited
+
+   It is generated from the light colour the moment that one changes, so an
+   editable field here would just be a value the next save overwrites — a
+   plain read-only row says that up front instead of inviting a click.
+   -------------------------------------------------------------------------- */
+.ai-agent-color-readonly {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--ai-agent-border);
+    border-radius: var(--ai-agent-radius);
+    background: var(--ai-agent-surface-2);
+    color: var(--ai-agent-text-secondary);
+    font-size: 13px;
+    font-family: var(--ai-agent-mono);
+    direction: ltr;
+    width: fit-content;
+}
+
+.ai-agent-color-readonly .ai-agent-color-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: var(--ai-agent-radius-pill);
+    border: 1px solid rgba(0, 0, 0, .12);
 }

@@ -165,6 +165,133 @@ if (!function_exists('ai_agent_seed_color_from_site')) {
     }
 }
 
+/*
+============================================
+لیست رنگ‌های نام‌دار خودِ سایت (نه فقط یک حدس، بلکه چند گزینه)
+
+برای بخش «رنگ دستیار» در صفحه‌ی تنظیمات: کاربر باید بتواند از میان
+رنگ‌هایی که خودِ سایتش (وردپرس یا المنتور) به‌عنوان پالت رسمی‌اش
+معرفی کرده، یکی را با یک کلیک انتخاب کند — نه اینکه کد هگز را از
+یک‌جای دیگر کپی کند.
+
+اولویت با پالت المنتور است (اگر نصب و پیکربندی شده باشد)، چون
+بیشتر سایت‌های فارسی‌زبان با آن ساخته می‌شوند و رنگ‌هایش دقیقاً
+همان‌هایی هستند که در طراحی سایت استفاده شده. اگر المنتور در کار
+نبود، به پالت theme.json قالب برمی‌گردیم.
+============================================
+*/
+
+if (!function_exists('ai_agent_get_elementor_colors')) {
+    /** رنگ‌های سراسری المنتور (Global Colors)، اگر افزونه‌ی المنتور فعال باشد. */
+    function ai_agent_get_elementor_colors()
+    {
+        $kit_id = get_option('elementor_active_kit');
+        if (!$kit_id) {
+            return array();
+        }
+
+        $page_settings = get_post_meta((int) $kit_id, '_elementor_page_settings', true);
+        if (!is_array($page_settings)) {
+            return array();
+        }
+
+        // عنوان‌های پیش‌فرض چهار رنگ سیستمی المنتور، برای وقتی که کاربر
+        // خودش اسمی رویشان نگذاشته است.
+        $default_labels = array(
+            'primary'   => 'رنگ اصلی سایت',
+            'secondary' => 'رنگ دوم سایت',
+            'text'      => 'رنگ متن سایت',
+            'accent'    => 'رنگ تأکید سایت',
+        );
+
+        $colors = array();
+
+        if (!empty($page_settings['system_colors']) && is_array($page_settings['system_colors'])) {
+            foreach ($page_settings['system_colors'] as $entry) {
+                if (empty($entry['color'])) {
+                    continue;
+                }
+                $hex = sanitize_hex_color($entry['color']);
+                if (!$hex) {
+                    continue;
+                }
+                $slug  = isset($entry['_id']) ? $entry['_id'] : '';
+                $label = !empty($entry['title']) ? $entry['title'] : (isset($default_labels[$slug]) ? $default_labels[$slug] : 'رنگ سایت');
+                $colors[] = array('label' => sanitize_text_field($label), 'hex' => $hex);
+            }
+        }
+
+        if (!empty($page_settings['custom_colors']) && is_array($page_settings['custom_colors'])) {
+            foreach ($page_settings['custom_colors'] as $entry) {
+                if (empty($entry['color'])) {
+                    continue;
+                }
+                $hex = sanitize_hex_color($entry['color']);
+                if (!$hex) {
+                    continue;
+                }
+                $label = !empty($entry['title']) ? $entry['title'] : 'رنگ سفارشی سایت';
+                $colors[] = array('label' => sanitize_text_field($label), 'hex' => $hex);
+            }
+        }
+
+        return $colors;
+    }
+}
+
+if (!function_exists('ai_agent_get_theme_json_colors')) {
+    /** پالت رنگ theme.json قالب (وردپرس Full Site Editing)، چند رنگ نه فقط یکی. */
+    function ai_agent_get_theme_json_colors()
+    {
+        if (!class_exists('WP_Theme_JSON_Resolver')) {
+            return array();
+        }
+
+        $data = WP_Theme_JSON_Resolver::get_merged_data();
+        if (!is_object($data) || !method_exists($data, 'get_settings')) {
+            return array();
+        }
+
+        $theme_settings = $data->get_settings();
+        $palette = isset($theme_settings['color']['palette']['theme'])
+            ? $theme_settings['color']['palette']['theme']
+            : array();
+
+        $colors = array();
+        foreach ($palette as $entry) {
+            if (empty($entry['color'])) {
+                continue;
+            }
+            $hex = sanitize_hex_color($entry['color']);
+            if (!$hex) {
+                continue;
+            }
+            $label = !empty($entry['name']) ? $entry['name'] : (isset($entry['slug']) ? $entry['slug'] : 'رنگ قالب');
+            $colors[] = array('label' => sanitize_text_field($label), 'hex' => $hex);
+        }
+
+        return $colors;
+    }
+}
+
+if (!function_exists('ai_agent_get_site_colors')) {
+    /**
+     * حداکثر چهار رنگ نام‌دار برای پیشنهاد در بخش «رنگ دستیار».
+     *
+     * اول المنتور، بعد پالت قالب. هیچ‌کدام تضمین‌شده نیستند — روی سایتی
+     * که هیچ‌کدام را ندارد، آرایه خالی برمی‌گردد و آن بخش از فرم اصلاً
+     * نمایش داده نمی‌شود.
+     */
+    function ai_agent_get_site_colors()
+    {
+        $colors = ai_agent_get_elementor_colors();
+        if (empty($colors)) {
+            $colors = ai_agent_get_theme_json_colors();
+        }
+        return array_slice($colors, 0, 4);
+    }
+}
+
 if (!function_exists('ai_agent_lighten_hex')) {
     /** رنگ را به نسبت $amount (بین ۰ تا ۱) به سمت سفید می‌برد. */
     function ai_agent_lighten_hex($hex, $amount)

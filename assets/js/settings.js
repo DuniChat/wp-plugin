@@ -73,10 +73,15 @@
             '#0EA5E9', '#2563EB', '#7C3AED', '#111827'
         ];
 
+        /*
+        دیگر از wp-color-picker استفاده نمی‌شود: آن دکمه‌ی چهارگوش با
+        رنگش، پاپ‌آور جداگانه و دکمه‌ی «Clear» هیچ‌کدام با تمِ این صفحه
+        هماهنگ نبودند. حالا فقط یک فیلد متنی برای کد هگز، یک نقطه‌ی
+        پیش‌نمایش زنده کنار برچسب، و همان ردیف نمونه‌های کلیک‌شدنی.
+        */
         function aiAgentSetupColorField($field) {
             var $row = $field.closest('.ai-agent-field-row');
 
-            // Live preview: the floating button, in the colour being chosen.
             var $preview = $('<span class="ai-agent-color-preview" aria-hidden="true"></span>');
             var $swatches = $('<div class="ai-agent-color-swatches"></div>');
 
@@ -88,28 +93,19 @@
                     .on('click', function(e) {
                         e.preventDefault();
                         $field.val(hex).trigger('change');
-                        // wpColorPicker keeps its own state, so it has to be
-                        // told rather than left to read the input back.
-                        if ($field.data('wpWpColorPicker') || $field.hasClass('wp-color-picker')) {
-                            $field.wpColorPicker('color', hex);
-                        }
-                        update(hex);
                     })
                     .appendTo($swatches);
             });
 
             function update(hex) {
-                if (!hex) return;
+                if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return;
                 $preview.css('background', hex);
                 $swatches.children().each(function() {
                     $(this).toggleClass('is-active', $(this).attr('title').toLowerCase() === String(hex).toLowerCase());
                 });
             }
 
-            $field.wpColorPicker({
-                change: function(event, ui) { update(ui.color.toString()); },
-                clear:  function() { update('#F4865B'); }
-            });
+            $field.on('input change', function() { update($field.val()); });
 
             $row.append($swatches);
             $row.find('.ai-agent-field-label').append($preview);
@@ -119,6 +115,69 @@
         $('.ai-agent-color-field').each(function() {
             aiAgentSetupColorField($(this));
         });
+
+        /*
+        ============================================
+        رنگ پرایمری چت‌بات: دکمه‌های رنگ‌های سایت + پیش‌نمایش زنده‌ی
+        رنگ حالت تاریک (که فقط نمایش داده می‌شود، خودِ کاربر آن را
+        دستی عوض نمی‌کند — همان الگوریتمی که سرور برای ذخیره‌سازی
+        استفاده می‌کند، این‌جا هم برای پیش‌نمایش فوری تکرار شده است).
+        ============================================
+        */
+        (function aiAgentAssistantColor() {
+            var $light = $('#ai_agent_color_light');
+            if (!$light.length) return;
+
+            var $darkDot = $('#ai-agent-color-dark-dot');
+            var $darkValue = $('#ai-agent-color-dark-value');
+
+            function autoDark(hex) {
+                var m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+                if (!m) return null;
+                var n = parseInt(m[1], 16);
+                var lift = function(c) { return Math.round(c + (255 - c) * 0.18); };
+                var r = lift((n >> 16) & 255), g = lift((n >> 8) & 255), b = lift(n & 255);
+                return '#' + [r, g, b].map(function(v) { return v.toString(16).padStart(2, '0'); }).join('').toUpperCase();
+            }
+
+            function refreshDark() {
+                var dark = autoDark($light.val());
+                if (!dark) return;
+                $darkDot.css('background', dark);
+                $darkValue.text(dark);
+            }
+
+            $light.on('input change', refreshDark);
+
+            $('.ai-agent-site-color-btn').on('click', function() {
+                var hex = $(this).attr('data-hex');
+                if (!hex) return;
+                $light.val(hex).trigger('change');
+                $('.ai-agent-site-color-btn').removeClass('is-active');
+                $(this).addClass('is-active');
+            });
+        })();
+
+        /*
+        ============================================
+        نمونه‌جمله‌ی لحن پاسخ‌گویی
+
+        با انتخاب هر لحن، جمله‌ی نمونه‌ی همان لحن به‌جای توضیح ثابت قبلی
+        نشان داده می‌شود.
+        ============================================
+        */
+        (function aiAgentToneExamples() {
+            var $example = $('#ai-agent-tone-example');
+            if (!$example.length) return;
+            var examples = {};
+            try { examples = JSON.parse($example.attr('data-examples') || '{}'); } catch (e) {}
+
+            $('input[name="ai_agent_settings[assistant_tone]"]').on('change', function() {
+                if (examples[this.value]) {
+                    $example.text(examples[this.value]);
+                }
+            });
+        })();
 
         /*
         ============================================
@@ -148,6 +207,124 @@
                 $('.ai-agent-device-panel[data-device-panel="' + device + '"]').addClass('is-active');
             });
         }
+
+        /*
+        ============================================
+        ردیف‌های شماره‌ی پشتیبانی: افزودن/حذف، حداکثر ۵ ردیف
+        ============================================
+        */
+        (function aiAgentPhoneRows() {
+            var $rows = $('#ai-agent-phone-rows');
+            var $add  = $('#ai-agent-phone-add');
+            if (!$rows.length) return;
+
+            var MAX_PHONES = 5;
+
+            function makeRow() {
+                return $('<div class="ai-agent-phone-row"></div>').append(
+                    $('<input type="tel" class="ai-agent-input" dir="ltr" name="ai_agent_settings[support_phones][]" placeholder="02128421452" />'),
+                    $('<button type="button" class="ai-agent-phone-remove" aria-label="حذف این شماره">−</button>')
+                );
+            }
+
+            function syncAddButton() {
+                $add.prop('disabled', $rows.children('.ai-agent-phone-row').length >= MAX_PHONES);
+            }
+
+            $add.on('click', function(e) {
+                e.preventDefault();
+                if ($rows.children('.ai-agent-phone-row').length >= MAX_PHONES) return;
+                $rows.append(makeRow());
+                syncAddButton();
+            });
+
+            $rows.on('click', '.ai-agent-phone-remove', function(e) {
+                e.preventDefault();
+                var $row = $(this).closest('.ai-agent-phone-row');
+                if ($rows.children('.ai-agent-phone-row').length > 1) {
+                    $row.remove();
+                } else {
+                    // آخرین ردیف حذف نمی‌شود، فقط خالی می‌شود
+                    $row.find('input').val('').trigger('change');
+                }
+                syncAddButton();
+            });
+
+            syncAddButton();
+        })();
+
+        /*
+        ============================================
+        ذخیره‌ی خودکار فرم تنظیمات
+
+        دکمه‌ی «ذخیره تنظیمات افزونه» حذف شده: با هر تغییری در فرم، بعد
+        از یک مکث کوتاه (تا چند تغییر پشت‌سرهم یک درخواست بشوند، نه
+        ده‌تا)، کل فرم سریالایز و با AJAX ذخیره می‌شود — همان چیزی که
+        قبلاً submit به options.php انجام می‌داد، فقط بدون رفرش صفحه.
+
+        فیلد توکن (API Key) از این مسیر مستثنی است: مسیر ذخیره‌ی
+        اختصاصی و دکمه‌ی «ذخیره‌ی توکن» خودش را دارد؛ اگر این‌جا هم
+        فرستاده شود و کاربر وسط تایپ کلید مکث کند، یک کلید نصفه‌کاره
+        زودتر از موعد ذخیره می‌شود.
+        ============================================
+        */
+        (function aiAgentAutoSave() {
+            var $form  = $('#ai_agent_api_key').closest('form');
+            var $hint  = $('#ai-agent-autosave-hint');
+            var token  = $('#ai_agent_autosave_nonce_field').val();
+            if (!$form.length || !token) return;
+
+            var timer = null;
+
+            function serialize() {
+                return $form.serializeArray().filter(function(field) {
+                    return field.name !== 'ai_agent_settings[api_key]';
+                }).map(function(field) {
+                    return encodeURIComponent(field.name) + '=' + encodeURIComponent(field.value);
+                }).join('&');
+            }
+
+            function save() {
+                $hint.removeClass('is-ok is-error').addClass('is-saving').text('در حال ذخیره...');
+
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: serialize() + '&action=ai_agent_save_settings&nonce=' + encodeURIComponent(token),
+                    success: function(response) {
+                        if (response.success) {
+                            $hint.removeClass('is-saving is-error').addClass('is-ok').text('تنظیمات ذخیره شد.');
+                        } else {
+                            $hint.removeClass('is-saving is-ok').addClass('is-error')
+                                 .text((response.data && response.data.message) || 'ذخیره ناموفق بود.');
+                        }
+                        window.setTimeout(function() {
+                            $hint.removeClass('is-saving is-ok is-error').text('تنظیمات خودکار ذخیره می‌شوند');
+                        }, 2500);
+                    },
+                    error: function() {
+                        $hint.removeClass('is-saving is-ok').addClass('is-error').text('خطا در ارتباط با وردپرس.');
+                        window.setTimeout(function() {
+                            $hint.removeClass('is-saving is-ok is-error').text('تنظیمات خودکار ذخیره می‌شوند');
+                        }, 2500);
+                    }
+                });
+            }
+
+            $form.on('input change', 'input, select, textarea', function() {
+                if (this.id === 'ai_agent_api_key') return;
+                clearTimeout(timer);
+                timer = setTimeout(save, 900);
+            });
+
+            // Enter در یکی از فیلدها هم نباید فرم را به‌صورت عادی (به options.php)
+            // بفرستد — همه‌چیز از مسیر AJAX بالا می‌رود.
+            $form.on('submit', function(e) {
+                e.preventDefault();
+                clearTimeout(timer);
+                save();
+            });
+        })();
 
         // ----- دکمه نمایش/مخفی کردن API Key -----
         $('#ai-agent-toggle-api-key').on('click', function(){
@@ -320,17 +497,11 @@
             });
         }
 
-        // فقط هنگام تایپ واقعی، جستجوی جدید را با تاخیر (debounce) اجرا کن
-        $('#ai_agent_model_search').on('input', function() {
-            aiAgentModelsQuery = $(this).val();
-            aiAgentModelsLimit = 10;
-            clearTimeout(aiAgentModelsTimer);
-            aiAgentModelsTimer = setTimeout(aiAgentLoadModels, 300);
-        });
+        // فیلد readonly است — کاربر نمی‌تواند تایپ کند، فقط از لیست انتخاب می‌کند.
+        // پس دیگر جستجوی زنده‌ای روی «input» لازم نیست؛ کل لیست یک‌جا می‌آید.
 
-        // دکمه‌ی کشویی (فلش): باز/بسته کردن لیست به‌صورت toggle.
-        // این کار حس یک کومبوباکس واقعی را به کاربر می‌دهد: می‌تواند روی دکمه کلیک
-        // کند تا منوی کشویی باز شود یا مستقیماً داخل فیلد تایپ کند تا جستجو اجرا شود.
+        // دکمه‌ی کشویی (فلش) یا خودِ فیلد (readonly): هر دو فقط باز/بسته می‌کنند.
+        // چون تایپ ممکن نیست، کوئری همیشه خالی است — یعنی همیشه کل لیست.
         $('#ai-agent-combobox-toggle').on('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -340,7 +511,7 @@
                 if ($('#ai-agent-models-list').children().length > 0) {
                     aiAgentComboboxOpen();
                 } else {
-                    aiAgentModelsQuery = $('#ai_agent_model_search').val();
+                    aiAgentModelsQuery = '';
                     aiAgentModelsLimit = 10;
                     aiAgentLoadModels();
                 }
@@ -348,13 +519,13 @@
             }
         });
 
-        // با فوکوس روی باکس: اگر لیست از قبل بارگذاری شده، همان را نشان بده (بدون کوئری مجدد)
-        // و فقط اگر خالی است، یک‌بار بارگذاری کن. این از ریست شدن لیست هنگام اسکرول/فوکوس مجدد جلوگیری می‌کند
+        // با فوکوس روی باکس (شامل کلیک، چون فیلد readonly است): اگر لیست از قبل
+        // بارگذاری شده، همان را نشان بده و فقط اگر خالی است یک‌بار بارگذاری کن.
         $('#ai_agent_model_search').on('focus', function() {
             if ($('#ai-agent-models-list').children().length > 0) {
                 aiAgentComboboxOpen();
             } else {
-                aiAgentModelsQuery = $(this).val();
+                aiAgentModelsQuery = '';
                 aiAgentModelsLimit = 10;
                 aiAgentLoadModels();
             }
@@ -372,9 +543,8 @@
 
         $(document).on('click', '.ai-agent-model-item:not(.ai-agent-model-loadmore)', function() {
             var value = $(this).attr('data-value');
-            $('#ai_agent_model').val(value);
+            $('#ai_agent_model').val(value).trigger('change');
             $('#ai_agent_model_search').val(value);
-            $('#ai-agent-model-current').text(value);
             aiAgentComboboxClose();
         });
 
@@ -392,15 +562,16 @@
         function aiAgentLoadWalletBalance(showLoadingUI) {
             var $valueEl  = $('#ai-agent-wallet-balance-value');
             var $statusEl = $('#ai-agent-wallet-balance-status');
-            var $btn      = $('#ai-agent-wallet-balance-refresh-btn');
             var token     = $('#ai_agent_wallet_balance_nonce_field').val();
 
             if (!token || !$valueEl.length) return; // یعنی این بخش در صفحه وجود ندارد
 
+            // فقط در اولین بارگذاری «در حال دریافت...» نشان داده می‌شود؛ رفرش‌های
+            // خاموشِ هر ۲۰ ثانیه چیزی نمی‌گویند مگر خطا یا موجودی کم باشد —
+            // وگرنه این متن هر ۲۰ ثانیه چشمک می‌زد.
             if (showLoadingUI) {
-                $btn.prop('disabled', true).addClass('is-loading');
+                $statusEl.removeClass('is-error').text('در حال دریافت موجودی...');
             }
-            $statusEl.text('در حال دریافت موجودی...');
 
             $.ajax({
                 url: ajaxurl,
@@ -410,42 +581,35 @@
                     nonce: token
                 },
                 success: function(response) {
-                    $btn.prop('disabled', false).removeClass('is-loading');
                     if (response.success) {
                         // The server sends the formatted string so the digits and
                         // the low-balance threshold match everywhere; the raw
                         // number is only a fallback.
                         $valueEl.text(response.data.balance_text || aiAgentFormatToman(response.data.balance_irr));
-                        $statusEl.text('');
+                        $statusEl.removeClass('is-error').text('');
 
                         // Running out mid-conversation is the failure customers
                         // notice, so a low balance is called out here rather
                         // than left for them to read off a number.
-                        var $card = $valueEl.closest('.ai-agent-wallet-card');
-                        $card.toggleClass('is-low', !!response.data.is_low);
                         if (response.data.is_low) {
-                            $statusEl.text('موجودی کم است — برای قطع نشدن دستیار، کیف‌پول را شارژ کنید.');
+                            $statusEl.text('موجودی کم است — کیف‌پول را شارژ کنید.');
                         }
                     } else {
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت موجودی کیف پول.';
-                        $statusEl.text(msg);
+                        $statusEl.addClass('is-error').text(msg);
                     }
                 },
                 error: function() {
-                    $btn.prop('disabled', false).removeClass('is-loading');
-                    $statusEl.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
+                    $statusEl.addClass('is-error').text('خطای غیرمنتظره در ارتباط با وردپرس رخ داد.');
                 }
             });
         }
 
-        $('#ai-agent-wallet-balance-refresh-btn').on('click', function(e) {
-            e.preventDefault();
-            aiAgentLoadWalletBalance(true);
-        });
-
-        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات (اگر این بخش در صفحه موجود باشد)
+        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات، و بعد از آن هر ۲۰ ثانیه یک‌بار
+        // (بدون دکمه‌ی دستی — رجوع کنید به بازطراحی کارت کیف‌پول در بالای صفحه)
         if ($('#ai-agent-wallet-balance-value').length) {
             aiAgentLoadWalletBalance(false);
+            window.setInterval(function() { aiAgentLoadWalletBalance(false); }, 20000);
         }
 
         // ----- ذخیره‌ی توکن بدون ارسال کل فرم -----
@@ -502,67 +666,8 @@
             });
         });
 
-        // ----- نوار اعلان‌ها -----
-        // اعلان‌های دانیچَت، از جمله تغییر خودکار قیمت مدل‌ها به دنبال تغییر نرخ
-        // تتر. یکی‌یکی و با فاصله نمایش داده می‌شوند؛ حرکت پیوسته متنی را که
-        // کاربر وسط خواندنش است جابه‌جا می‌کند.
-        (function aiAgentAnnouncements() {
-            var $bar = $('#ai-agent-announcements');
-            if (!$bar.length) return;
-
-            var $title = $('#ai-agent-announcement-title');
-            var $date  = $('#ai-agent-announcement-date');
-            var $dots  = $('#ai-agent-announcement-dots');
-            var items  = [];
-            var index  = 0;
-            var timer  = null;
-
-            function show(i) {
-                if (!items.length) return;
-                index = ((i % items.length) + items.length) % items.length;
-                var item = items[index];
-                $title.text(item.title || '');
-                $date.text(item.published_at ? aiAgentFaDigits(item.published_at.slice(0, 10)) : '');
-                $bar.attr('data-category', item.category || 'update');
-                $dots.children().each(function(n) {
-                    $(this).toggleClass('is-active', n === index);
-                });
-            }
-
-            function start() {
-                if (items.length < 2 || timer) return;
-                timer = window.setInterval(function() { show(index + 1); }, 7000);
-            }
-            function stop() {
-                if (timer) { window.clearInterval(timer); timer = null; }
-            }
-
-            $bar.on('mouseenter', stop).on('mouseleave', start);
-
-            $.ajax({
-                url: ajaxurl,
-                method: 'POST',
-                data: { action: 'ai_agent_get_announcements' },
-                success: function(response) {
-                    if (!response.success || !response.data || !response.data.items || !response.data.items.length) {
-                        return;
-                    }
-                    items = response.data.items;
-                    $dots.empty();
-                    if (items.length > 1) {
-                        $.each(items, function(i) {
-                            $('<button type="button" class="ai-agent-announcement-dot"></button>')
-                                .attr('aria-label', 'اعلان ' + aiAgentFaDigits(i + 1))
-                                .on('click', function() { show(i); })
-                                .appendTo($dots);
-                        });
-                    }
-                    show(0);
-                    $bar.prop('hidden', false);
-                    start();
-                }
-            });
-        })();
+        // نوار اعلان‌ها حذف شد — یک کارت که فقط یک آیکون بلندگو داشت و
+        // معلوم نبود چیست؛ اعلان‌های واقعی جای بهتری برای رسیدن به کاربر دارند.
 
         // ----- انتخاب موقعیت آیکون با کشیدن -----
         // هر دستگاه یک ماکت است و آیکون داخلش کشیدنی. کشیدن، هم سمت و هم فاصله
@@ -695,39 +800,8 @@
         // دکمه‌ها اکنون SVG + متن دارند؛ برای حفظ SVG، به جای .text() از کلاس is-loading
         // استفاده می‌کنیم و فقط در صورت نیاز متن label داخل دکمه را با jQuery .find().last()
         // به‌روزرسانی می‌کنیم. در این‌جا فقط disabled و is-loading toggle می‌شود.
-        $('#ai-agent-reload-settings-btn').on('click', function(e) {
-            e.preventDefault();
-            var $btn = $(this);
-            var $status = $('#ai-agent-reload-settings-status');
-            var token = $('#ai_agent_reload_settings_nonce_field').val();
-
-            $btn.prop('disabled', true).addClass('is-loading');
-            $status.text('در حال دریافت آخرین مقادیر از سرور...');
-
-            $.ajax({
-                url: ajaxurl,
-                method: 'POST',
-                data: {
-                    action: 'ai_agent_reload_settings',
-                    nonce: token
-                },
-                success: function(response) {
-                    if (response.success) {
-                        $status.text('با موفقیت بازخوانی شد؛ در حال بارگذاری مجدد صفحه...');
-                        // بارگذاری مجدد صفحه تا تمام فیلدهای فرم (از جمله بخش‌های فقط‌خواندنی
-                        // مثل سقف پیام روزانه و وضعیت‌های مجاز) با مقادیر تازه از سرور نمایش داده شوند
-                        setTimeout(function(){ window.location.reload(); }, 700);
-                    } else {
-                        $btn.prop('disabled', false).removeClass('is-loading');
-                        $status.text((response.data && response.data.message) ? response.data.message : 'خطا در بازخوانی تنظیمات از سرور.');
-                    }
-                },
-                error: function() {
-                    $btn.prop('disabled', false).removeClass('is-loading');
-                    $status.text('خطای غیرمنتظره در ارتباط با پردازشگر محلی وردپرس رخ داد.');
-                }
-            });
-        });
+        // دکمه‌ی «بارگذاری از سرور» حذف شده؛ همین بازخوانی خودکار با باز شدن
+        // صفحه انجام می‌شود (رجوع کنید به ai_agent_settings_page در settings.php).
 
         $('#ai-agent-sync-btn').on('click', function(e) {
             e.preventDefault();
