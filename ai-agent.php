@@ -3,7 +3,7 @@
 Plugin Name: Dunichat
 Plugin URI: https://dunichat.ir
 Description: دستیار هوشمند دانیچت محصولی از دانیجت
-Version: 1.2.0
+Version: 1.4.0
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Dunijet
@@ -19,7 +19,15 @@ if (!defined('ABSPATH')) {
 
 // Asset URLs are versioned with this, so a plugin update does not leave
 // browsers serving last release's CSS from cache.
-define('AI_AGENT_VERSION', '1.2.0');
+define('AI_AGENT_VERSION', '1.4.0');
+/*
+مقدار روشن‌شدن رنگ برند برای حالت تاریک. رنگی که روی کاغذ روشن درست
+به نظر می‌رسد، روی پس‌زمینه‌ی مشکی یا می‌سوزد یا گم می‌شود؛ ۲۸٪ به‌سمت
+سفید همان رنگ را در دارک خوانا نگه می‌دارد. یک‌جا تعریف شده تا رنگی که
+هنگام نصب ساخته می‌شود با رنگی که هنگام ذخیره ساخته می‌شود یکی باشد —
+قبلاً دو عدد متفاوت بودند و رنگ دارک بعد از اولین ذخیره عوض می‌شد.
+*/
+define('AI_AGENT_DARK_LIFT', 0.28);
 define('AI_AGENT_PATH', plugin_dir_path(__FILE__));
 define('AI_AGENT_URL', plugin_dir_url(__FILE__));
 

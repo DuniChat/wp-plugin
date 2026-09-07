@@ -60,61 +60,92 @@
 
         /*
         ============================================
-        انتخاب رنگ دستیار
+        کنترل‌های ساخته‌شده در PHP: سگمنت‌ها، کاشی‌ها، سوییچ‌های رنگ
 
-        علاوه بر انتخابگر استاندارد وردپرس، چند رنگ پیشنهادی به‌صورت
-        نمونه‌ی کلیک‌شدنی و یک پیش‌نمایش زنده اضافه شده است: قبلاً
-        کاربر باید کد رنگ را حدس می‌زد و تنظیمات را ذخیره می‌کرد تا
-        نتیجه را روی ویجت ببیند.
+        همه‌ی این‌ها یک input رادیویی یا چک‌باکسِ پنهان دارند و ظاهرشان
+        از کلاس is-active می‌آید. مرورگر خودش وضعیت input را عوض می‌کند؛
+        این‌جا فقط کلاس با آن هم‌گام می‌شود تا فرم و ظاهر یکی بمانند.
         ============================================
         */
-        var AI_AGENT_COLOR_PRESETS = [
-            '#F4865B', '#E2574C', '#D97706', '#16A34A',
-            '#0EA5E9', '#2563EB', '#7C3AED', '#111827'
-        ];
-
-        /*
-        دیگر از wp-color-picker استفاده نمی‌شود: آن دکمه‌ی چهارگوش با
-        رنگش، پاپ‌آور جداگانه و دکمه‌ی «Clear» هیچ‌کدام با تمِ این صفحه
-        هماهنگ نبودند. حالا فقط یک فیلد متنی برای کد هگز، یک نقطه‌ی
-        پیش‌نمایش زنده کنار برچسب، و همان ردیف نمونه‌های کلیک‌شدنی.
-        */
-        function aiAgentSetupColorField($field) {
-            var $row = $field.closest('.ai-agent-field-row');
-
-            var $preview = $('<span class="ai-agent-color-preview" aria-hidden="true"></span>');
-            var $swatches = $('<div class="ai-agent-color-swatches"></div>');
-
-            $.each(AI_AGENT_COLOR_PRESETS, function(i, hex) {
-                $('<button type="button" class="ai-agent-color-swatch"></button>')
-                    .css('background', hex)
-                    .attr('title', hex)
-                    .attr('aria-label', 'رنگ ' + hex)
-                    .on('click', function(e) {
-                        e.preventDefault();
-                        $field.val(hex).trigger('change');
-                    })
-                    .appendTo($swatches);
+        function aiAgentSyncRadioGroup($input) {
+            var name = $input.attr('name');
+            if (!name) return;
+            $('input[name="' + name + '"]').each(function () {
+                $(this).closest('.ai-agent-segment').toggleClass('is-active', this.checked);
             });
-
-            function update(hex) {
-                if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return;
-                $preview.css('background', hex);
-                $swatches.children().each(function() {
-                    $(this).toggleClass('is-active', $(this).attr('title').toLowerCase() === String(hex).toLowerCase());
-                });
-            }
-
-            $field.on('input change', function() { update($field.val()); });
-
-            $row.append($swatches);
-            $row.find('.ai-agent-field-label').append($preview);
-            update($field.val());
         }
 
-        $('.ai-agent-color-field').each(function() {
-            aiAgentSetupColorField($(this));
+        $('.ai-agent-segment input[type="radio"]').on('change', function () {
+            aiAgentSyncRadioGroup($(this));
         });
+
+        $('.ai-agent-tile input[type="checkbox"]').on('change', function () {
+            $(this).closest('.ai-agent-tile').toggleClass('is-active', this.checked);
+        });
+
+        /*
+        ============================================
+        سوییچ‌های رنگ پس‌زمینه‌ی چت
+
+        مقدار در یک input مخفی می‌نشیند و همان است که ذخیره می‌شود؛
+        دایره‌ها فقط راهِ انتخابش هستند. change روی input مخفی دستی
+        شلیک می‌شود، وگرنه ذخیره‌ی خودکار متوجه تغییر نمی‌شود.
+        ============================================
+        */
+        $('.ai-agent-swatches[data-swatch-group]').each(function () {
+            var $group = $(this);
+            var name   = $group.attr('data-swatch-group');
+            /*
+            پالت رنگ اصلی روی همان فیلد کد رنگ می‌نویسد (که خودش هم
+            دستی قابل تایپ است)؛ بقیه‌ی پالت‌ها input مخفی خودشان را
+            دارند. هر دو با همین یک شناسه پیدا می‌شوند.
+            */
+            var $value = $('#ai_agent_' + name);
+            if (!$value.length) return;
+
+            $group.on('click', '.ai-agent-swatch', function (e) {
+                e.preventDefault();
+                var hex = $(this).attr('data-hex');
+                if (!hex) return;
+                $group.find('.ai-agent-swatch').removeClass('is-active');
+                $(this).addClass('is-active');
+                $value.val(hex.toUpperCase()).trigger('change');
+            });
+        });
+
+        /*
+        ============================================
+        دو نمای صفحه — تنظیمات و گفت‌وگوها
+
+        قبلاً دو آدرس جدا بودند و هر رفت‌وبرگشت یعنی بارگذاری کامل صفحه
+        و یک کال دوباره به سرور همگام‌سازی. حالا فقط کلاس عوض می‌شود.
+        نمای گفت‌وگوها اولین بار که باز شود، فهرستش را می‌گیرد — نه
+        هنگام لود صفحه، چون بیشتر بازدیدها اصلاً سراغش نمی‌روند.
+        ============================================
+        */
+        (function aiAgentViews() {
+            var $tabs = $('.ai-agent-tab[data-view]');
+            if (!$tabs.length) return;
+            var historyLoaded = false;
+
+            $tabs.on('click', function () {
+                var view = $(this).attr('data-view');
+                if (!view) return;
+
+                $tabs.removeClass('is-active').attr('aria-selected', 'false');
+                $(this).addClass('is-active').attr('aria-selected', 'true');
+
+                $('.ai-agent-view').removeClass('is-active');
+                $('.ai-agent-view[data-view-panel="' + view + '"]').addClass('is-active');
+
+                if (view === 'history' && !historyLoaded) {
+                    historyLoaded = true;
+                    if (typeof aiAgentSessions === 'object' && aiAgentSessions && typeof aiAgentSessions.load === 'function') {
+                        aiAgentSessions.load();
+                    }
+                }
+            });
+        })();
 
         /*
         ============================================
@@ -135,16 +166,36 @@
                 var m = /^#([0-9a-f]{6})$/i.exec(hex || '');
                 if (!m) return null;
                 var n = parseInt(m[1], 16);
-                var lift = function(c) { return Math.round(c + (255 - c) * 0.18); };
+                var amount = (typeof aiAgentAdmin === 'object' && aiAgentAdmin && aiAgentAdmin.darkLift)
+                    ? parseFloat(aiAgentAdmin.darkLift) : 0.28;
+                var lift = function(c) { return Math.round(c + (255 - c) * amount); };
                 var r = lift((n >> 16) & 255), g = lift((n >> 8) & 255), b = lift(n & 255);
                 return '#' + [r, g, b].map(function(v) { return v.toString(16).padStart(2, '0'); }).join('').toUpperCase();
             }
 
+            var $lightDot = $('#ai-agent-color-light-dot');
+
             function refreshDark() {
-                var dark = autoDark($light.val());
+                var hex = $light.val();
+                var dark = autoDark(hex);
                 if (!dark) return;
+
+                $lightDot.css('background', hex);
                 $darkDot.css('background', dark);
                 $darkValue.text(dark);
+
+                /*
+                هر سه راهِ انتخاب رنگ (کارت رنگ سایت، پالت آماده، کد
+                دستی) یک مقدار را می‌نویسند، پس هر سه باید همان یکی را
+                هم نشان بدهند — وگرنه کاربر دو چیز انتخاب‌شده می‌بیند.
+                */
+                var upper = String(hex).toUpperCase();
+                $('.ai-agent-site-color-btn').each(function () {
+                    $(this).toggleClass('is-active', String($(this).attr('data-hex')).toUpperCase() === upper);
+                });
+                $('.ai-agent-swatches[data-swatch-group="color_light"] .ai-agent-swatch').each(function () {
+                    $(this).toggleClass('is-active', String($(this).attr('data-hex')).toUpperCase() === upper);
+                });
             }
 
             $light.on('input change', refreshDark);
@@ -169,8 +220,8 @@
         (function aiAgentToneExamples() {
             var $example = $('#ai-agent-tone-example');
             if (!$example.length) return;
-            var examples = {};
-            try { examples = JSON.parse($example.attr('data-examples') || '{}'); } catch (e) {}
+            var examples = (typeof aiAgentAdmin === 'object' && aiAgentAdmin && aiAgentAdmin.toneExamples)
+                ? aiAgentAdmin.toneExamples : {};
 
             $('input[name="ai_agent_settings[assistant_tone]"]').on('change', function() {
                 if (examples[this.value]) {
@@ -222,8 +273,8 @@
 
             function makeRow() {
                 return $('<div class="ai-agent-phone-row"></div>').append(
-                    $('<input type="tel" class="ai-agent-input" dir="ltr" name="ai_agent_settings[support_phones][]" placeholder="02128421452" />'),
-                    $('<button type="button" class="ai-agent-phone-remove" aria-label="حذف این شماره">−</button>')
+                    $('<input type="tel" class="ai-agent-input dc-ltr" lang="en" name="ai_agent_settings[support_phones][]" placeholder="02128421452" />'),
+                    $('<button type="button" class="ai-agent-btn ai-agent-btn-square ai-agent-phone-remove" aria-label="حذف این شماره">−</button>')
                 );
             }
 
@@ -338,222 +389,123 @@
             }
         });
 
-        // ----- جستجو و انتخاب مدل هوش مصنوعی از سرور اختصاصی -----
-        var aiAgentModelsLimit = 10;
-        var aiAgentModelsQuery = '';
-        var aiAgentModelsTimer = null;
-        var aiAgentModelsXhr = null;
-        var aiAgentModelsReqId = 0;
+        /*
+        ============================================
+        لیست مدل‌ها — از سرور دانیچَت، همراه با قیمت
 
-        function aiAgentGetModelLabel(model) {
-            if (typeof model === 'string') return model;
-            if (model && typeof model === 'object') {
-                return model.name || model.id || model.title || JSON.stringify(model);
+        قبلاً یک کمبوباکسِ دست‌ساز بود با فیلد جست‌وجوی readonly، لیست
+        بازشونده و دکمه‌ی «بیشتر». هیچ‌کدام لازم نبود: تعداد مدل‌ها ده‌ها
+        تاست، نه هزارتا، و یک select استاندارد هم روی موبایل بهتر کار
+        می‌کند و هم صفحه‌کلید و اسکرین‌ریدر را رایگان می‌دهد.
+
+        کنار اسم هر مدل، هزینه‌ی یک گفت‌وگوی پشتیبانی نوشته می‌شود.
+        سرور همان عدد را می‌دهد (system_price_irr_per_support_chat، به
+        ریال) چون قیمت هر یک‌میلیون توکن، عددی نیست که صاحب یک فروشگاه
+        بتواند تصمیمش را با آن بسنجد.
+
+        اگر این کال شکست بخورد، انتخاب فعلی کاربر دست‌نخورده می‌ماند —
+        هیچ‌وقت لیست خالی جای مدلِ ذخیره‌شده را نمی‌گیرد.
+        ============================================
+        */
+        (function aiAgentModels() {
+            var $select = $('#ai_agent_model');
+            if (!$select.length) return;
+
+            var $status  = $('#ai-agent-models-status');
+            var token    = $('#ai_agent_models_nonce_field').val();
+            var selected = $select.val();
+
+            function faDigits(value) {
+                return String(value).replace(/[0-9]/g, function (d) {
+                    return '۰۱۲۳۴۵۶۷۸۹'[d];
+                });
             }
-            return String(model);
-        }
 
-        function aiAgentGetModelValue(model) {
-            if (typeof model === 'string') return model;
-            if (model && typeof model === 'object') {
-                return model.id || model.name || model.title || '';
+            /** ریال ← تومان، گروه‌بندی‌شده و با ارقام فارسی. */
+            function toman(amountIrr) {
+                var value = Math.round(Number(amountIrr) / 10);
+                if (!isFinite(value)) return '';
+                return faDigits(String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '٬'));
             }
-            return String(model);
-        }
 
-        // ----- ارقام و مبالغ -----
-        // همه‌ی اعداد این صفحه فارسی و تومانی‌اند. سرور همه‌جا ریال می‌فرستد،
-        // پس تبدیل فقط همین‌جا (لبه‌ی نمایش) انجام می‌شود.
-        function aiAgentFaDigits(value) {
-            return String(value).replace(/[0-9]/g, function (d) {
-                return '۰۱۲۳۴۵۶۷۸۹'[Number(d)];
-            }).replace(/,/g, '٬');
-        }
+            function labelFor(model) {
+                if (typeof model === 'string') return model;
+                if (!model || typeof model !== 'object') return String(model);
 
-        function aiAgentFormatToman(amountIrr) {
-            var n = Number(amountIrr);
-            if (isNaN(n)) return '—';
-            var toman = Math.round(n / 10);
-            var sign = toman < 0 ? '−' : '';
-            return sign + aiAgentFaDigits(Math.abs(toman).toLocaleString('en-US')) + ' تومان';
-        }
+                var id    = model.id || model.name || '';
+                var parts = [id];
 
-        function aiAgentRenderModels(models) {
-            var $list = $('#ai-agent-models-list');
-            $list.empty();
+                if (model.provider) parts.push('· ' + model.provider);
 
-            if (!models || !models.length) {
-                $list.append('<div class="ai-agent-combobox-empty">موردی یافت نشد</div>');
-                aiAgentComboboxOpen();
+                var price = model.system_price_irr_per_support_chat;
+                if (price !== null && price !== undefined && Number(price) > 0) {
+                    parts.push('· ' + toman(price) + ' تومان به‌ازای هر گفت‌وگو');
+                }
+                return parts.join(' ');
+            }
+
+            function valueFor(model) {
+                if (typeof model === 'string') return model;
+                if (!model || typeof model !== 'object') return '';
+                return model.id || model.name || '';
+            }
+
+            function fail(message) {
+                $status.addClass('is-error').text(message);
+            }
+
+            if (!token) {
+                fail('لیست مدل‌ها در دسترس نیست.');
                 return;
             }
 
-            $.each(models, function(i, model) {
-                var value    = aiAgentGetModelValue(model);
-                var label    = aiAgentGetModelLabel(model);
-                // استایل‌ها به‌طور کامل از SettingsStyles.css استفاده می‌کنند؛ این‌جا فقط
-                // ساختار DOM ساخته می‌شود تا هم نمایش یکدست باشد و هم hover از طریق CSS.
-                var $item = $('<div class="ai-agent-model-item"></div>').attr('data-value', value);
-
-                var $head = $('<div class="ai-agent-model-item-head"></div>');
-                $head.append($('<span class="ai-agent-model-item-name"></span>').text(label));
-
-                if (model && typeof model === 'object') {
-                    // A green badge only when the model *is* reachable over the
-                    // national network. There is nothing useful to say when it
-                    // is not, and a grey "no" badge on every row is noise.
-                    if (model.active_in_national_network) {
-                        $head.append($('<span class="ai-agent-model-badge ai-agent-model-badge-ok"></span>').text('مناسب زمان نت ملی'));
-                    }
-                    if (model.supports_vision) {
-                        $head.append($('<span class="ai-agent-model-badge"></span>').text('قابلیت جست‌وجوی تصویری'));
-                    }
-                }
-
-                $item.append($head);
-                // نام سازنده حذف شد: نام شرکتی را می‌گفت که کسی از او خرید
-                // نمی‌کند، و خود شناسه‌ی مدل همان را در خودش دارد.
-                $item.append($('<div class="ai-agent-model-item-id"></div>').text(value));
-
-                // هزینه‌ی یک چت پشتیبانی معمولی، نه قیمت هر یک میلیون توکن.
-                // یک میلیون توکن واحدی است که ارائه‌دهنده‌ها با آن قیمت
-                // می‌دهند، نه واحدی که صاحب یک فروشگاه بتواند با آن تصمیم
-                // بگیرد؛ همان مدل با آن واحد گران به نظر می‌رسید و با این
-                // واحد چیزی است که واقعاً خرج می‌شود. عددهای per_1m برای
-                // سروری نگه داشته شده‌اند که هنوز فیلد تازه را نمی‌فرستد.
-                if (model && typeof model === 'object') {
-                    var chatPrice = model.system_price_irr_per_support_chat;
-
-                    if (chatPrice == null && model.system_output_price_irr_per_5000_tokens != null) {
-                        chatPrice = model.system_output_price_irr_per_5000_tokens;
-                    }
-
-                    if (chatPrice != null) {
-                        $item.append(
-                            $('<div class="ai-agent-model-item-price"></div>')
-                                .text(aiAgentFormatToman(chatPrice) + ' — هزینه‌ی میانگین یک چت پشتیبانی')
-                        );
-                    }
-                }
-
-                $list.append($item);
-            });
-
-            // «بارگذاری بیشتر» به‌صورت یک ردیف داخل خودِ لیست کشویی (کومبوباکس) نمایش داده می‌شود؛
-            // نه به‌عنوان یک دکمه‌ی جدا بیرون از لیست. اگر تعداد نتایج به سقف limit فعلی رسیده باشد،
-            // یعنی احتمالاً نتایج بیشتری هم وجود دارد.
-            if (models.length >= aiAgentModelsLimit) {
-                var $loadMore = $('<div class="ai-agent-model-item ai-agent-model-loadmore"></div>').text('بارگذاری بیشتر...');
-                $list.append($loadMore);
-            }
-
-            aiAgentComboboxOpen();
-        }
-
-        // ----- کنترل باز/بسته شدن کومبوباکس -----
-        // این توابع کلاس‌های is-open را روی کنترلر و لیست اضافه/حذف می‌کنند تا
-        // هم فلش دکمه‌ی کشویی بچرخد و هم لیست نمایش داده شود.
-        function aiAgentComboboxOpen() {
-            $('#ai-agent-combobox').addClass('is-open');
-            $('#ai-agent-models-list').addClass('is-open');
-        }
-        function aiAgentComboboxClose() {
-            $('#ai-agent-combobox').removeClass('is-open');
-            $('#ai-agent-models-list').removeClass('is-open');
-        }
-
-        function aiAgentLoadModels() {
-            // درخواست قبلی که هنوز در حال اجراست را لغو کن تا پاسخ‌های دیرهنگام، لیست جدید را خراب نکنند
-            if (aiAgentModelsXhr && aiAgentModelsXhr.readyState !== 4) {
-                aiAgentModelsXhr.abort();
-            }
-            var reqId = ++aiAgentModelsReqId;
-
-            aiAgentModelsXhr = $.ajax({
+            $.ajax({
                 url: ajaxurl,
                 method: 'GET',
-                data: {
-                    action: 'ai_agent_search_models',
-                    nonce: $('#ai_agent_models_nonce_field').val(),
-                    q: aiAgentModelsQuery,
-                    limit: aiAgentModelsLimit
-                },
-                success: function(response) {
-                    if (reqId !== aiAgentModelsReqId) return; // یک پاسخ قدیمی‌تر است، نادیده بگیر
-                    if (response.success) {
-                        var models = response.data.models || [];
-                        aiAgentRenderModels(models);
-                    } else {
-                        $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">' + (response.data && response.data.message ? response.data.message : 'خطا در دریافت لیست مدل‌ها') + '</div>');
-                        aiAgentComboboxOpen();
-                    }
-                },
-                error: function(jqXHR, textStatus) {
-                    if (textStatus === 'abort') return; // درخواست عمداً لغو شده، خطا نیست
-                    if (reqId !== aiAgentModelsReqId) return;
-                    $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">خطا در برقراری ارتباط با سرور</div>');
-                    aiAgentComboboxOpen();
+                dataType: 'json',
+                data: { action: 'ai_agent_search_models', nonce: token, limit: 100 }
+            }).done(function (response) {
+                var models = (response && response.success && response.data && response.data.models) || null;
+
+                if (!models || !models.length) {
+                    fail((response && response.data && response.data.message) || 'لیست مدل‌ها خالی برگشت.');
+                    return;
                 }
+
+                var found = false;
+                var $fresh = $();
+
+                models.forEach(function (model) {
+                    var value = valueFor(model);
+                    if (!value) return;
+                    if (value === selected) found = true;
+                    $fresh = $fresh.add(
+                        $('<option></option>').attr('value', value).text(labelFor(model))
+                    );
+                });
+
+                if (!$fresh.length) {
+                    fail('لیست مدل‌ها خالی برگشت.');
+                    return;
+                }
+
+                /*
+                مدلی که کاربر قبلاً ذخیره کرده ممکن است دیگر در فهرست
+                نباشد (غیرفعال شده). نباید بی‌صدا با اولین مدل لیست
+                عوض شود — بالای فهرست می‌ماند و کنارش گفته می‌شود.
+                */
+                if (!found && selected) {
+                    $fresh = $('<option></option>').attr('value', selected)
+                        .text(selected + ' (دیگر در فهرست نیست)').add($fresh);
+                }
+
+                $select.empty().append($fresh).val(selected);
+                $status.removeClass('is-error')
+                       .text(faDigits(models.length) + ' مدل در دسترس است.');
+            }).fail(function () {
+                fail('خطا در دریافت لیست مدل‌ها از سرور.');
             });
-        }
-
-        // فیلد readonly است — کاربر نمی‌تواند تایپ کند، فقط از لیست انتخاب می‌کند.
-        // پس دیگر جستجوی زنده‌ای روی «input» لازم نیست؛ کل لیست یک‌جا می‌آید.
-
-        // دکمه‌ی کشویی (فلش) یا خودِ فیلد (readonly): هر دو فقط باز/بسته می‌کنند.
-        // چون تایپ ممکن نیست، کوئری همیشه خالی است — یعنی همیشه کل لیست.
-        $('#ai-agent-combobox-toggle').on('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if ($('#ai-agent-models-list').hasClass('is-open')) {
-                aiAgentComboboxClose();
-            } else {
-                if ($('#ai-agent-models-list').children().length > 0) {
-                    aiAgentComboboxOpen();
-                } else {
-                    aiAgentModelsQuery = '';
-                    aiAgentModelsLimit = 10;
-                    aiAgentLoadModels();
-                }
-                $('#ai_agent_model_search').focus();
-            }
-        });
-
-        // با فوکوس روی باکس (شامل کلیک، چون فیلد readonly است): اگر لیست از قبل
-        // بارگذاری شده، همان را نشان بده و فقط اگر خالی است یک‌بار بارگذاری کن.
-        $('#ai_agent_model_search').on('focus', function() {
-            if ($('#ai-agent-models-list').children().length > 0) {
-                aiAgentComboboxOpen();
-            } else {
-                aiAgentModelsQuery = '';
-                aiAgentModelsLimit = 10;
-                aiAgentLoadModels();
-            }
-        });
-
-        // ردیف «بارگذاری بیشتر» حالا داخل خودِ لیست کشویی است؛ کلیک روی آن نباید
-        // به‌عنوان انتخاب مدل تلقی شود و نباید باعث بسته شدن لیست شود (چون خودش هم
-        // درون #ai-agent-models-list است).
-        $(document).on('click', '.ai-agent-model-loadmore', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            aiAgentModelsLimit += 10;
-            aiAgentLoadModels();
-        });
-
-        $(document).on('click', '.ai-agent-model-item:not(.ai-agent-model-loadmore)', function() {
-            var value = $(this).attr('data-value');
-            $('#ai_agent_model').val(value).trigger('change');
-            $('#ai_agent_model_search').val(value);
-            aiAgentComboboxClose();
-        });
-
-        // بستن لیست با کلیک بیرون از کومبوباکس (شامل ردیف «بارگذاری بیشتر» که حالا داخل خودِ لیست است)
-        $(document).on('click', function(e) {
-            if (!$(e.target).closest('#ai-agent-combobox').length) {
-                aiAgentComboboxClose();
-            }
-        });
+        })();
 
         // ----- موجودی کیف پول -----
         // دکمه‌ی بروزرسانی موجودی اکنون یک ایکون دایره‌ای سینک است (نه دکمه‌ی متنی).
@@ -1129,9 +1081,20 @@
                     self.loadSessions();
                 });
 
-                // بارگذاری اولیه
-                self.loadSessions();
-                self.loadStatusCounts();
+                /*
+                فهرست این‌جا گرفته نمی‌شود. نمای گفت‌وگوها همیشه در DOM
+                هست ولی پیش‌فرض بسته است، و بیشتر کسانی که این صفحه را
+                باز می‌کنند سراغش نمی‌روند؛ گرفتن فهرست هنگام لود یعنی
+                یک کال به سرور برای چیزی که دیده نمی‌شود. تب که باز شد،
+                load() صدا زده می‌شود.
+                */
+            },
+
+            /** اولین باز شدن نمای گفت‌وگوها. */
+            load: function() {
+                if (!$('#ai-agent-sessions-list').length) return;
+                this.loadSessions();
+                this.loadStatusCounts();
             },
 
             /*
@@ -1261,7 +1224,7 @@
                 var $list = $('#ai-agent-sessions-list');
 
                 if (!items || items.length === 0) {
-                    $list.html('<div class="ai-agent-sessions-empty">هیچ جلسه‌ای یافت نشد.</div>');
+                    $list.html('<div class="ai-agent-empty">هیچ جلسه‌ای یافت نشد.</div>');
                     return;
                 }
 
@@ -1282,7 +1245,7 @@
                         var statusLabel = self.getStatusLabel(item.status);
 
                         var $item = $('<div class="ai-agent-session-item"></div>');
-                        var $header = $('<div class="ai-agent-session-header"></div>');
+                        var $header = $('<div class="ai-agent-session-head"></div>');
                         var $arrow = $('<span class="ai-agent-session-arrow">&#9654;</span>');
                         var $idSpan = $('<code class="ai-agent-session-id"></code>').text(item.id);
                         var $dateSpan = $('<span class="ai-agent-session-date"></span>').text(created);
@@ -1300,18 +1263,18 @@
                                 // بستن آکاردئون
                                 $body.slideUp(250);
                                 $arrow.html('&#9654;');
-                                $item.removeClass('ai-agent-session-open');
+                                $item.removeClass('is-open');
                                 self.openSessionId = null;
                             } else {
                                 // بستن تمام آکاردئون‌های باز
                                 $list.find('.ai-agent-session-body:visible').slideUp(250);
                                 $list.find('.ai-agent-session-arrow').html('&#9654;');
-                                $list.find('.ai-agent-session-item').removeClass('ai-agent-session-open');
+                                $list.find('.ai-agent-session-item').removeClass('is-open');
 
                                 // باز کردن این مورد
                                 $body.slideDown(250);
                                 $arrow.html('&#9660;');
-                                $item.addClass('ai-agent-session-open');
+                                $item.addClass('is-open');
                                 self.openSessionId = item.id;
                                 self.loadMessages(item.id, $body, item.status);
                             }
@@ -1377,7 +1340,7 @@
                 $container.empty();
 
                 if (!messages || messages.length === 0) {
-                    $container.html('<div class="ai-agent-sessions-empty">پیامی یافت نشد.</div>');
+                    $container.html('<div class="ai-agent-empty">پیامی یافت نشد.</div>');
                     if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
                         $container.append(self.buildReplyBox(sessionId));
                     }
@@ -1669,9 +1632,9 @@
                 var $wrap = $('<div class="ai-agent-session-reply-box"></div>');
                 var $textarea = $('<textarea class="ai-agent-session-reply-input" placeholder="پاسخ خود را برای کاربر بنویسید..."></textarea>');
                 var $actionsRow = $('<div class="ai-agent-session-reply-actions"></div>');
-                var $sendBtn = $('<button type="button" class="button button-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
-                var $returnBotBtn = $('<button type="button" class="button button-secondary ai-agent-session-return-bot-btn">بازگردانی چت به ربات</button>');
-                var $closeBtn = $('<button type="button" class="button button-secondary ai-agent-session-close-btn">پایان چت</button>');
+                var $sendBtn = $('<button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
+                var $returnBotBtn = $('<button type="button" class="ai-agent-btn ai-agent-session-return-bot-btn">بازگردانی چت به ربات</button>');
+                var $closeBtn = $('<button type="button" class="ai-agent-btn ai-agent-session-close-btn">پایان چت</button>');
                 var $statusSpan = $('<span class="ai-agent-session-reply-status"></span>');
 
                 $actionsRow.append($sendBtn).append($returnBotBtn).append($closeBtn).append($statusSpan);
