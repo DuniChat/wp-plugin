@@ -1,0 +1,916 @@
+/*
+==========================================================================
+دانیچَت — استایل صفحه‌ی مدیریت
+
+این فایل جایگزین SettingsStyles.css و settings-components.css شد. آن دو
+روی هم ۲۷۰۰ خط بودند و لایه‌های متناقض داشتند: توکن‌های یکی را دیگری
+بازنویسی می‌کرد و هر بخش صفحه ظاهر کمی متفاوتی می‌گرفت. این‌جا یک
+دیزاین‌سیستم واحد است و هیچ استایل پیش‌فرض وردپرس (button, input,
+.notice) روی صفحه باقی نمی‌ماند.
+
+مبنا: فایل طراحی Settings Page.dc.html
+
+  پس‌زمینه‌ی صفحه   #F3F1EC
+  سطح کارت          #FFFFFF
+  سطح فرورفته       #FAF9F5
+  خط                #E7E4DD  — جداکننده‌ی داخل کارت #EFECE5
+  متن               #1F1E1D  — متن کمکی #6B6862
+  نارنجی برند       #C96442  — فقط برای عمل اصلی
+  انتخاب‌شده        پس‌زمینه #FBF4F1 + بوردر نارنجی
+  گردی              کارت ۱۶px، کنترل ۱۰px
+  ارتفاع کنترل      ۳۸px (فیلد ۴۰px)
+==========================================================================
+*/
+
+/* ----------------------------------------------------------------------
+   فونت
+
+   Vazirmatn به‌صورت variable داخل خود افزونه است، نه از Google Fonts:
+   بخش زیادی از سایت‌های ایرانی به fonts.googleapis.com دسترسی ندارند و
+   نتیجه‌اش این بود که صفحه روی Tahoma می‌افتاد — همان چیزی که ارقام و
+   نیم‌فاصله‌ها را به هم می‌ریخت.
+   ---------------------------------------------------------------------- */
+@font-face {
+    font-family: 'Vazirmatn DC';
+    src: url('../fonts/Vazirmatn.ttf') format('truetype-variations'),
+         url('../fonts/Vazirmatn.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+.ai-agent-app {
+    --dc-bg:            #F3F1EC;
+    --dc-surface:       #FFFFFF;
+    --dc-sunken:        #FAF9F5;
+    --dc-line:          #E7E4DD;
+    --dc-divider:       #EFECE5;
+    --dc-line-strong:   #D6D1C7;
+
+    --dc-text:          #1F1E1D;
+    --dc-text-soft:     #6B6862;
+
+    --dc-primary:       #C96442;
+    --dc-primary-hover: #B4573A;
+    --dc-primary-tint:  #FBF4F1;
+
+    --dc-ok:            #4B7B57;
+    --dc-ok-bg:         #EEF5EF;
+    --dc-warn:          #8A5A44;
+    --dc-warn-bg:       #FBF3F0;
+    --dc-danger:        #B3452F;
+    --dc-danger-bg:     #F8ECE8;
+
+    --dc-hover:         #F7F5F1;
+
+    --dc-radius-card:   16px;
+    --dc-radius:        10px;
+    --dc-radius-sm:     9px;
+    --dc-radius-tile:   12px;
+
+    --dc-control-h:     38px;
+    --dc-field-h:       40px;
+
+    --dc-font: 'Vazirmatn DC', 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+    box-sizing: border-box;
+    font-family: var(--dc-font);
+    font-size: 13px;
+    color: var(--dc-text);
+    line-height: 1.8;
+}
+
+.ai-agent-app *,
+.ai-agent-app *::before,
+.ai-agent-app *::after { box-sizing: border-box; }
+
+/*
+وردپرس روی #wpbody-content پدینگ و روی .wrap مارجین می‌گذارد و رنگ
+پس‌زمینه‌اش #F0F0F1 است. صفحه‌ی افزونه پس‌زمینه‌ی خودش را می‌خواهد،
+پس این‌جا از خودِ بدنه‌ی پیشخوان گرفته می‌شود.
+*/
+body.toplevel_page_ai-agent-settings #wpcontent,
+body.toplevel_page_ai-agent-settings #wpbody-content { padding-left: 0; }
+body.toplevel_page_ai-agent-settings #wpbody-content { padding-bottom: 0; }
+body.toplevel_page_ai-agent-settings #wpwrap { background: var(--dc-bg, #F3F1EC); }
+body.toplevel_page_ai-agent-settings #wpfooter { display: none; }
+
+/*
+اعلان‌های وردپرس (به‌روزرسانی افزونه‌ها، پیام قالب‌ها و…) بالای هر صفحه‌ی
+پیشخوان تزریق می‌شوند و وسط این طرح، وصله‌ی سفیدِ بی‌ربط‌اند. پنهان
+نمی‌شوند — چون بعضی‌شان مهم‌اند — ولی هم‌شکل بقیه‌ی صفحه می‌شوند.
+*/
+body.toplevel_page_ai-agent-settings .notice,
+body.toplevel_page_ai-agent-settings div.updated,
+body.toplevel_page_ai-agent-settings div.error {
+    max-width: 1120px;
+    margin: 16px auto 0;
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-right-width: 4px;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: none;
+    font-family: 'Vazirmatn DC', 'Vazirmatn', Tahoma, sans-serif;
+    font-size: 13px;
+}
+
+/* ----------------------------------------------------------------------
+   پاک کردن استایل‌های پیش‌فرض وردپرس داخل صفحه
+
+   دکمه‌های وردپرس پس‌زمینه‌ی گرادیانی، بوردر آبی و سایه‌ی درونی دارند.
+   هیچ‌کدام‌شان اینجا نباید دیده شوند؛ همه‌ی کنترل‌ها از نو ساخته شده‌اند.
+   ---------------------------------------------------------------------- */
+.ai-agent-app button,
+.ai-agent-app input,
+.ai-agent-app select,
+.ai-agent-app textarea {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--dc-text);
+    margin: 0;
+    box-shadow: none;
+}
+
+.ai-agent-app input[type="text"],
+.ai-agent-app input[type="password"],
+.ai-agent-app input[type="number"],
+.ai-agent-app input[type="tel"],
+.ai-agent-app input[type="search"],
+.ai-agent-app select,
+.ai-agent-app textarea {
+    min-height: 0;
+    line-height: normal;
+}
+
+.ai-agent-app input:focus,
+.ai-agent-app select:focus,
+.ai-agent-app textarea:focus,
+.ai-agent-app button:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.ai-agent-app a {
+    color: var(--dc-text);
+    text-decoration: underline;
+    text-decoration-color: var(--dc-line-strong);
+    text-underline-offset: 3px;
+    box-shadow: none;
+}
+.ai-agent-app a:hover,
+.ai-agent-app a:focus {
+    color: var(--dc-primary);
+    text-decoration-color: var(--dc-primary);
+    box-shadow: none;
+    outline: none;
+}
+
+/*
+لینک‌هایی که دکمه‌اند، خط زیر نمی‌گیرند. سلکتور عمداً به .ai-agent-app
+بسته شده تا از قاعده‌ی بالا (که همان وزن را دارد) قوی‌تر باشد؛ وگرنه
+«دریافت توکن از دانیچَت» و لینک‌های پشتیبانی زیرشان خط می‌افتاد.
+*/
+.ai-agent-app a.ai-agent-btn,
+.ai-agent-app a.ai-agent-btn:hover,
+.ai-agent-app a.ai-agent-support-link,
+.ai-agent-app a.ai-agent-support-link:hover,
+.ai-agent-app a.ai-agent-tab,
+.ai-agent-app a.ai-agent-tab:hover,
+.ai-agent-app a.ai-agent-text-btn,
+.ai-agent-app a.ai-agent-text-btn:hover { text-decoration: none; }
+
+.ai-agent-app h1,
+.ai-agent-app h2,
+.ai-agent-app h3,
+.ai-agent-app p { margin: 0; font-weight: inherit; }
+
+/*
+ارقام لاتین داخل عنصری با lang="fa" در فایرفاکس با فیچر locl فونت به
+ارقام فارسی تبدیل می‌شوند. برای کد رنگ و شناسه‌ها (#C96442, @dunijet)
+این تبدیل، مقدار را غلط نشان می‌داد. هر جا مقدار لاتین است، هم dir و هم
+lang روی خود عنصر ست می‌شود و این‌جا locl هم خاموش می‌شود.
+*/
+.ai-agent-app [lang="en"],
+.ai-agent-app .dc-ltr {
+    direction: ltr;
+    text-align: left;
+    font-feature-settings: "locl" 0;
+    font-variant-numeric: lining-nums;
+}
+
+/* ----------------------------------------------------------------------
+   سربرگ
+   ---------------------------------------------------------------------- */
+.ai-agent-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.ai-agent-topbar-brand { display: flex; align-items: center; gap: 12px; }
+
+.ai-agent-brand-mark {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+}
+.ai-agent-brand-mark img { width: 34px; height: 34px; object-fit: contain; }
+
+.ai-agent-brand-text { display: flex; flex-direction: column; gap: 2px; }
+.ai-agent-brand-text h1 {
+    font-size: 19px; font-weight: 700; letter-spacing: -.2px;
+    line-height: 1.5; padding: 0;
+}
+.ai-agent-brand-text span { font-size: 12.5px; color: var(--dc-text-soft); }
+
+.ai-agent-topbar-tools {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+
+.ai-agent-wallet-inline {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 13px; color: var(--dc-text-soft);
+}
+.ai-agent-wallet-amount {
+    font-size: 15px; font-weight: 600; color: var(--dc-text);
+}
+.ai-agent-wallet-amount.is-low { color: var(--dc-danger); }
+.ai-agent-wallet-status { font-size: 12px; color: var(--dc-text-soft); }
+
+.ai-agent-text-btn {
+    background: none; border: 0; padding: 0;
+    font-size: 13px; font-weight: 600;
+    color: var(--dc-primary); cursor: pointer;
+    text-decoration: none;
+}
+.ai-agent-text-btn:hover { color: var(--dc-primary-hover); text-decoration: none; }
+
+.ai-agent-autosave-hint { font-size: 12.5px; color: var(--dc-text-soft); }
+.ai-agent-autosave-hint.is-saving { color: var(--dc-primary); }
+.ai-agent-autosave-hint.is-saved { color: var(--dc-ok); }
+.ai-agent-autosave-hint.is-error { color: var(--dc-danger); }
+
+/* ----------------------------------------------------------------------
+   تب‌ها — یک صفحه، یک آدرس
+
+   قبلاً دو زیرمنو با دو URL بودند و هر بار رفت‌وبرگشت، بارگذاری کامل
+   صفحه داشت. حالا دو نمای همان صفحه‌اند و جابه‌جایی‌شان بدون رفرش است.
+   متن تب فعال سفید روی مشکی است؛ نارنجیِ قبلی روی پس‌زمینه‌ی نارنجی
+   خوانده نمی‌شد.
+   ---------------------------------------------------------------------- */
+.ai-agent-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.ai-agent-tab {
+    padding: 9px 16px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    background: var(--dc-surface);
+    color: var(--dc-text);
+    font-size: 13px; font-weight: 600;
+    line-height: 1.6; white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+.ai-agent-tab:hover { background: var(--dc-hover); color: var(--dc-text); text-decoration: none; }
+.ai-agent-tab.is-active,
+.ai-agent-tab.is-active:hover {
+    background: var(--dc-text);
+    border-color: var(--dc-text);
+    color: #fff;
+}
+
+/* ----------------------------------------------------------------------
+   ورق — یک کارت واحد، بخش‌ها با یک خط از هم جدا
+   ---------------------------------------------------------------------- */
+.ai-agent-sheet {
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-card);
+    overflow: hidden;
+}
+
+.ai-agent-section { padding: 26px; border-bottom: 1px solid var(--dc-divider); }
+.ai-agent-section:last-child { border-bottom: 0; }
+
+.ai-agent-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 6px;
+}
+.ai-agent-section h2 { font-size: 15px; font-weight: 700; line-height: 1.7; }
+.ai-agent-section-intro {
+    font-size: 13px; line-height: 2; color: var(--dc-text-soft);
+    max-width: 70ch; margin-bottom: 16px;
+}
+.ai-agent-section h2 + .ai-agent-field-group,
+.ai-agent-section h2 + .ai-agent-grid,
+.ai-agent-section-head + .ai-agent-field-group { margin-top: 16px; }
+
+/* ----------------------------------------------------------------------
+   فیلدها
+   ---------------------------------------------------------------------- */
+.ai-agent-field-group { display: flex; flex-direction: column; gap: 8px; }
+.ai-agent-field-group + .ai-agent-field-group { margin-top: 22px; }
+
+.ai-agent-label { font-size: 13px; font-weight: 600; line-height: 1.8; }
+.ai-agent-sublabel { font-size: 12px; color: var(--dc-text-soft); margin-bottom: 8px; }
+.ai-agent-hint { font-size: 12.5px; line-height: 2; color: var(--dc-text-soft); max-width: 70ch; }
+
+.ai-agent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 22px 20px;
+    align-items: start;
+}
+.ai-agent-grid + .ai-agent-grid,
+.ai-agent-field-group + .ai-agent-grid,
+.ai-agent-grid + .ai-agent-field-group { margin-top: 22px; }
+
+.ai-agent-input,
+.ai-agent-app select.ai-agent-input {
+    width: 100%;
+    height: var(--dc-field-h);
+    padding: 0 12px;
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    font-size: 13px;
+    color: var(--dc-text);
+    transition: border-color 150ms ease;
+}
+.ai-agent-input:focus { border-color: var(--dc-primary); }
+.ai-agent-input::placeholder { color: #A8A49C; }
+
+.ai-agent-app select.ai-agent-input {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B6862' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 16px;
+    background-position: left 12px center;
+    padding-left: 34px;
+}
+
+.ai-agent-input-sm { height: var(--dc-control-h); }
+.ai-agent-input-num { width: 110px; }
+.ai-agent-input-hex { width: 130px; height: var(--dc-control-h); }
+
+.ai-agent-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-agent-inline-end { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.ai-agent-unit { font-size: 13px; color: var(--dc-text-soft); }
+
+/* ----------------------------------------------------------------------
+   دکمه‌ها — یک شکل، یک اندازه، بدون آیکون
+
+   فقط عمل اصلی هر بخش پرِ نارنجی است. بقیه سفید با بوردر خنثی.
+   ---------------------------------------------------------------------- */
+.ai-agent-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: var(--dc-control-h);
+    padding: 0 16px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    background: var(--dc-surface);
+    color: var(--dc-text);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+.ai-agent-btn:hover { background: var(--dc-hover); color: var(--dc-text); text-decoration: none; }
+.ai-agent-btn:disabled,
+.ai-agent-btn.is-busy { opacity: .55; cursor: default; }
+.ai-agent-btn:disabled:hover { background: var(--dc-surface); }
+
+.ai-agent-btn-primary {
+    border-color: var(--dc-primary);
+    background: var(--dc-primary);
+    color: #fff;
+    padding: 0 18px;
+}
+.ai-agent-btn-primary:hover {
+    background: var(--dc-primary-hover);
+    border-color: var(--dc-primary-hover);
+    color: #fff;
+}
+.ai-agent-btn-primary:disabled:hover { background: var(--dc-primary); }
+
+.ai-agent-btn-sm { height: 36px; padding: 0 14px; }
+.ai-agent-btn-square {
+    width: var(--dc-field-h);
+    height: var(--dc-field-h);
+    flex: 0 0 var(--dc-field-h);
+    padding: 0;
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--dc-text-soft);
+}
+.ai-agent-btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ----------------------------------------------------------------------
+   سگمنت‌ها — لحن، ایموجی، تم، دستگاه، زمان‌بندی
+   ---------------------------------------------------------------------- */
+.ai-agent-segmented { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ai-agent-segment {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: center;
+    padding: 9px 16px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    background: var(--dc-surface);
+    color: var(--dc-text);
+    line-height: 1.7;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+.ai-agent-segment:hover { background: var(--dc-hover); }
+.ai-agent-segment input { position: absolute; opacity: 0; pointer-events: none; }
+.ai-agent-segment-title { font-size: 13px; font-weight: 600; }
+.ai-agent-segment-sub { font-size: 11px; color: var(--dc-text-soft); }
+
+.ai-agent-segment.is-active,
+.ai-agent-segment.is-active:hover {
+    background: var(--dc-primary-tint);
+    border-color: var(--dc-primary);
+}
+
+/* ----------------------------------------------------------------------
+   کارت‌های رنگ سایت و سوییچ‌های پالت
+   ---------------------------------------------------------------------- */
+.ai-agent-site-colors { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.ai-agent-site-color-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 13px;
+    border: 1px solid var(--dc-line);
+    border-radius: 11px;
+    background: var(--dc-surface);
+    cursor: pointer;
+    text-align: right;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+.ai-agent-site-color-btn:hover { background: var(--dc-hover); }
+.ai-agent-site-color-btn.is-active,
+.ai-agent-site-color-btn.is-active:hover {
+    background: var(--dc-primary-tint);
+    border-color: var(--dc-primary);
+}
+.ai-agent-site-color-dot {
+    width: 22px; height: 22px; flex: 0 0 22px;
+    border-radius: 50%;
+    border: 1px solid rgba(31, 30, 29, .12);
+}
+.ai-agent-site-color-text { display: flex; flex-direction: column; gap: 2px; }
+.ai-agent-site-color-name { font-size: 12.5px; font-weight: 600; }
+.ai-agent-site-color-hex { font-size: 11px; color: var(--dc-text-soft); text-align: right; }
+
+.ai-agent-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-agent-swatch {
+    width: 30px; height: 30px;
+    padding: 0;
+    border: 1px solid rgba(31, 30, 29, .12);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 120ms ease;
+}
+.ai-agent-swatch:hover { transform: scale(1.06); }
+.ai-agent-swatch.is-active {
+    border: 2px solid var(--dc-text);
+    box-shadow: 0 0 0 3px var(--dc-bg) inset;
+}
+
+.ai-agent-color-dot {
+    width: 26px; height: 26px; flex: 0 0 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(31, 30, 29, .12);
+}
+.ai-agent-color-dot-sm { width: 20px; height: 20px; flex: 0 0 20px; }
+
+.ai-agent-color-readonly {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--dc-control-h);
+    padding: 0 12px;
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-divider);
+    border-radius: var(--dc-radius);
+    font-size: 13px;
+    color: var(--dc-text-soft);
+}
+
+/* ----------------------------------------------------------------------
+   کاشی‌های منابع داده (چک‌باکس‌ها)
+   ---------------------------------------------------------------------- */
+.ai-agent-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+}
+
+.ai-agent-tile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 14px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-tile);
+    background: var(--dc-surface);
+    cursor: pointer;
+    text-align: right;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+.ai-agent-tile:hover { background: var(--dc-hover); }
+.ai-agent-tile input { position: absolute; opacity: 0; pointer-events: none; }
+.ai-agent-tile.is-active,
+.ai-agent-tile.is-active:hover {
+    background: var(--dc-primary-tint);
+    border-color: var(--dc-primary);
+}
+
+.ai-agent-tile-box {
+    width: 18px; height: 18px; flex: 0 0 18px;
+    display: grid; place-items: center;
+    border: 1px solid var(--dc-line-strong);
+    border-radius: 5px;
+    background: var(--dc-surface);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+}
+.ai-agent-tile.is-active .ai-agent-tile-box {
+    background: var(--dc-primary);
+    border-color: var(--dc-primary);
+}
+.ai-agent-tile-box svg { width: 12px; height: 12px; display: none; }
+.ai-agent-tile.is-active .ai-agent-tile-box svg { display: block; }
+
+.ai-agent-tile-text { display: flex; flex-direction: column; gap: 3px; }
+.ai-agent-tile-title { font-size: 13px; font-weight: 600; }
+.ai-agent-tile-sub { font-size: 11px; color: var(--dc-text-soft); }
+
+/* ----------------------------------------------------------------------
+   کاشی‌های وضعیت همگام‌سازی
+   ---------------------------------------------------------------------- */
+.ai-agent-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 22px;
+}
+.ai-agent-stat {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 14px 16px;
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-divider);
+    border-radius: var(--dc-radius-tile);
+}
+.ai-agent-stat-label { font-size: 12px; color: var(--dc-text-soft); }
+.ai-agent-stat-value { font-size: 13.5px; font-weight: 600; }
+.ai-agent-stat-value.is-empty { font-weight: 500; color: var(--dc-text-soft); }
+
+/* ----------------------------------------------------------------------
+   شماره‌های پشتیبانی
+   ---------------------------------------------------------------------- */
+.ai-agent-phone-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 8px;
+}
+.ai-agent-phone-row .ai-agent-input { flex: 1 1 auto; min-width: 0; }
+
+/* ----------------------------------------------------------------------
+   وضعیت‌ها و اعلان‌ها
+   ---------------------------------------------------------------------- */
+.ai-agent-badge {
+    font-size: 11.5px; font-weight: 600;
+    border-radius: 999px;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+.ai-agent-badge-ok   { color: var(--dc-ok);   background: var(--dc-ok-bg); }
+.ai-agent-badge-warn { color: var(--dc-warn); background: var(--dc-warn-bg); }
+
+/*
+پیام «هنوز توکن ندادی» خطا نیست — کاربر تازه افزونه را نصب کرده و هنوز
+نوبت این کار نرسیده. نوار قرمز بالای صفحه برای این حالت، صفحه را از همان
+ثانیه‌ی اول خراب نشان می‌داد.
+*/
+.ai-agent-note {
+    font-size: 13px;
+    line-height: 1.9;
+    border-radius: var(--dc-radius);
+    padding: 10px 14px;
+    margin-top: 14px;
+}
+.ai-agent-note-info  { color: var(--dc-warn);   background: var(--dc-warn-bg); }
+.ai-agent-note-error { color: var(--dc-danger); background: var(--dc-danger-bg); }
+.ai-agent-note-ok    { color: var(--dc-ok);     background: var(--dc-ok-bg); }
+
+.ai-agent-status-text { font-size: 12.5px; color: var(--dc-text-soft); }
+.ai-agent-status-text.is-ok    { color: var(--dc-ok); }
+.ai-agent-status-text.is-error { color: var(--dc-danger); }
+
+/* ----------------------------------------------------------------------
+   صحنه‌ی موقعیت آیکون
+   ---------------------------------------------------------------------- */
+.ai-agent-stage-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    margin-top: 20px;
+}
+.ai-agent-stage {
+    position: relative;
+    width: 230px; height: 330px;
+    padding: 18px 16px;
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-line);
+    border-radius: 20px;
+    display: flex; flex-direction: column; gap: 10px;
+    touch-action: none;
+}
+.ai-agent-stage-tablet  { width: 280px; height: 340px; }
+.ai-agent-stage-desktop { width: 340px; height: 240px; }
+
+.ai-agent-stage-line { height: 8px; border-radius: 6px; background: var(--dc-divider); }
+.ai-agent-stage-line-short { width: 70%; }
+.ai-agent-stage-line-shorter { width: 55%; }
+
+.ai-agent-stage-handle {
+    position: absolute;
+    bottom: 18px; right: 16px;
+    width: 46px; height: 46px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--dc-primary);
+    display: grid; place-items: center;
+    cursor: grab;
+    touch-action: none;
+}
+.ai-agent-stage-handle:active { cursor: grabbing; }
+.ai-agent-stage-handle img { width: 24px; height: 24px; object-fit: contain; }
+
+.ai-agent-stage-readout { font-size: 12.5px; color: var(--dc-text-soft); text-align: center; }
+
+.ai-agent-device-panel { display: none; }
+.ai-agent-device-panel.is-active { display: block; }
+
+/* ----------------------------------------------------------------------
+   لینک‌های پشتیبانی
+   ---------------------------------------------------------------------- */
+.ai-agent-support-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.ai-agent-support-link {
+    height: var(--dc-control-h);
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    background: var(--dc-surface);
+    color: var(--dc-text);
+    font-size: 13px; font-weight: 500;
+    text-decoration: none;
+}
+.ai-agent-support-link:hover { background: var(--dc-hover); color: var(--dc-text); text-decoration: none; }
+
+/* ----------------------------------------------------------------------
+   نمای گفت‌وگوها
+   ---------------------------------------------------------------------- */
+.ai-agent-view { display: none; }
+.ai-agent-view.is-active { display: block; }
+
+.ai-agent-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.ai-agent-filter-btn {
+    padding: 9px 16px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    background: var(--dc-surface);
+    color: var(--dc-text);
+    font-size: 13px; font-weight: 600;
+    line-height: 1.6;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+}
+.ai-agent-filter-btn:hover { background: var(--dc-hover); }
+.ai-agent-filter-btn.is-active,
+.ai-agent-filter-btn.is-active:hover {
+    background: var(--dc-text);
+    border-color: var(--dc-text);
+    color: #fff;
+}
+.ai-agent-filter-count {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--dc-sunken);
+    color: var(--dc-text-soft);
+}
+.ai-agent-filter-btn.is-active .ai-agent-filter-count {
+    background: rgba(255, 255, 255, .18);
+    color: #fff;
+}
+
+.ai-agent-sessions-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+    padding: 12px 0;
+    border-top: 1px solid var(--dc-divider);
+    border-bottom: 1px solid var(--dc-divider);
+    font-size: 13px; color: var(--dc-text-soft);
+}
+.ai-agent-sessions-page-size { display: flex; align-items: center; gap: 8px; }
+.ai-agent-sessions-page-size select {
+    height: 34px; padding: 0 10px;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-sm);
+    background: var(--dc-surface);
+    font-size: 13px; cursor: pointer;
+}
+.ai-agent-sessions-page-nav { display: flex; align-items: center; gap: 8px; }
+.ai-agent-page-btn {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    padding: 0;
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-sm);
+    background: var(--dc-surface);
+    color: var(--dc-text-soft);
+    cursor: pointer;
+    font-size: 16px; line-height: 1;
+}
+.ai-agent-page-btn:hover:not(:disabled) { background: var(--dc-hover); }
+.ai-agent-page-btn:disabled { opacity: .4; cursor: default; }
+
+.ai-agent-sessions-list { display: flex; flex-direction: column; gap: 10px; margin: 18px 0; }
+
+.ai-agent-empty {
+    margin: 26px 0;
+    text-align: center;
+    font-size: 13.5px; line-height: 2;
+    color: var(--dc-text-soft);
+}
+
+.ai-agent-session-item {
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-tile);
+    background: var(--dc-surface);
+    overflow: hidden;
+}
+.ai-agent-session-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    background: none; border: 0; width: 100%;
+    text-align: right;
+    font-family: inherit;
+}
+.ai-agent-session-head:hover { background: var(--dc-hover); }
+.ai-agent-session-title { font-size: 13px; font-weight: 600; }
+.ai-agent-session-meta { font-size: 12px; color: var(--dc-text-soft); }
+.ai-agent-session-status-badge {
+    font-size: 11.5px; font-weight: 600;
+    border-radius: 999px; padding: 4px 10px;
+    background: var(--dc-sunken); color: var(--dc-text-soft);
+    white-space: nowrap;
+}
+.ai-agent-session-status-badge.is-human   { background: var(--dc-ok-bg);   color: var(--dc-ok); }
+.ai-agent-session-status-badge.is-pending { background: var(--dc-warn-bg); color: var(--dc-warn); }
+.ai-agent-session-arrow { color: var(--dc-text-soft); transition: transform 180ms ease; }
+.ai-agent-session-item.is-open .ai-agent-session-arrow { transform: rotate(180deg); }
+.ai-agent-session-body { display: none; padding: 0 16px 16px; }
+.ai-agent-session-item.is-open .ai-agent-session-body { display: block; }
+
+.ai-agent-chat-messages {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 16px;
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-divider);
+    border-radius: var(--dc-radius-tile);
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.ai-agent-sessions-loading,
+.ai-agent-sessions-error {
+    padding: 20px 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--dc-text-soft);
+}
+.ai-agent-sessions-error { color: var(--dc-danger); }
+
+/* ----------------------------------------------------------------------
+   موبایل — پنل زیر ۷۸۲px تک‌ستونه می‌شود
+   ---------------------------------------------------------------------- */
+@media (max-width: 782px) {
+    .ai-agent-app { padding: 16px 12px 48px; }
+    .ai-agent-section { padding: 20px 16px; }
+    .ai-agent-topbar { gap: 12px; }
+    .ai-agent-topbar-tools { width: 100%; justify-content: space-between; }
+    .ai-agent-grid { grid-template-columns: 1fr; }
+    .ai-agent-stage-desktop,
+    .ai-agent-stage-tablet { width: 100%; max-width: 280px; }
+}
+
+/* ----------------------------------------------------------------------
+   جزئیات یک گفت‌وگو
+
+   این بخش را جاوااسکریپت می‌سازد (نه PHP)، پس کلاس‌هایش این‌جا
+   جداگانه تعریف شده‌اند.
+   ---------------------------------------------------------------------- */
+.ai-agent-session-head { flex-wrap: wrap; }
+.ai-agent-session-id {
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--dc-text-soft);
+    background: var(--dc-sunken);
+    border-radius: 6px;
+    padding: 2px 8px;
+    direction: ltr;
+    font-feature-settings: "locl" 0;
+}
+.ai-agent-session-date { font-size: 12px; color: var(--dc-text-soft); }
+
+.ai-agent-msg-bubble {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-divider);
+    align-self: flex-start;
+}
+.ai-agent-msg-bubble.ai-agent-msg-user {
+    align-self: flex-end;
+    background: var(--dc-primary-tint);
+    border-color: #F0DED6;
+}
+.ai-agent-msg-bubble.ai-agent-msg-support {
+    align-self: flex-end;
+    background: var(--dc-ok-bg);
+    border-color: #DCE7DE;
+}
+.ai-agent-msg-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 4px;
+    font-size: 11.5px; color: var(--dc-text-soft);
+}
+.ai-agent-msg-role { font-weight: 600; }
+.ai-agent-msg-content { font-size: 13px; line-height: 1.9; word-break: break-word; }
+.ai-agent-msg-content a { color: var(--dc-primary); }
+.ai-agent-msg-loading,
+.ai-agent-msg-total { font-size: 12.5px; color: var(--dc-text-soft); text-align: center; }
+
+.ai-agent-msg-image-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ai-agent-msg-image-placeholder {
+    width: 96px; height: 96px;
+    display: grid; place-items: center;
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-divider);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.ai-agent-msg-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ai-agent-msg-image-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--dc-line);
+    border-top-color: var(--dc-primary);
+    border-radius: 50%;
+    animation: ai-agent-spin 700ms linear infinite;
+}
+.ai-agent-msg-image-error { color: var(--dc-danger); font-size: 16px; }
+@keyframes ai-agent-spin { to { transform: rotate(360deg); } }
+
+.ai-agent-session-reply-box {
+    display: flex; flex-direction: column; gap: 10px;
+    margin-top: 14px;
+}
+.ai-agent-session-reply-input {
+    width: 100%;
+    min-height: 84px;
+    padding: 10px 12px;
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    font-size: 13px;
+    line-height: 1.9;
+    resize: vertical;
+}
+.ai-agent-session-reply-input:focus { border-color: var(--dc-primary); }
+.ai-agent-session-reply-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ai-agent-session-reply-status { font-size: 12.5px; color: var(--dc-text-soft); }

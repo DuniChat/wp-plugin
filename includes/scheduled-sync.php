@@ -86,7 +86,7 @@ function ai_agent_next_sync_timestamp($hour) {
 function ai_agent_reschedule_sync() {
     $settings = ai_agent_get_settings();
     $schedule = isset($settings['sync_schedule']) ? $settings['sync_schedule'] : 'every_3_days';
-    $hour     = isset($settings['sync_hour']) ? intval($settings['sync_hour']) : 3;
+    $hour     = isset($settings['sync_hour']) ? intval($settings['sync_hour']) : 0;
 
     $existing = wp_get_scheduled_event(AI_AGENT_SYNC_CRON_HOOK);
     $wanted   = 'ai_agent_' . $schedule;

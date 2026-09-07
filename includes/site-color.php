@@ -159,7 +159,7 @@ if (!function_exists('ai_agent_seed_color_from_site')) {
         // در حالت تاریک همان رنگ کمی روشن‌تر می‌شود. یک رنگ برندِ تیره روی
         // پس‌زمینه‌ی مشکی عملاً ناپیدا می‌شود، و کاربر نباید مجبور باشد
         // دستی دنبال ورینت تیره‌اش بگردد.
-        $saved['color_dark'] = ai_agent_lighten_hex($detected, 0.18);
+        $saved['color_dark'] = ai_agent_lighten_hex($detected, AI_AGENT_DARK_LIFT);
 
         update_option('ai_agent_settings', $saved);
     }

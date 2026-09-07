@@ -17,9 +17,27 @@
      از سایت میزبان (یا از تنظیمات افزونه) می‌آید.
 ==========================================================================
 */
+/*
+Vazirmatn به‌صورت variable همراه خود افزونه می‌آید. قبلاً اسمش در استک
+بود ولی هیچ‌جا بارگذاری نمی‌شد، پس ویجت روی هر سایتی که قالبش این فونت
+را نداشت می‌افتاد روی فونت پیش‌فرض سیستم — و روی ویندوز یعنی Tahoma،
+که نیم‌فاصله و ارقام فارسی را بد نشان می‌دهد.
+
+نام خانواده «Vazirmatn DC» است نه «Vazirmatn»: اگر قالب سایت خودش
+Vazirmatn دارد، نسخه‌ی افزونه جایش را نمی‌گیرد و برعکس.
+*/
+@font-face {
+    font-family: 'Vazirmatn DC';
+    src: url('../fonts/Vazirmatn.ttf') format('truetype-variations'),
+         url('../fonts/Vazirmatn.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
 #ai-agent, #ai-agent * {
     box-sizing: border-box;
-    font-family: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: 'Vazirmatn DC', "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 /*
