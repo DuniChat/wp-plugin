@@ -914,3 +914,171 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
 .ai-agent-session-reply-input:focus { border-color: var(--dc-primary); }
 .ai-agent-session-reply-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .ai-agent-session-reply-status { font-size: 12.5px; color: var(--dc-text-soft); }
+
+/* ----------------------------------------------------------------------
+   ربات‌های پیام‌رسان، دانش دستی و هزینه‌ی هر گفت‌وگو
+
+   همان توکن‌های بالا؛ هیچ رنگ یا گردی تازه‌ای اضافه نمی‌شود تا این
+   بخش‌ها از بقیه‌ی صفحه جدا به نظر نرسند.
+   ---------------------------------------------------------------------- */
+
+.ai-agent-bot-cards {
+    display: grid;
+    /* دو کارت کنار هم روی دسکتاپ، زیر هم روی موبایل — بدون media query،
+       چون عرض پنل وردپرس با باز و بسته شدن منوی کناری هم عوض می‌شود. */
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.ai-agent-bot-card {
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius-card);
+    padding: 16px;
+}
+
+.ai-agent-bot-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ai-agent-bot-card-head strong { font-size: 15px; }
+
+.ai-agent-bot-username {
+    margin: 0 0 10px;
+    word-break: break-all;
+}
+
+.ai-agent-bot-guide {
+    margin-top: 12px;
+    border-top: 1px solid var(--dc-divider);
+    padding-top: 10px;
+}
+
+.ai-agent-bot-guide > summary {
+    cursor: pointer;
+    color: var(--dc-primary);
+    font-size: 13px;
+    list-style: none;
+}
+
+.ai-agent-bot-guide > summary::-webkit-details-marker { display: none; }
+.ai-agent-bot-guide > summary::before { content: '؟ '; }
+
+.ai-agent-bot-guide ol {
+    margin: 10px 0 0;
+    padding-inline-start: 20px;
+    font-size: 13px;
+    line-height: 2;
+    color: var(--dc-text-soft);
+}
+
+.ai-agent-bot-guide code {
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-line);
+    border-radius: 6px;
+    padding: 1px 5px;
+    font-size: 12px;
+}
+
+/* ----- دانش دستی ----- */
+
+.ai-agent-knowledge-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.ai-agent-knowledge-panel { display: none; }
+.ai-agent-knowledge-panel.is-active { display: block; }
+
+.ai-agent-knowledge-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ai-agent-knowledge-row {
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-line);
+    border-radius: var(--dc-radius);
+    padding: 12px 14px;
+}
+
+.ai-agent-knowledge-row-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.ai-agent-knowledge-file {
+    font-size: 12px;
+    color: var(--dc-text-soft);
+    background: var(--dc-surface);
+    border: 1px solid var(--dc-line);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+/*
+پیش‌نمایش متن استخراج‌شده. سه خط، چون هدفش این است که کاربر ببیند از
+فایلش چه درآمده — نه اینکه کل سند را این‌جا بخواند.
+*/
+.ai-agent-knowledge-preview {
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--dc-text-soft);
+    white-space: pre-wrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ai-agent-knowledge-state {
+    font-size: 12px;
+    border-radius: 999px;
+    padding: 2px 10px;
+    border: 1px solid var(--dc-line);
+    background: var(--dc-surface);
+    color: var(--dc-text-soft);
+}
+
+.ai-agent-knowledge-state[data-state="indexed"] {
+    background: var(--dc-ok-bg);
+    border-color: var(--dc-ok);
+    color: var(--dc-ok);
+}
+
+.ai-agent-knowledge-state[data-state="queued"] {
+    background: var(--dc-primary-tint);
+    border-color: var(--dc-primary);
+    color: var(--dc-primary);
+}
+
+.ai-agent-knowledge-state[data-state="failed"] {
+    background: var(--dc-danger-bg);
+    border-color: var(--dc-danger);
+    color: var(--dc-danger);
+}
+
+/* ----- هزینه‌ی هر گفت‌وگو ----- */
+
+.ai-agent-session-cost {
+    margin-inline-start: auto;
+    font-size: 12px;
+    white-space: nowrap;
+    color: var(--dc-text-soft);
+    background: var(--dc-sunken);
+    border: 1px solid var(--dc-line);
+    border-radius: 999px;
+    padding: 2px 10px;
+}

@@ -2236,3 +2236,121 @@ weight is legible without changing the bubble geometry.
 
     .ai-agent-intro-title { font-size: 16px; }
 }
+
+/* ----------------------------------------------------------------------
+   انتقال گفت‌وگو به تلگرام یا بله
+
+   دیالوگ روی خودِ پنجره‌ی چت باز می‌شود، نه روی صفحه‌ی سایت میزبان: ویجت
+   ممکن است هر جای صفحه باشد و یک لایه‌ی تمام‌صفحه روی سایت مشتری، چیزی
+   است که هیچ‌کس از یک ویجت پشتیبانی انتظار ندارد.
+   ---------------------------------------------------------------------- */
+
+.ai-agent-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.ai-agent-modal[hidden] { display: none; }
+
+.ai-agent-modal-card {
+    width: 100%;
+    max-width: 340px;
+    background: var(--ai-surface);
+    color: var(--ai-text);
+    border: 1px solid var(--ai-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+
+.ai-agent-modal-card h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.ai-agent-modal-card p {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 2;
+    color: var(--ai-text-soft);
+}
+
+.ai-agent-transfer-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.ai-agent-transfer-option {
+    display: block;
+    padding: 9px 12px;
+    border: 1px solid var(--ai-border);
+    border-radius: 10px;
+    background: var(--ai-surface-2);
+    color: var(--ai-text);
+    font-size: 13px;
+    text-decoration: none;
+    text-align: center;
+}
+
+.ai-agent-transfer-option:hover {
+    border-color: var(--ai-agent-theme-color);
+    color: var(--ai-agent-theme-color);
+}
+
+.ai-agent-modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.ai-agent-modal-btn {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--ai-border);
+    background: transparent;
+    color: var(--ai-text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.ai-agent-modal-btn.is-primary {
+    background: var(--ai-agent-theme-color);
+    border-color: var(--ai-agent-theme-color);
+    color: #fff;
+}
+
+.ai-agent-modal-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/*
+جای فیلد پیام بعد از انتقال. هم‌ارتفاع با ردیف ورودی است تا پنجره
+هنگام جابه‌جایی نپرد.
+*/
+.ai-agent-transferred-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 46px;
+    padding: 10px 14px;
+    border: 1px dashed var(--ai-border);
+    border-radius: 14px;
+    background: var(--ai-surface-2);
+    color: var(--ai-text-soft);
+    font-size: 12.5px;
+    line-height: 1.9;
+}
+
+.ai-agent-transferred-bar[hidden] { display: none; }
