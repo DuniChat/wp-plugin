@@ -64,12 +64,20 @@ jobs:
           # دستی، پوشه‌ی بالای زیپ را عیناً به wp-content/plugins می‌برد؛
           # زیپِ بدون پوشه‌ی والد، فایل‌ها را وسط plugins/ خالی می‌کند.
           mkdir -p build/dunichat
+          # فایل‌های توسعه در زیپ نمی‌آیند: چیزی که روی سایت مشتری نصب
+          # می‌شود فقط باید کد خود افزونه باشد، نه تست و ابزار توسعه.
           rsync -a ./ build/dunichat/ \
             --exclude '.git' \
             --exclude '.github' \
             --exclude 'build' \
             --exclude '.gitignore' \
-            --exclude '.gitattributes'
+            --exclude '.gitattributes' \
+            --exclude 'tests' \
+            --exclude 'vendor' \
+            --exclude 'composer.json' \
+            --exclude 'composer.lock' \
+            --exclude 'phpunit.xml' \
+            --exclude '.phpunit.result.cache'
           cd build
           zip -r -q ../Dunichat.zip dunichat
           cd ..

@@ -1,0 +1,48 @@
+# تست‌های افزونه روی هر push و هر pull request
+#
+# دو کار انجام می‌شود: نحو همه‌ی فایل‌های PHP بررسی می‌شود (یک فایل با
+# خطای نحوی، کل سایت را سفید می‌کند) و مجموعه‌ی تست‌ها اجرا می‌شود.
+#
+# تست‌ها به وردپرس نصب‌شده نیاز ندارند؛ tests/bootstrap.php همان تعداد
+# تابعی را که افزونه واقعاً صدا می‌زند فراهم می‌کند. برای همین کل اجرا
+# چند ثانیه طول می‌کشد و روی هر push قابل اجراست.
+
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # پایین‌ترین نسخه‌ای که افزونه اعلام می‌کند (Requires PHP: 7.4) و
+        # نسخه‌ای که میزبان‌های امروزی اجرا می‌کنند. افزونه روی هر دو نصب
+        # می‌شود، پس روی هر دو هم تست می‌شود.
+        php: ['7.4', '8.3']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: نصب PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, openssl, json
+          coverage: none
+
+      - name: بررسی نحو همه‌ی فایل‌های PHP
+        run: |
+          set -euo pipefail
+          find . -path ./vendor -prune -o -name '*.php' -print0 \
+            | xargs -0 -n1 -P4 php -l
+
+      - name: نصب وابستگی‌ها
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: اجرای تست‌ها
+        run: vendor/bin/phpunit --colors=always

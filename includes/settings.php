@@ -2,9 +2,30 @@
 
 if (!defined('ABSPATH')) exit;
 
-function ai_agent_get_settings(){
-    $defaults = array(
-        'model'               => 'tencent/hy3:free',
+/*
+============================================
+مقادیر پیش‌فرض تنظیمات افزونه
+
+جدا از ai_agent_get_settings() نگه داشته شده تا هر جای دیگری هم که به
+پیش‌فرض یک کلید نیاز دارد، همین یک منبع را بخواند. قبلاً سازنده‌ی
+payloadِ ارسال به سرور پیش‌فرض‌های دستیِ خودش را داشت و یکی از آن‌ها با
+پیش‌فرض واقعی فرق می‌کرد — daily_message_limit به‌جای ۱۰۰۰ صفر بود، و
+صفر یعنی «هیچ پیامی جواب داده نشود».
+============================================
+*/
+function ai_agent_default_settings(){
+    return array(
+        /*
+        خالی، نه یک شناسه‌ی حدسی. مقدار قبلی 'tencent/hy3:free' بود که
+        «/» دارد و سرور شناسه‌ی «/»دار را اصلاً نمی‌پذیرد؛ یعنی مدلی که
+        هرگز معتبر نمی‌شد. چون سرور کل PATCH را با یک فیلد نامعتبر رد
+        می‌کند، نتیجه‌اش این بود که هیچ تنظیمی ذخیره نمی‌شد — کاربر
+        «ذخیره» می‌زد و هیچ اتفاقی نمی‌افتاد.
+
+        خالی یعنی «این‌جا مدلی انتخاب نشده»؛ در آن حالت کلید اصلاً برای
+        سرور فرستاده نمی‌شود و مقدار خودِ سرور دست‌نخورده می‌ماند.
+        */
+        'model'               => '',
         'color'               => '#F4865B',
         // ====== رنگ دستیار (دو رنگ مستقل برای حالت لایت و دارک) ======
         // color_light: رنگ ویجت وقتی چت در حالت روشن (Light) است
@@ -123,6 +144,10 @@ function ai_agent_get_settings(){
         'button_position_side_desktop'    => 'right',
         'button_position_offset_y_desktop'=> 0,
     );
+}
+
+function ai_agent_get_settings(){
+    $defaults = ai_agent_default_settings();
     $saved = get_option('ai_agent_settings', array());
     $settings = wp_parse_args($saved, $defaults);
 
@@ -175,8 +200,18 @@ function ai_agent_sanitize_settings($input){
     $old    = get_option('ai_agent_settings', array());
     $output = array();
 
-    // چون لیست مدل‌ها به‌صورت پویا از API خارجی خوانده می‌شود، آرایه ثابتی برای اعتبارسنجی وجود ندارد
-    $output['model'] = (isset($input['model']) && trim($input['model']) !== '') ? sanitize_text_field($input['model']) : 'tencent/hy3:free';
+    /*
+    چون لیست مدل‌ها به‌صورت پویا از API خوانده می‌شود، آرایه‌ی ثابتی برای
+    اعتبارسنجی وجود ندارد. اگر فرم بدون مدل ارسال شد، انتخاب قبلی حفظ
+    می‌شود؛ جایگزین‌کردنش با یک شناسه‌ی ثابت، انتخاب واقعی کاربر را با
+    مدلی عوض می‌کرد که سرور نمی‌پذیرفت.
+    */
+    $submitted_model = (isset($input['model']) && trim($input['model']) !== '')
+        ? sanitize_text_field($input['model'])
+        : '';
+    $output['model'] = $submitted_model !== ''
+        ? $submitted_model
+        : (isset($old['model']) ? (string) $old['model'] : '');
 
     /*
     ============================================
@@ -672,6 +707,23 @@ function ai_agent_after_settings_saved($old_value, $value){
 
     /*
     ============================================
+    هر کلیدِ نبوده، مقدار پیش‌فرضِ واقعی خودش را می‌گیرد — نه صفر و نه
+    رشته‌ی خالی.
+
+    $value همان آرایه‌ای است که همین الان در دیتابیس نوشته شده، و لازم
+    نیست کامل باشد: هر کدی که گزینه را خام بخواند، چیزی به آن اضافه کند
+    و برگرداند (مثل مهاجرت‌های admin_init) یک آرایه‌ی ناقص می‌سازد. قبلاً
+    در آن حالت daily_message_limit صفر و selected_model رشته‌ی خالی به
+    سرور می‌رفت، و هر دو سایت را از کار می‌انداختند: صفر یعنی سقف پیام
+    روزانه‌ی صفر و هر چت با ۴۲۹ رد می‌شد، و مدلِ خالی یعنی هیچ مدلی
+    انتخاب نشده و هر چت با ۴۰۰ رد می‌شد. سایتی که فقط به‌روزرسانی شده
+    بود، بی‌هیچ کار دیگری خاموش می‌شد.
+    ============================================
+    */
+    $value = wp_parse_args(is_array($value) ? $value : array(), ai_agent_default_settings());
+
+    /*
+    ============================================
     ساخت بدنه‌ی PATCH برای /api/v1/sync/settings.
 
     نکته‌ی مهم: مقدار sync_images (تیک سینک تصاویر) در قالب کلید 'image'
@@ -695,10 +747,9 @@ function ai_agent_after_settings_saved($old_value, $value){
 
     // ۱. ارسال (PATCH) مقادیر تازه ذخیره‌شده‌ی کاربر به سرور
     $push_payload = array(
-        'selected_model'        => isset($value['model']) ? (string) $value['model'] : '',
         'allowed_content_types' => ai_agent_unmap_content_types(isset($value['sync_types']) ? $value['sync_types'] : array()),
         'allowed_statuses'      => $existing_allowed_statuses,
-        'daily_message_limit'   => isset($value['daily_message_limit']) ? intval($value['daily_message_limit']) : 0,
+        'daily_message_limit'   => max(1, intval($value['daily_message_limit'])),
 
         // The assistant persona. There is no system_prompt key: the server
         // composes the instruction text from exactly these fields.
@@ -715,6 +766,16 @@ function ai_agent_after_settings_saved($old_value, $value){
         'sync_schedule'         => isset($value['sync_schedule']) ? (string) $value['sync_schedule'] : 'every_3_days',
         'sync_hour'             => isset($value['sync_hour']) ? intval($value['sync_hour']) : 3,
     );
+
+    /*
+    مدل فقط وقتی فرستاده می‌شود که واقعاً یکی انتخاب شده باشد. نبودنِ
+    کلید یعنی «دست نزن»، که همان چیزی است که می‌خواهیم؛ فرستادن رشته‌ی
+    خالی یا یک شناسه‌ی حدسی، کل PATCH را رد می‌کند و هیچ‌کدام از بقیه‌ی
+    تنظیمات هم ذخیره نمی‌شود.
+    */
+    if (!empty($value['model'])) {
+        $push_payload['selected_model'] = (string) $value['model'];
+    }
 
     ai_agent_push_sync_settings($push_payload);
     // نتیجه‌ی خام PATCH عمداً بررسی نمی‌شود؛ در قدم بعد با GET،
