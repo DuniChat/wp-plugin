@@ -267,7 +267,15 @@ function ai_agent_get_wallet_balance_handler() {
 
     $api_key = ai_agent_get_api_key();
     if (empty($api_key)) {
-        wp_send_json_error(array('message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'));
+        /*
+        نصب تازه، نه خطا. needs_api_key به جاوااسکریپت می‌گوید این پیام را
+        مثل خطا (قرمز) نشان ندهد — کاربر کاری اشتباه نکرده، فقط هنوز به
+        قدم اول نرسیده.
+        */
+        wp_send_json_error(array(
+            'message'       => 'اول توکن سایت را ثبت کنید تا موجودی نمایش داده شود.',
+            'needs_api_key' => true,
+        ));
     }
 
     $result = ai_agent_fetch_wallet_balance();

@@ -396,18 +396,6 @@
             });
         })();
 
-        // ----- دکمه نمایش/مخفی کردن API Key -----
-        $('#ai-agent-toggle-api-key').on('click', function(){
-            var $input = $('#ai_agent_api_key');
-            if ($input.attr('type') === 'password') {
-                $input.attr('type', 'text');
-                $(this).text('مخفی');
-            } else {
-                $input.attr('type', 'password');
-                $(this).text('نمایش');
-            }
-        });
-
         /*
         ============================================
         لیست مدل‌ها — از سرور دانیچَت، همراه با قیمت
@@ -557,8 +545,15 @@
                             $statusEl.text('موجودی کم است — کیف‌پول را شارژ کنید.');
                         }
                     } else {
+                        /*
+                        نبودِ توکن، خطا نیست — حالت عادیِ یک نصب تازه است.
+                        نشان‌دادن «خطا در دریافت موجودی» در آن لحظه، اولین
+                        چیزی است که کاربر روی صفحه می‌بیند و بی‌جهت نگرانش
+                        می‌کند؛ چیزی که لازم دارد، قدم بعدی است.
+                        */
                         var msg = (response.data && response.data.message) ? response.data.message : 'خطا در دریافت موجودی کیف پول.';
-                        $statusEl.addClass('is-error').text(msg);
+                        var needsToken = !!(response.data && response.data.needs_api_key);
+                        $statusEl.toggleClass('is-error', !needsToken).text(msg);
                     }
                 },
                 error: function() {
@@ -2323,6 +2318,44 @@
             });
 
             refresh();
+        })();
+
+        /*
+        ============================================
+        سوال‌های پیشنهادی شروع
+
+        کلیک روی یک نمونه، متنش را در اولین ردیف خالی می‌نشاند — ذخیره‌اش
+        نمی‌کند و ردیف پرشده را هم دست نمی‌زند. مدیر معمولاً نمونه را
+        برمی‌دارد تا کمی تغییرش بدهد، نه اینکه عیناً همان را بخواهد.
+        ============================================
+        */
+        (function aiAgentStarters() {
+            var $section = $('#ai-agent-starters-section');
+            if (!$section.length) return;
+
+            $section.on('click', '[data-starter-sample]', function () {
+                var text = $(this).data('starter-sample');
+                var $inputs = $section.find('.ai-agent-starter-input');
+
+                var $empty = $inputs.filter(function () {
+                    return $.trim(this.value) === '';
+                }).first();
+
+                if (!$empty.length) {
+                    // همه‌ی ردیف‌ها پرند. بازنویسیِ خاموشِ چیزی که مدیر
+                    // نوشته بدترین کار ممکن است، پس فقط می‌گوییم چرا
+                    // اتفاقی نیفتاد.
+                    $section.find('.ai-agent-starter-rows')
+                        .nextAll('.ai-agent-starter-note').remove();
+                    $('<p class="ai-agent-hint ai-agent-starter-note"></p>')
+                        .text('هر چهار ردیف پره — اول یکی رو خالی کن.')
+                        .insertAfter($section.find('.ai-agent-starter-rows'));
+                    return;
+                }
+
+                $section.find('.ai-agent-starter-note').remove();
+                $empty.val(text).trigger('change').trigger('input').focus();
+            });
         })();
 
         // راه‌اندازی ماژول جلسات

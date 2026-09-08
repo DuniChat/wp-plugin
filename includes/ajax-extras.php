@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 /*
 ============================================
 هندلرهای AJAX تازه:
-    • ربات‌های تلگرام و بله
+    • ربات بله
     • اسناد و پرسش‌وپاسخ‌های دستی
     • انتقال گفت‌وگو به پیام‌رسان (این یکی برای بازدیدکننده است، نه ادمین)
 
@@ -57,8 +57,10 @@ add_action('wp_ajax_ai_agent_bots_list', 'ai_agent_bots_list_handler');
 function ai_agent_bots_save_handler() {
     ai_agent_extras_guard('ai_agent_bots_nonce_action');
 
+    // فقط بله. سرورهای دانی‌چت داخل ایران‌اند و به api.telegram.org دسترسی
+    // ندارند، پس ربات تلگرام توکن را می‌پذیرفت و هیچ‌وقت جواب نمی‌داد.
     $platform = isset($_POST['platform']) ? sanitize_text_field(wp_unslash($_POST['platform'])) : '';
-    if (!in_array($platform, array('telegram', 'bale'), true)) {
+    if ($platform !== 'bale') {
         wp_send_json_error(array('message' => 'پیام‌رسان نامعتبر است.'));
     }
 
@@ -82,7 +84,7 @@ function ai_agent_bots_delete_handler() {
     ai_agent_extras_guard('ai_agent_bots_nonce_action');
 
     $platform = isset($_POST['platform']) ? sanitize_text_field(wp_unslash($_POST['platform'])) : '';
-    if (!in_array($platform, array('telegram', 'bale'), true)) {
+    if ($platform !== 'bale') {
         wp_send_json_error(array('message' => 'پیام‌رسان نامعتبر است.'));
     }
 
