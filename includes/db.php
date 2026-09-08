@@ -136,6 +136,52 @@ add_action('admin_init', 'ai_agent_maybe_default_shop_bridge_on');
 
 /*
 ============================================
+Migration: روشن‌کردن پیش‌فرضِ منابع همگام‌سازی
+
+منابع داده و «سینک تصاویر» از ابتدا خاموش بودند و حالا پیش‌فرضشان روشن
+شده است. مثل مهاجرت بالا، تغییرِ آرایه‌ی پیش‌فرض‌ها فقط نصب‌های تازه را
+می‌گیرد و سایتی که قبلاً تنظیمات را ذخیره کرده، خاموش می‌ماند.
+
+فقط سایت‌هایی را می‌گیرد که هیچ منبعی انتخاب نکرده‌اند. کسی که عمداً فقط
+«نوشته‌ها» را تیک زده، انتخابش دست‌نخورده می‌ماند؛ روشن‌کردن بقیه برایش
+یعنی سینک‌شدنِ محتوایی که نمی‌خواسته و صورت‌حسابی که انتظارش را نداشته.
+
+سینک تصاویر جدا حساب می‌شود چون هزینه‌ی جداگانه‌ای دارد و ممکن است کسی
+عمداً خاموشش کرده باشد — پس فقط وقتی روشن می‌شود که کلید در تنظیمات
+اصلاً وجود نداشته باشد، یعنی این سایت هیچ‌وقت درباره‌اش تصمیمی نگرفته.
+============================================
+*/
+function ai_agent_maybe_default_sync_sources_on() {
+    if (get_option('ai_agent_sync_sources_default_on')) {
+        return;
+    }
+    update_option('ai_agent_sync_sources_default_on', 1, false);
+
+    $settings = get_option('ai_agent_settings');
+    if (!is_array($settings)) {
+        return; // نصب تازه: آرایه‌ی پیش‌فرض‌ها خودش مقدار درست را می‌دهد
+    }
+
+    $changed = false;
+
+    if (empty($settings['sync_types']) || !is_array($settings['sync_types'])) {
+        $settings['sync_types'] = array('posts', 'pages', 'products', 'product_cats');
+        $changed = true;
+    }
+
+    if (!array_key_exists('sync_images', $settings)) {
+        $settings['sync_images'] = true;
+        $changed = true;
+    }
+
+    if ($changed) {
+        update_option('ai_agent_settings', $settings);
+    }
+}
+add_action('admin_init', 'ai_agent_maybe_default_sync_sources_on');
+
+/*
+============================================
 رمزنگاری / رمزگشایی و ذخیره‌سازی امن API Key
 
 از openssl (روش AES-256-CBC) برای رمزنگاری استفاده می‌شود.

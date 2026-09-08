@@ -672,7 +672,11 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
     padding: 10px 14px;
     margin-top: 14px;
 }
-.ai-agent-note-info  { color: var(--dc-warn);   background: var(--dc-warn-bg); }
+/* «info» با رنگ هشدار کشیده شده بود — نارنجی یعنی یک چیزی خراب است، و
+   یادداشتی که فقط دارد یک واقعیت را می‌گوید (مثلاً تفاوت قیمت بله) نباید
+   این‌طور خوانده شود. حالا خنثی است و هشدار، کلاس خودش را دارد. */
+.ai-agent-note-info  { color: var(--dc-text-soft); background: var(--dc-sunken); }
+.ai-agent-note-warn  { color: var(--dc-warn);   background: var(--dc-warn-bg); }
 .ai-agent-note-error { color: var(--dc-danger); background: var(--dc-danger-bg); }
 .ai-agent-note-ok    { color: var(--dc-ok);     background: var(--dc-ok-bg); }
 
