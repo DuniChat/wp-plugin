@@ -303,6 +303,80 @@ function ai_agent_reindex_knowledge_all() {
 
 /*
 --------------------------------------------
+تبدیل صدا به متن
+--------------------------------------------
+*/
+
+/*
+ارسال فایل صوتی ضبط‌شده به سرور دانی‌چت و گرفتن متن آن.
+
+مثل آپلود فایلِ دانش، بدنه‌ی multipart دستی ساخته می‌شود چون
+wp_remote_post پشتیبانی داخلی برای آپلود فایل ندارد.
+
+طول ضبط هم فرستاده می‌شود، ولی فقط به‌عنوان پشتیبان: هزینه بر اساس
+طولی حساب می‌شود که خود سرویس تبدیل صوت گزارش می‌کند، نه عددی که
+مرورگر می‌گوید.
+*/
+function ai_agent_transcribe_audio($file_path, $file_name, $duration_seconds = null) {
+
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        return array('ok' => false, 'code' => 0, 'error' => 'دستیار هنوز به سرور وصل نشده است.');
+    }
+
+    if (!is_readable($file_path)) {
+        return array('ok' => false, 'code' => 0, 'error' => 'فایل صوتی قابل خواندن نبود.');
+    }
+
+    $contents = file_get_contents($file_path);
+    if ($contents === false || $contents === '') {
+        return array('ok' => false, 'code' => 0, 'error' => 'فایل صوتی خالی بود.');
+    }
+
+    $boundary = wp_generate_password(24, false);
+    $eol      = "\r\n";
+    $payload  = '';
+
+    if ($duration_seconds !== null) {
+        $payload .= '--' . $boundary . $eol;
+        $payload .= 'Content-Disposition: form-data; name="duration_seconds"' . $eol . $eol;
+        $payload .= $duration_seconds . $eol;
+    }
+
+    $payload .= '--' . $boundary . $eol;
+    $payload .= 'Content-Disposition: form-data; name="file"; filename="' . $file_name . '"' . $eol;
+    $payload .= 'Content-Type: application/octet-stream' . $eol . $eol;
+    $payload .= $contents . $eol;
+    $payload .= '--' . $boundary . '--' . $eol;
+
+    $response = wp_remote_post(ai_agent_api_base() . '/chat/transcribe', array(
+        // تبدیل صوت به متن چند ثانیه طول می‌کشد؛ مهلت پیش‌فرض کوتاه است.
+        'timeout' => 60,
+        'headers' => array(
+            'X-API-Key'    => $api_key,
+            'Accept'       => 'application/json',
+            'Content-Type' => 'multipart/form-data; boundary=' . $boundary,
+        ),
+        'body' => $payload,
+    ));
+
+    if (is_wp_error($response)) {
+        return array('ok' => false, 'code' => 0, 'error' => 'ارتباط با سرور برای تبدیل صدا برقرار نشد.');
+    }
+
+    $code = intval(wp_remote_retrieve_response_code($response));
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+
+    if ($code >= 200 && $code < 300) {
+        return array('ok' => true, 'code' => $code, 'data' => is_array($data) ? $data : array());
+    }
+
+    return array('ok' => false, 'code' => $code, 'error' => ai_agent_api_error_text($data, $code));
+}
+
+
+/*
+--------------------------------------------
 انتقال گفت‌وگو به پیام‌رسان
 --------------------------------------------
 */

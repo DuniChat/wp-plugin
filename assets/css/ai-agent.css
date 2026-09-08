@@ -1162,6 +1162,15 @@ button.ai-references-title.ai-references-toggle {
     pointer-events: none;
 }
 
+/*
+جابه‌جایی آیکون: میکروفون تا وقتی ضبط شروع نشده، مربعِ توقف بعد از آن.
+اینکه هر دو در HTML باشند و با CSS عوض شوند، یعنی هیچ لحظه‌ای دکمه
+بدون آیکون نیست.
+*/
+#ai-agent-voice .ai-voice-icon-stop { display: none; }
+#ai-agent-voice.is-recording .ai-voice-icon-mic { display: none; }
+#ai-agent-voice.is-recording .ai-voice-icon-stop { display: block; }
+
 /* حالت فعال (در حال ضبط): رنگ قرمز + انیمیشن پالس */
 #ai-agent-voice.is-recording {
     color: #fff;
@@ -1192,7 +1201,7 @@ button.ai-references-title.ai-references-toggle {
     }
 }
 
-/* وقتی مرورگر از SpeechRecognition پشتیبانی نمی‌کند، دکمه مخفی می‌شود */
+/* وقتی مرورگر MediaRecorder یا میکروفون ندارد، دکمه مخفی می‌شود */
 #ai-agent-voice.voice-not-supported {
     display: none !important;
 }
@@ -1248,34 +1257,67 @@ button.ai-references-title.ai-references-toggle {
     50% { opacity: 0.35; transform: scale(0.8); }
 }
 
-/* موج صدا (equalizer) متحرک — القای حس «صدا در حال ضبط شدن است» */
+/*
+میله‌های فرکانسی.
+
+ارتفاع هر میله را جاوااسکریپت از روی خودِ صدا ست می‌کند (AnalyserNode)،
+نه یک انیمیشن CSS. تفاوتش این است که وقتی کاربر ساکت می‌شود میله‌ها هم
+می‌خوابند — و همین تنها نشانه‌ای است که به او می‌گوید میکروفون واقعاً
+صدایش را می‌شنود. یک موجِ تزئینی، حتی با میکروفونِ خاموش هم می‌رقصد.
+
+نوار کل عرضِ باقی‌مانده را می‌گیرد، چون جای فیلد متن نشسته است.
+*/
 .ai-recording-waveform {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
-    height: 20px;
-    flex: 0 0 auto;
+    justify-content: space-between;
+    gap: 2px;
+    height: 22px;
+    flex: 1 1 auto;
+    min-width: 0;
+    /* روی صفحه‌های خیلی باریک، میله‌های اضافی بی‌سروصدا بریده می‌شوند
+       به‌جای اینکه شمارنده‌ی زمان را از نوار بیرون بیندازند. */
+    overflow: hidden;
 }
 
 .ai-recording-waveform span {
     display: block;
-    width: 3px;
-    height: 6px;
+    flex: 1 1 0;
+    min-width: 2px;
+    max-width: 4px;
+    height: 15%;
     border-radius: 2px;
     background: var(--ai-agent-theme-color, #2563eb);
+    /* ملایم‌ترین ترنزیشنی که هنوز روان دیده می‌شود: بلندتر از این،
+       میله‌ها از صدا عقب می‌مانند و حس زنده‌بودن از بین می‌رود. */
+    transition: height 60ms linear;
+}
+
+/*
+هنگام تبدیل به متن، صدایی در کار نیست و میله‌ها یخ می‌زنند. اینجا
+انیمیشن CSS درست است: چیزی برای نمایش‌دادن وجود ندارد جز اینکه کار
+هنوز تمام نشده.
+*/
+.ai-agent-recording-bar.is-processing .ai-recording-waveform span,
+.ai-agent-recording-bar.no-analyser .ai-recording-waveform span {
     animation: ai-recording-wave 0.9s ease-in-out infinite;
 }
 
-.ai-recording-waveform span:nth-child(1) { animation-delay: 0s; }
-.ai-recording-waveform span:nth-child(2) { animation-delay: 0.12s; }
-.ai-recording-waveform span:nth-child(3) { animation-delay: 0.24s; }
-.ai-recording-waveform span:nth-child(4) { animation-delay: 0.36s; }
-.ai-recording-waveform span:nth-child(5) { animation-delay: 0.48s; }
+.ai-agent-recording-bar.is-processing .ai-recording-waveform span:nth-child(3n+1),
+.ai-agent-recording-bar.no-analyser .ai-recording-waveform span:nth-child(3n+1) { animation-delay: 0s; }
+.ai-agent-recording-bar.is-processing .ai-recording-waveform span:nth-child(3n+2),
+.ai-agent-recording-bar.no-analyser .ai-recording-waveform span:nth-child(3n+2) { animation-delay: 0.15s; }
+.ai-agent-recording-bar.is-processing .ai-recording-waveform span:nth-child(3n),
+.ai-agent-recording-bar.no-analyser .ai-recording-waveform span:nth-child(3n)   { animation-delay: 0.3s; }
+
+/* در حال پردازش، نقطه‌ی «ضبط» دیگر معنایی ندارد. */
+.ai-agent-recording-bar.is-processing .ai-recording-dot {
+    background: var(--ai-agent-theme-color, #2563eb);
+}
 
 @keyframes ai-recording-wave {
-    0%, 100% { height: 6px; }
-    50% { height: 18px; }
+    0%, 100% { height: 20%; }
+    50% { height: 80%; }
 }
 
 /* متن «در حال ضبط صدا...» */
@@ -2354,3 +2396,15 @@ weight is legible without changing the bubble geometry.
 }
 
 .ai-agent-transferred-bar[hidden] { display: none; }
+
+/*
+هنگام ضبط، فیلد متن پنهان می‌شود و نوار ضبط جایش را می‌گیرد.
+
+با صفتِ hidden انجام می‌شود و نه یک کلاس، چون همان صفت برای صفحه‌خوان‌ها
+هم معنا دارد: فیلدی که دیده نمی‌شود نباید در ترتیب فوکوس هم بماند. این
+قانون فقط برای صراحت است — مرورگر خودش hidden را display:none می‌گیرد،
+ولی هر قانون display بعدی می‌توانست بی‌سروصدا خنثی‌اش کند.
+*/
+#ai-agent-input[hidden] {
+    display: none !important;
+}

@@ -277,6 +277,57 @@ add_action('wp_ajax_ai_agent_qa_delete', 'ai_agent_qa_delete_handler');
 گفت‌وگویی که نشستش را در همین مرورگر دارد.
 */
 
+/*
+--------------------------------------------
+تبدیل صدا به متن — برای بازدیدکننده
+--------------------------------------------
+*/
+
+function ai_agent_transcribe_handler() {
+
+    $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+    if (!wp_verify_nonce($nonce, 'ai_agent_chat_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'));
+    }
+
+    if (empty($_FILES['audio']) || !isset($_FILES['audio']['tmp_name'])) {
+        wp_send_json_error(array('message' => 'فایل صوتی دریافت نشد.'));
+    }
+
+    $file = $_FILES['audio'];
+    if (!empty($file['error'])) {
+        wp_send_json_error(array(
+            'message' => 'آپلود فایل صوتی ناموفق بود (کد ' . intval($file['error']) . ').',
+        ));
+    }
+    if (!is_uploaded_file($file['tmp_name'])) {
+        wp_send_json_error(array('message' => 'فایل صوتی معتبر نیست.'));
+    }
+
+    // فقط برای پشتیبان؛ هزینه بر اساس طولی حساب می‌شود که سرویس تبدیل
+    // صوت گزارش می‌کند، نه عددی که مرورگر می‌فرستد.
+    $duration = isset($_POST['duration_seconds']) ? floatval($_POST['duration_seconds']) : null;
+    if ($duration !== null && $duration <= 0) {
+        $duration = null;
+    }
+
+    $name = sanitize_file_name($file['name']);
+    $result = ai_agent_transcribe_audio($file['tmp_name'], $name ?: 'voice.webm', $duration);
+
+    if (empty($result['ok'])) {
+        wp_send_json_error(array('message' => $result['error']));
+    }
+
+    // فقط متن به مرورگر برمی‌گردد. هزینه‌ی تبدیل به صاحب سایت مربوط
+    // است و بازدیدکننده کاری با آن ندارد.
+    wp_send_json_success(array(
+        'text' => isset($result['data']['text']) ? $result['data']['text'] : '',
+    ));
+}
+add_action('wp_ajax_ai_agent_transcribe', 'ai_agent_transcribe_handler');
+add_action('wp_ajax_nopriv_ai_agent_transcribe', 'ai_agent_transcribe_handler');
+
+
 function ai_agent_transfer_options_handler() {
 
     $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
