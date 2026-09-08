@@ -33,7 +33,14 @@ function ai_agent_get_settings(){
         'chat_bg_dark'        => '#1F1E1D',
 
         'timeout'             => 15,
-        'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
+        /*
+        همه‌ی منابع پیش‌فرض روشن‌اند. دستیاری که هیچ‌کدام از محتوای سایت را
+        نخوانده باشد، چیزی برای گفتن ندارد؛ و تیک‌نخوردن این‌ها تصمیم کسی
+        نبود، فقط حالت اولیه‌ی فرم بود. اگر سایتی ووکامرس نداشته باشد،
+        جمع‌آورنده‌ی محتوا برای products و product_cats چیزی پیدا نمی‌کند و
+        بی‌سروصدا رد می‌شود.
+        */
+        'sync_types'          => array('posts', 'pages', 'products', 'product_cats'),
         'api_key'             => '',      // کلید API کاربر برای احراز هویت با سرور همگام‌سازی
 
         /*
@@ -79,7 +86,10 @@ function ai_agent_get_settings(){
         'sync_hour'           => 0,              // نیمه‌شب به وقت تهران
         'daily_message_limit' => 1000,    // حداکثر پیام روزانه (قابل ویرایش کاربر و ارسال به سرور)
         'allowed_statuses'    => array(), // وضعیت‌های مجاز برای هر نوع محتوا (از سرور همگام‌سازی)
-        'sync_images'         => false,   // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (allow-image / deny-image)
+        'sync_images'         => true,    // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (allow-image / deny-image)
+        // درصد گران‌تربودن چت بله نسبت به چت سایت. از سرور می‌آید؛ صفر یعنی
+        // هنوز خبری نرسیده و در آن حالت اصلاً جمله‌ای نشان داده نمی‌شود.
+        'bale_surcharge_percent' => 0,
 
         /*
         ============================================
@@ -546,6 +556,15 @@ function ai_agent_sync_settings_from_server(){
     }
     if (isset($remote['response_timeout_seconds'])) {
         $settings['timeout'] = max(1, intval($remote['response_timeout_seconds']));
+    }
+    /*
+    درصد گران‌تربودنِ پاسخ در بله، همان‌طور که سرور حساب کرده. این عدد در
+    افزونه ثابت نوشته نشده چون از روی همان ضریب‌هایی می‌آید که واقعاً
+    صورت‌حساب را می‌سازند؛ نوشتنش این‌جا یعنی روزی که ضریب عوض شود، جمله‌ی
+    داخل تنظیمات دروغ بگوید.
+    */
+    if (isset($remote['bale_surcharge_percent'])) {
+        $settings['bale_surcharge_percent'] = max(0, intval($remote['bale_surcharge_percent']));
     }
     if (isset($remote['last_full_sync_at']) && is_string($remote['last_full_sync_at'])) {
         $settings['last_full_sync_at'] = $remote['last_full_sync_at'];
@@ -1606,6 +1625,26 @@ function ai_agent_settings_page(){
                         همین دستیار می‌تونه توی بله هم جواب مشتری‌هات رو بده — با همون اطلاعات
                         سایت و همون مدلی که بالا انتخاب کردی. کافیه توکن ربات رو بدی.
                     </p>
+                    <?php
+                    /*
+                    هزینه‌ی بله را قبل از وصل‌کردن ربات می‌گوییم، نه بعد از
+                    دیدنش در صورت‌حساب. عدد از سرور می‌آید تا با ضریبی که
+                    واقعاً اعمال می‌شود یکی باشد؛ اگر هنوز نرسیده، چیزی
+                    نشان نمی‌دهیم — یک عدد حدسی درباره‌ی پول، بدتر از
+                    نگفتن است.
+                    */
+                    $bale_surcharge = isset($settings['bale_surcharge_percent'])
+                        ? intval($settings['bale_surcharge_percent'])
+                        : 0;
+                    if ($bale_surcharge > 0) :
+                    ?>
+                        <p class="ai-agent-note ai-agent-note-info" style="margin-bottom:16px">
+                            پاسخ‌های ربات بله حدود <?php echo ai_agent_fa_digits($bale_surcharge); ?>٪
+                            گران‌تر از پاسخ‌های چت سایت حساب می‌شن. دلیلش هزینه‌ی خود پیام‌رسانه:
+                            رفت‌وبرگشت با سرورهای بله، گرفتن فایل ویس و عکس، و تلاش‌های دوباره‌ای
+                            که ربات لازم داره. چت سایت این‌ها رو نداره.
+                        </p>
+                    <?php endif; ?>
                     <p class="ai-agent-hint" style="margin-bottom:16px">
                         چرا فقط بله؟ سرورهای دانی‌چت داخل ایران هستن و به تلگرام دسترسی ندارن.
                         ربات تلگرام توکن رو قبول می‌کرد ولی هیچ‌وقت به کسی جواب نمی‌داد، پس
