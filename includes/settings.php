@@ -55,7 +55,6 @@ function ai_agent_get_settings(){
         دسترسی به پیشخوان وردپرس برای سوءاستفاده از آن کافی بود.
         ============================================
         */
-        'shop_bridge_enabled' => 1,         // اتصال دستیار به سبد خرید و سفارش‌های ووکامرس (پیش‌فرض روشن)
         'starter_questions'   => array(),   // سوال‌های پیشنهادی صفحه‌ی شروع چت (خالی = پیشنهادهای خودکار)
         'assistant_tone'      => 'neutral', // formal | professional | neutral | friendly | warm | casual
         'emoji_usage'         => 'low',     // none | low | medium | high
@@ -236,7 +235,6 @@ function ai_agent_sanitize_settings($input){
     می‌شود.
     ============================================
     */
-    $output['shop_bridge_enabled'] = !empty($input['shop_bridge_enabled']) ? 1 : 0;
 
     /*
     سوال‌های پیشنهادی صفحه‌ی شروع.
@@ -717,19 +715,6 @@ function ai_agent_after_settings_saved($old_value, $value){
         'sync_schedule'         => isset($value['sync_schedule']) ? (string) $value['sync_schedule'] : 'every_3_days',
         'sync_hour'             => isset($value['sync_hour']) ? intval($value['sync_hour']) : 3,
     );
-
-    /*
-    پل فروشگاه.
-
-    رمز فقط وقتی فرستاده می‌شود که قابلیت روشن باشد؛ خاموش‌کردنش رمز را
-    هم پاک می‌کند. رمزِ جامانده روی سرور یعنی راهی که هنوز باز است و
-    صاحب سایت فکر می‌کند بسته‌اش کرده.
-    */
-    if (function_exists('ai_agent_shop_bridge_secret')) {
-        $shop_on = !empty($value['shop_bridge_enabled']) && ai_agent_woocommerce_active();
-        $push_payload['shop_bridge_enabled'] = $shop_on;
-        $push_payload['shop_bridge_secret']  = $shop_on ? ai_agent_shop_bridge_secret() : '';
-    }
 
     ai_agent_push_sync_settings($push_payload);
     // نتیجه‌ی خام PATCH عمداً بررسی نمی‌شود؛ در قدم بعد با GET،
@@ -1647,50 +1632,6 @@ function ai_agent_settings_page(){
                             ?></span>
                         </div>
                     </div>
-                </section>
-
-                <!-- ---------- اتصال به ووکامرس ---------- -->
-                <section class="ai-agent-section">
-                    <div class="ai-agent-section-head">
-                        <h2>اتصال به حساب و سبد خرید کاربر</h2>
-                        <?php if (ai_agent_woocommerce_active()) : ?>
-                            <span class="ai-agent-badge ai-agent-badge-ok">ووکامرس فعال است</span>
-                        <?php else : ?>
-                            <span class="ai-agent-badge ai-agent-badge-warn">ووکامرس نصب نیست</span>
-                        <?php endif; ?>
-                    </div>
-                    <p class="ai-agent-section-intro">
-                        با روشن‌کردن این گزینه، دستیار می‌تونه به کاربری که توی سایتت لاگین کرده
-                        بگه چی توی سبد خریدشه، قبلاً چی سفارش داده، و حتی محصول رو براش به سبد
-                        اضافه یا از سبد حذف کنه — «کفش فلان رو بذار تو سبدم»، «سبدم چقدر شد؟»
-                    </p>
-
-                    <?php $shop_on = !empty($settings['shop_bridge_enabled']); ?>
-                    <label class="ai-agent-tile<?php echo $shop_on ? ' is-active' : ''; ?>" style="max-width:520px">
-                        <input type="checkbox" name="ai_agent_settings[shop_bridge_enabled]" value="1"
-                               <?php checked($shop_on); ?> <?php disabled(!ai_agent_woocommerce_active()); ?> />
-                        <span class="ai-agent-tile-box" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        </span>
-                        <span class="ai-agent-tile-text">
-                            <span class="ai-agent-tile-title">دسترسی به سبد خرید و سفارش‌ها</span>
-                            <span class="ai-agent-tile-sub">فقط برای کاربرانی که توی سایت لاگین کرده‌اند</span>
-                        </span>
-                    </label>
-
-                    <?php if (!ai_agent_woocommerce_active()) : ?>
-                        <p class="ai-agent-note ai-agent-note-warn">
-                            این قابلیت به ووکامرس نیاز داره. اول ووکامرس رو نصب و فعال کن.
-                        </p>
-                    <?php endif; ?>
-
-                    <p class="ai-agent-hint" style="margin-top:14px">
-                        اگه کاربر لاگین نکرده باشه و بپرسه «سفارش‌هام چی بود؟»، دستیار ازش
-                        می‌خواد اول وارد حسابش بشه و بعد دوباره بپرسه — چیزی از خودش نمی‌سازه.
-                        <br />
-                        هیچ‌وقت شناسه‌ی کاربر وردپرس از سایتت بیرون نمی‌ره: سرور فقط یه توکن
-                        موقت می‌گیره که ترجمه‌ش به کاربر، همین‌جا و توی سایت خودت انجام می‌شه.
-                    </p>
                 </section>
 
                 <!-- ---------- ربات بله ---------- -->

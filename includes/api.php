@@ -118,25 +118,6 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
         $body_args['metadata'] = array('visitor_id' => $visitor_id);
     }
 
-    /*
-    توکن خرید: به دستیار اجازه می‌دهد سبد خرید و سفارش‌های همین کاربر را
-    ببیند و تغییر بدهد.
-
-    شناسه‌ی کاربر از get_current_user_id() گرفته می‌شود، نه از مرورگر —
-    اگر مرورگر می‌توانست شناسه بفرستد، هر کسی می‌توانست سفارش‌های دیگری
-    را بخواند. خودِ شناسه هم هیچ‌وقت از سایت بیرون نمی‌رود: فقط توکنی
-    می‌رود که تنها همین افزونه می‌تواند به کاربر ترجمه‌اش کند.
-
-    کاربر مهمان توکنی ندارد و سرور از نبودنش می‌فهمد که باید از او
-    بخواهد وارد حسابش شود.
-    */
-    if (function_exists('ai_agent_shop_token_for_current_user')) {
-        $shop_token = ai_agent_shop_token_for_current_user();
-        if ($shop_token !== '') {
-            $body_args['shop_token'] = $shop_token;
-        }
-    }
-
     $body = wp_json_encode($body_args);
 
     // هدرها (cURL آرایه‌ی «Key: Value» می‌گیرد)
