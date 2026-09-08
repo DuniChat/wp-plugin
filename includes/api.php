@@ -795,12 +795,25 @@ function ai_agent_fetch_chat_history($session_id) {
     $session_status = isset($data['status']) ? (string) $data['status'] : '';
     $last_message_role = isset($data['last_message_role']) ? (string) $data['last_message_role'] : '';
 
+    /*
+    آیا این گفت‌وگو به تلگرام/بله منتقل شده؟
+
+    سرور این را روی خودِ نشست ذخیره می‌کند، نه فقط به‌شکل یک پیام، چون
+    ویجت بعد از رفرش صفحه باید همچنان بداند که فیلد پیام باید بسته
+    بماند — وگرنه کاربر دوباره این‌جا می‌نویسد و جوابی نمی‌گیرد.
+    */
+    $meta = isset($data['session_metadata']) && is_array($data['session_metadata'])
+        ? $data['session_metadata']
+        : array();
+    $transferred = !empty($meta['transferred_to_messenger']);
+
     // فرمت جدید: پاسخ یک شیء است که messages داخل آن قرار دارد
     if (isset($data['messages']) && is_array($data['messages'])) {
         return array(
             'messages'          => $data['messages'],
             'status'            => $session_status,
             'last_message_role' => $last_message_role,
+            'transferred'       => $transferred,
         );
     }
 
@@ -2071,6 +2084,12 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
             'page'      => $page,
             'page_size' => $page_size,
             'has_next'  => $has_next,
+            // هزینه‌ی کل همین گفت‌وگو (ریال) و توکن‌هایش، همان‌طور که سرور
+            // حساب کرده. سمت کلاینت جمع زده نمی‌شود چون این صفحه فقط بخشی
+            // از پیام‌ها را دارد و جمعِ یک صفحه، هزینه‌ی گفت‌وگو نیست.
+            'total_cost_irr'      => isset($data['total_cost_irr']) ? floatval($data['total_cost_irr']) : 0,
+            'total_tokens_input'  => isset($data['total_tokens_input']) ? intval($data['total_tokens_input']) : 0,
+            'total_tokens_output' => isset($data['total_tokens_output']) ? intval($data['total_tokens_output']) : 0,
         );
     }
 

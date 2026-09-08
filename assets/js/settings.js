@@ -18,6 +18,25 @@
     jQuery(function($){
 
         /*
+        ارقام فارسی و تبدیل ریال به تومان.
+
+        در سطح بالای فایل تعریف شده‌اند چون هم بخش مدل‌ها و هم فهرست
+        گفت‌وگوها به آن‌ها نیاز دارند، و دو پیاده‌سازی جدا یعنی دو جای
+        متفاوت برای گروه‌بندی متفاوتِ همان عدد.
+        */
+        function aiAgentFaDigits(value) {
+            return String(value).replace(/[0-9]/g, function (d) {
+                return '۰۱۲۳۴۵۶۷۸۹'[d];
+            });
+        }
+
+        function aiAgentToman(amountIrr) {
+            var value = Math.round(Number(amountIrr) / 10);
+            if (!isFinite(value)) return '';
+            return aiAgentFaDigits(String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '٬'));
+        }
+
+        /*
         ============================================
         Escape HTML و تبدیل ساده و امن مارک‌داون به HTML
         (نسخه‌ی مشابه ai-agent.js، برای استفاده در پیش‌نمایش
@@ -415,18 +434,9 @@
             var token    = $('#ai_agent_models_nonce_field').val();
             var selected = $select.val();
 
-            function faDigits(value) {
-                return String(value).replace(/[0-9]/g, function (d) {
-                    return '۰۱۲۳۴۵۶۷۸۹'[d];
-                });
-            }
-
-            /** ریال ← تومان، گروه‌بندی‌شده و با ارقام فارسی. */
-            function toman(amountIrr) {
-                var value = Math.round(Number(amountIrr) / 10);
-                if (!isFinite(value)) return '';
-                return faDigits(String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '٬'));
-            }
+            // همان دو کمکی سطح فایل، با نام‌های محلیِ قبلی.
+            var faDigits = aiAgentFaDigits;
+            var toman    = aiAgentToman;
 
             function labelFor(model) {
                 if (typeof model === 'string') return model;
@@ -1256,6 +1266,26 @@
 
                         $header.append($arrow).append(' ').append($idSpan).append(' ').append($dateSpan).append(' ').append($statusBadge);
 
+                        /*
+                        هزینه‌ی همین گفت‌وگو، کنار خودش.
+
+                        صاحب سایت به‌ازای توکن پول می‌دهد؛ تا وقتی فقط یک عدد
+                        کلی کیف‌پول می‌دید، معلوم نبود کدام گفت‌وگو گران درآمده.
+                        گفت‌وگویی که هنوز چیزی خرج نکرده بج نمی‌گیرد تا ردیف
+                        شلوغ نشود.
+                        */
+                        var costIrr = Number(item.total_cost_irr || 0);
+                        if (costIrr > 0) {
+                            var tokensIn  = Number(item.total_tokens_input || 0);
+                            var tokensOut = Number(item.total_tokens_output || 0);
+                            $header.append(' ').append(
+                                $('<span class="ai-agent-session-cost"></span>')
+                                    .attr('title', 'توکن ورودی: ' + aiAgentFaDigits(tokensIn) +
+                                                   ' — توکن خروجی: ' + aiAgentFaDigits(tokensOut))
+                                    .text(aiAgentToman(costIrr) + ' تومان')
+                            );
+                        }
+
                         var $body = $('<div class="ai-agent-session-body" style="display:none;"></div>');
 
                         $header.on('click', function() {
@@ -1888,6 +1918,412 @@
                 return jy + '/' + String(jm).padStart(2, '0') + '/' + String(jd).padStart(2, '0');
             }
         };
+
+        /*
+        ============================================
+        ربات‌های تلگرام و بله
+
+        هر کارت یک پیام‌رسان است. توکن هیچ‌وقت از سرور برنمی‌گردد — فقط
+        چهار کاراکتر آخرش — پس فیلد همیشه خالی باز می‌شود و خالی ماندنش
+        یعنی «همینی که هست بماند».
+        ============================================
+        */
+        (function aiAgentBots() {
+            var $section = $('#ai-agent-bots-section');
+            if (!$section.length) return;
+
+            var nonce = $('#ai_agent_bots_nonce_field').val();
+            var $badge = $('#ai-agent-bots-badge');
+
+            function post(action, data, done, fail) {
+                $.post(ajaxurl, $.extend({ action: action, nonce: nonce }, data || {}))
+                    .done(function (response) {
+                        if (response && response.success) {
+                            done(response.data);
+                        } else {
+                            fail((response && response.data && response.data.message) || 'خطای ناشناخته.');
+                        }
+                    })
+                    .fail(function () {
+                        fail('ارتباط با سرور وردپرس برقرار نشد.');
+                    });
+            }
+
+            function paint(items) {
+                var connected = 0;
+
+                $section.find('.ai-agent-bot-card').each(function () {
+                    var $card = $(this);
+                    var platform = $card.data('platform');
+                    var bot = null;
+
+                    for (var i = 0; i < (items || []).length; i++) {
+                        if (items[i].platform === platform) { bot = items[i]; break; }
+                    }
+
+                    var $state = $card.find('.ai-agent-bot-state');
+                    var $username = $card.find('.ai-agent-bot-username');
+                    var $remove = $card.find('.ai-agent-bot-delete');
+
+                    if (!bot) {
+                        $state.text('وصل نیست').removeClass('ai-agent-badge-ok ai-agent-badge-warn');
+                        $username.attr('hidden', true).empty();
+                        $remove.attr('hidden', true);
+                        return;
+                    }
+
+                    connected++;
+                    $remove.removeAttr('hidden');
+
+                    if (bot.last_error) {
+                        // توکن درست بوده ولی وبهوک ثبت نشده. تفاوتش با «وصل
+                        // نیست» مهم است: کاربر نباید دوباره دنبال توکن بگردد.
+                        $state.text('نیاز به بررسی')
+                              .removeClass('ai-agent-badge-ok').addClass('ai-agent-badge-warn');
+                        $card.find('.ai-agent-bot-status').text('سرور پیام‌رسان گفت: ' + bot.last_error);
+                    } else {
+                        $state.text('وصل است')
+                              .removeClass('ai-agent-badge-warn').addClass('ai-agent-badge-ok');
+                    }
+
+                    var $line = $('<span></span>').text('آیدی ربات: ');
+                    if (bot.bot_link) {
+                        $line.append(
+                            $('<a target="_blank" rel="noopener" class="dc-ltr" lang="en"></a>')
+                                .attr('href', bot.bot_link).text('@' + bot.bot_username)
+                        );
+                    } else {
+                        $line.append($('<span class="dc-ltr" lang="en"></span>').text('@' + (bot.bot_username || '')));
+                    }
+                    if (bot.token_hint) {
+                        $line.append($('<span></span>').text(' — توکن ذخیره‌شده …' + bot.token_hint));
+                    }
+                    $username.empty().append($line).removeAttr('hidden');
+                });
+
+                if (connected === 0) {
+                    $badge.text('وصل نشده').removeClass('ai-agent-badge-ok').addClass('ai-agent-badge-warn');
+                } else {
+                    $badge.text(aiAgentFaDigits(connected) + ' ربات فعال')
+                          .removeClass('ai-agent-badge-warn').addClass('ai-agent-badge-ok');
+                }
+            }
+
+            function refresh() {
+                post('ai_agent_bots_list', {}, function (data) {
+                    paint(data.items || []);
+                }, function (message) {
+                    $badge.text('در دسترس نیست').removeClass('ai-agent-badge-ok');
+                    $section.find('.ai-agent-bot-status').first().text(message);
+                });
+            }
+
+            $section.on('click', '.ai-agent-bot-save', function () {
+                var $card = $(this).closest('.ai-agent-bot-card');
+                var $status = $card.find('.ai-agent-bot-status');
+                var $input = $card.find('.ai-agent-bot-token');
+                var token = $.trim($input.val());
+
+                if (!token) {
+                    $status.text('اول توکن ربات را بچسبان.');
+                    return;
+                }
+
+                $status.text('در حال بررسی توکن و اتصال ربات…');
+                post('ai_agent_bots_save', {
+                    platform: $card.data('platform'),
+                    token: token
+                }, function () {
+                    // توکن از فیلد پاک می‌شود تا روی صفحه‌ی باز نماند.
+                    $input.val('');
+                    $status.text('ربات وصل شد.');
+                    refresh();
+                }, function (message) {
+                    $status.text(message);
+                });
+            });
+
+            $section.on('click', '.ai-agent-bot-delete', function () {
+                var $card = $(this).closest('.ai-agent-bot-card');
+                if (!window.confirm('ربات این پیام‌رسان حذف شود؟ بعد از حذف دیگر به کسی جواب نمی‌دهد.')) {
+                    return;
+                }
+                var $status = $card.find('.ai-agent-bot-status');
+                $status.text('در حال حذف…');
+                post('ai_agent_bots_delete', { platform: $card.data('platform') }, function () {
+                    $status.text('ربات حذف شد.');
+                    refresh();
+                }, function (message) {
+                    $status.text(message);
+                });
+            });
+
+            refresh();
+        })();
+
+
+        /*
+        ============================================
+        اسناد دستی و پرسش‌وپاسخ
+        ============================================
+        */
+        (function aiAgentKnowledge() {
+            var $section = $('#ai-agent-knowledge-section');
+            if (!$section.length) return;
+
+            var nonce = $('#ai_agent_knowledge_nonce_field').val();
+            var $badge = $('#ai-agent-knowledge-badge');
+            var $docStatus = $('#ai-agent-knowledge-status');
+            var $qaStatus = $('#ai-agent-qa-status');
+
+            var STATUS_LABELS = {
+                draft:   'ایندکس‌نشده',
+                queued:  'در صف ایندکس',
+                indexed: 'ایندکس شد',
+                failed:  'ایندکس ناموفق'
+            };
+
+            function post(action, data, done, fail) {
+                $.post(ajaxurl, $.extend({ action: action, nonce: nonce }, data || {}))
+                    .done(function (response) {
+                        if (response && response.success) {
+                            done(response.data);
+                        } else {
+                            fail((response && response.data && response.data.message) || 'خطای ناشناخته.');
+                        }
+                    })
+                    .fail(function () { fail('ارتباط با سرور وردپرس برقرار نشد.'); });
+            }
+
+            $section.on('click', '[data-knowledge-tab]', function () {
+                var tab = $(this).data('knowledge-tab');
+                $section.find('[data-knowledge-tab]').removeClass('is-active');
+                $(this).addClass('is-active');
+                $section.find('[data-knowledge-panel]').removeClass('is-active');
+                $section.find('[data-knowledge-panel="' + tab + '"]').addClass('is-active');
+            });
+
+            function statusBadge(status) {
+                return $('<span class="ai-agent-knowledge-state"></span>')
+                    .attr('data-state', status || 'draft')
+                    .text(STATUS_LABELS[status] || status || '');
+            }
+
+            function renderDocuments(items) {
+                var $list = $('#ai-agent-knowledge-list').empty();
+
+                if (!items || !items.length) {
+                    $list.append($('<div class="ai-agent-empty"></div>')
+                        .text('هنوز سندی اضافه نکرده‌ای.'));
+                    return;
+                }
+
+                $.each(items, function (_, doc) {
+                    var $row = $('<div class="ai-agent-knowledge-row"></div>');
+                    var $head = $('<div class="ai-agent-knowledge-row-head"></div>');
+
+                    $head.append($('<strong></strong>').text(doc.title));
+                    $head.append(statusBadge(doc.status));
+                    if (doc.file_name) {
+                        $head.append($('<span class="ai-agent-knowledge-file dc-ltr" lang="en"></span>')
+                            .text(doc.file_name));
+                    }
+                    if (doc.image_count) {
+                        $head.append($('<span class="ai-agent-knowledge-file"></span>')
+                            .text(aiAgentFaDigits(doc.image_count) + ' تصویر'));
+                    }
+
+                    // متن استخراج‌شده نشان داده می‌شود تا کاربر ببیند از فایلش
+                    // واقعاً چه چیزی درآمده — مخصوصاً برای اکسل و PDF که
+                    // نتیجه‌ی خواندنشان قابل حدس نیست.
+                    var preview = (doc.content || '').slice(0, 400);
+                    var $preview = $('<p class="ai-agent-knowledge-preview"></p>').text(preview);
+
+                    var $actions = $('<div class="ai-agent-btn-row"></div>');
+                    $actions.append($('<button type="button" class="ai-agent-btn"></button>')
+                        .text('ایندکس دوباره')
+                        .on('click', function () {
+                            $docStatus.text('در صف ایندکس قرار گرفت…');
+                            post('ai_agent_knowledge_reindex', { id: doc.id }, function () {
+                                $docStatus.text('در صف ایندکس قرار گرفت.');
+                                refresh();
+                            }, function (message) { $docStatus.text(message); });
+                        }));
+                    $actions.append($('<button type="button" class="ai-agent-btn"></button>')
+                        .text('حذف')
+                        .on('click', function () {
+                            if (!window.confirm('این سند حذف شود؟ از پایگاه دانش دستیار هم پاک می‌شود.')) return;
+                            post('ai_agent_knowledge_delete', { id: doc.id }, function () {
+                                $docStatus.text('سند حذف شد.');
+                                refresh();
+                            }, function (message) { $docStatus.text(message); });
+                        }));
+
+                    if (doc.error_reason) {
+                        $row.append($('<p class="ai-agent-note ai-agent-note-warn"></p>')
+                            .text('ایندکس ناموفق بود: ' + doc.error_reason));
+                    }
+
+                    $row.append($head).append($preview).append($actions);
+                    $list.append($row);
+                });
+            }
+
+            function renderQa(items) {
+                var $list = $('#ai-agent-qa-list').empty();
+
+                if (!items || !items.length) {
+                    $list.append($('<div class="ai-agent-empty"></div>')
+                        .text('هنوز پرسش‌وپاسخی اضافه نکرده‌ای.'));
+                    return;
+                }
+
+                $.each(items, function (_, pair) {
+                    var $row = $('<div class="ai-agent-knowledge-row"></div>');
+                    var $head = $('<div class="ai-agent-knowledge-row-head"></div>');
+
+                    $head.append($('<strong></strong>').text(pair.question));
+                    $head.append(statusBadge(pair.is_active ? pair.status : 'draft'));
+                    if (!pair.is_active) {
+                        $head.append($('<span class="ai-agent-knowledge-file"></span>').text('غیرفعال'));
+                    }
+
+                    $row.append($head);
+                    $row.append($('<p class="ai-agent-knowledge-preview"></p>').text(pair.answer));
+
+                    var $actions = $('<div class="ai-agent-btn-row"></div>');
+                    $actions.append($('<button type="button" class="ai-agent-btn"></button>')
+                        .text(pair.is_active ? 'غیرفعال کن' : 'فعال کن')
+                        .on('click', function () {
+                            post('ai_agent_qa_toggle', {
+                                id: pair.id,
+                                is_active: pair.is_active ? '0' : '1'
+                            }, function () {
+                                $qaStatus.text(pair.is_active
+                                    ? 'غیرفعال شد و از پایگاه دانش برداشته شد.'
+                                    : 'فعال شد و در صف ایندکس قرار گرفت.');
+                                refresh();
+                            }, function (message) { $qaStatus.text(message); });
+                        }));
+                    $actions.append($('<button type="button" class="ai-agent-btn"></button>')
+                        .text('حذف')
+                        .on('click', function () {
+                            if (!window.confirm('این پرسش‌وپاسخ حذف شود؟')) return;
+                            post('ai_agent_qa_delete', { id: pair.id }, function () {
+                                $qaStatus.text('حذف شد.');
+                                refresh();
+                            }, function (message) { $qaStatus.text(message); });
+                        }));
+
+                    $row.append($actions);
+                    $list.append($row);
+                });
+            }
+
+            function refresh() {
+                post('ai_agent_knowledge_list', {}, function (data) {
+                    renderDocuments(data.documents);
+                    renderQa(data.qa);
+
+                    var summary = data.summary || {};
+                    var documents = Number(summary.documents || (data.documents || []).length);
+                    var pairs = Number(summary.qa_pairs || (data.qa || []).length);
+                    $badge.text(aiAgentFaDigits(documents) + ' سند · ' +
+                                aiAgentFaDigits(pairs) + ' پرسش‌وپاسخ');
+                }, function (message) {
+                    $badge.text('در دسترس نیست');
+                    $docStatus.text(message);
+                });
+            }
+
+            $('#ai-agent-knowledge-add').on('click', function () {
+                var title = $.trim($('#ai-agent-knowledge-title').val());
+                var content = $.trim($('#ai-agent-knowledge-content').val());
+
+                if (!title || !content) {
+                    $docStatus.text('هم عنوان و هم متن را پر کن.');
+                    return;
+                }
+
+                $docStatus.text('در حال افزودن…');
+                post('ai_agent_knowledge_add_text', { title: title, content: content }, function () {
+                    $('#ai-agent-knowledge-title').val('');
+                    $('#ai-agent-knowledge-content').val('');
+                    $docStatus.text('اضافه شد و در صف ایندکس قرار گرفت.');
+                    refresh();
+                }, function (message) { $docStatus.text(message); });
+            });
+
+            $('#ai-agent-knowledge-upload').on('click', function () {
+                var input = document.getElementById('ai-agent-knowledge-file');
+                if (!input || !input.files || !input.files.length) {
+                    $docStatus.text('اول یک فایل انتخاب کن.');
+                    return;
+                }
+
+                var form = new FormData();
+                form.append('action', 'ai_agent_knowledge_upload');
+                form.append('nonce', nonce);
+                form.append('file', input.files[0]);
+                form.append('title', $.trim($('#ai-agent-knowledge-title').val()));
+
+                $docStatus.text('در حال آپلود و خواندن فایل…');
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: form,
+                    processData: false,
+                    contentType: false
+                }).done(function (response) {
+                    if (response && response.success) {
+                        input.value = '';
+                        $('#ai-agent-knowledge-title').val('');
+                        var characters = Number((response.data || {}).extracted_characters || 0);
+                        // تعداد کاراکتر استخراج‌شده گفته می‌شود چون یک PDF
+                        // اسکن‌شده یا اکسل خالی، «موفق» آپلود می‌شود ولی
+                        // چیزی برای جست‌وجو ندارد.
+                        $docStatus.text('فایل خوانده شد (' + aiAgentFaDigits(characters) +
+                                        ' نویسه متن) و در صف ایندکس قرار گرفت.');
+                        refresh();
+                    } else {
+                        $docStatus.text((response && response.data && response.data.message) || 'آپلود ناموفق بود.');
+                    }
+                }).fail(function () {
+                    $docStatus.text('ارتباط با سرور وردپرس برقرار نشد.');
+                });
+            });
+
+            $('#ai-agent-knowledge-reindex-all').on('click', function () {
+                $docStatus.text('در حال قرار دادن همه در صف…');
+                post('ai_agent_knowledge_reindex', {}, function (data) {
+                    var documents = Number((data || {}).queued_documents || 0);
+                    var pairs = Number((data || {}).queued_qa_pairs || 0);
+                    $docStatus.text(aiAgentFaDigits(documents) + ' سند و ' +
+                                    aiAgentFaDigits(pairs) + ' پرسش‌وپاسخ در صف ایندکس قرار گرفت.');
+                    refresh();
+                }, function (message) { $docStatus.text(message); });
+            });
+
+            $('#ai-agent-qa-add').on('click', function () {
+                var question = $.trim($('#ai-agent-qa-question').val());
+                var answer = $.trim($('#ai-agent-qa-answer').val());
+
+                if (!question || !answer) {
+                    $qaStatus.text('هم پرسش و هم پاسخ را بنویس.');
+                    return;
+                }
+
+                $qaStatus.text('در حال افزودن…');
+                post('ai_agent_qa_save', { question: question, answer: answer }, function () {
+                    $('#ai-agent-qa-question').val('');
+                    $('#ai-agent-qa-answer').val('');
+                    $qaStatus.text('اضافه شد و در صف ایندکس قرار گرفت.');
+                    refresh();
+                }, function (message) { $qaStatus.text(message); });
+            });
+
+            refresh();
+        })();
 
         // راه‌اندازی ماژول جلسات
         aiAgentSessions.init();

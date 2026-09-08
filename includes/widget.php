@@ -59,6 +59,21 @@ function ai_agent_widget(){
             <div class="ai-agent-header-title"><?php echo esc_html($org_name); ?></div>
 
             <div class="ai-agent-header-actions">
+                <?php
+                /*
+                ادامه‌ی گفت‌وگو در پیام‌رسان.
+
+                در HTML همیشه هست ولی تا وقتی سایت رباتی وصل نکرده باشد
+                مخفی می‌ماند — JS با پرسیدن از سرور تصمیم می‌گیرد. دکمه‌ای
+                که به هیچ رباتی نمی‌رسد، فقط یک بن‌بست است.
+                */ ?>
+                <button type="button" id="ai-agent-transfer" class="ai-agent-icon-btn" hidden
+                        title="ادامه در پیام‌رسان" aria-label="ادامه‌ی گفت‌وگو در پیام‌رسان">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
                 <button type="button" id="ai-agent-new-chat" class="ai-agent-icon-btn" title="گفت‌وگوی تازه" aria-label="گفت‌وگوی تازه">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                         <line x1="12" y1="5" x2="12" y2="19"/>
@@ -83,6 +98,24 @@ function ai_agent_widget(){
         تمام‌صفحه است و جایی برای ستون دوم وجود ندارد.
         ============================================
         */ ?>
+        <?php
+        /*
+        دیالوگ تأیید انتقال به پیام‌رسان. متن و فهرست ربات‌ها را JS پر
+        می‌کند، چون تا وقتی از سرور نپرسیده‌ایم نمی‌دانیم سایت تلگرام
+        دارد، بله دارد، یا هر دو.
+        */ ?>
+        <div id="ai-agent-transfer-dialog" class="ai-agent-modal" hidden>
+            <div class="ai-agent-modal-card" role="dialog" aria-modal="true" aria-labelledby="ai-agent-transfer-title">
+                <h3 id="ai-agent-transfer-title">ادامه‌ی گفت‌وگو در پیام‌رسان</h3>
+                <p id="ai-agent-transfer-text"></p>
+                <div id="ai-agent-transfer-options" class="ai-agent-transfer-options"></div>
+                <div class="ai-agent-modal-actions">
+                    <button type="button" id="ai-agent-transfer-cancel" class="ai-agent-modal-btn">بی‌خیال</button>
+                    <button type="button" id="ai-agent-transfer-confirm" class="ai-agent-modal-btn is-primary">بریم</button>
+                </div>
+            </div>
+        </div>
+
         <div id="ai-agent-drawer" class="ai-agent-drawer" hidden>
             <div class="ai-agent-drawer-head">
                 <span>گفت‌وگوهای پیشین</span>
@@ -180,6 +213,18 @@ function ai_agent_widget(){
             کلیکِ این المان را trigger می‌کند تا پنجره‌ی Browse باز شود.
             */ ?>
             <input type="file" id="ai-agent-file-input" accept="image/*" multiple hidden />
+
+            <?php
+            /*
+            جای فیلد پیام، بعد از انتقال گفت‌وگو به پیام‌رسان.
+
+            فیلد فقط غیرفعال نمی‌شود؛ کلاً برداشته می‌شود و این نوار
+            جایش می‌نشیند. یک فیلد خاکستر‌شده هنوز دعوت به نوشتن است،
+            و پیامی که این‌جا نوشته شود دیگر هیچ‌کس نمی‌خواندش.
+            */ ?>
+            <div id="ai-agent-transferred-bar" class="ai-agent-transferred-bar" hidden>
+                <span>ادامه‌ی گفت‌وگو به پیام‌رسان منتقل شد. برای شروع گفت‌وگوی تازه، دکمه‌ی + بالا را بزنید.</span>
+            </div>
 
             <?php
             /*

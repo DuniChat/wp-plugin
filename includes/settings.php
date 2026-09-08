@@ -218,7 +218,7 @@ function ai_agent_sanitize_settings($input){
     می‌شود.
     ============================================
     */
-    $allowed_tones = array('formal', 'professional', 'neutral', 'friendly', 'warm');
+    $allowed_tones = array('formal', 'professional', 'neutral', 'friendly', 'warm', 'casual');
     $tone = isset($input['assistant_tone']) ? sanitize_text_field($input['assistant_tone']) : '';
     if (!in_array($tone, $allowed_tones, true)) {
         $tone = (isset($old['assistant_tone']) && in_array($old['assistant_tone'], $allowed_tones, true))
@@ -781,6 +781,7 @@ function ai_agent_tone_options(){
         'neutral'      => array('متعادل', 'حالت پیش‌فرض'),
         'friendly'     => array('دوستانه', 'راحت اما حرفه‌ای'),
         'warm'         => array('بسیار گرم', 'صمیمی و همدل'),
+        'casual'       => array('داش‌مشتی', 'خودمونی و رُک'),
     );
 }
 
@@ -792,6 +793,7 @@ function ai_agent_tone_examples(){
         'neutral'      => 'سفارشت ثبت شد! کد پیگیریت ۱۲۳۴۵ه. کاری بود بگو.',
         'friendly'     => 'ثبت شد ✅ کد پیگیریت ۱۲۳۴۵ه — هر سوالی داشتی همین‌جا بپرس.',
         'warm'         => 'ثبت شد عزیزم! 😍 کد پیگیریت ۱۲۳۴۵ه، خیالت راحت باشه؛ هر وقت خواستی هستم.',
+        'casual'       => 'حله داداش، ثبت شد 👌 کدت ۱۲۳۴۵ه. کاری داشتی صدا بزن.',
     );
 }
 
@@ -1387,6 +1389,161 @@ function ai_agent_settings_page(){
                                 echo !empty($last_scheduled['time']) ? esc_html($last_scheduled['time']) : 'هنوز اجرا نشده';
                             ?></span>
                         </div>
+                    </div>
+                </section>
+
+                <!-- ---------- ربات تلگرام و بله ---------- -->
+                <section class="ai-agent-section" id="ai-agent-bots-section">
+                    <div class="ai-agent-section-head">
+                        <h2>ربات پشتیبانی در تلگرام و بله</h2>
+                        <span class="ai-agent-badge" id="ai-agent-bots-badge">در حال بررسی…</span>
+                    </div>
+                    <p class="ai-agent-section-intro">
+                        همین دستیار می‌تونه توی تلگرام یا بله هم جواب مشتری‌هات رو بده — با همون
+                        اطلاعات سایت و همون مدلی که بالا انتخاب کردی. کافیه توکن ربات رو بدی.
+                        می‌تونی هر دو رو وصل کنی؛ اگه یه روز تلگرام قطع شد، بله سرِ پاست.
+                    </p>
+
+                    <?php wp_nonce_field('ai_agent_bots_nonce_action', 'ai_agent_bots_nonce_field'); ?>
+
+                    <div class="ai-agent-bot-cards">
+                        <?php
+                        $bot_platforms = array(
+                            'telegram' => array(
+                                'label'   => 'تلگرام',
+                                'father'  => '@BotFather',
+                                'link'    => 'https://t.me/BotFather',
+                                'example' => '@yourshop_bot',
+                            ),
+                            'bale' => array(
+                                'label'   => 'بله',
+                                'father'  => '@botfather',
+                                'link'    => 'https://ble.ir/botfather',
+                                'example' => '@yourshop_bot',
+                            ),
+                        );
+                        foreach ($bot_platforms as $platform => $meta) : ?>
+                            <div class="ai-agent-bot-card" data-platform="<?php echo esc_attr($platform); ?>">
+                                <div class="ai-agent-bot-card-head">
+                                    <strong><?php echo esc_html($meta['label']); ?></strong>
+                                    <span class="ai-agent-badge ai-agent-bot-state">وصل نیست</span>
+                                </div>
+
+                                <p class="ai-agent-hint ai-agent-bot-username" hidden></p>
+
+                                <div class="ai-agent-btn-row">
+                                    <input type="password" class="ai-agent-input ai-agent-input-sm dc-ltr ai-agent-bot-token"
+                                           lang="en" autocomplete="off" placeholder="123456789:AA..."
+                                           style="flex:1 1 240px;min-width:0;width:auto" />
+                                    <button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-bot-save">ذخیره و اتصال</button>
+                                    <button type="button" class="ai-agent-btn ai-agent-bot-delete" hidden>حذف ربات</button>
+                                </div>
+                                <span class="ai-agent-status-text ai-agent-bot-status"></span>
+
+                                <details class="ai-agent-bot-guide">
+                                    <summary>توکن رو از کجا بیارم؟</summary>
+                                    <ol>
+                                        <li>
+                                            توی <?php echo esc_html($meta['label']); ?> برو سراغ
+                                            <a href="<?php echo esc_url($meta['link']); ?>" target="_blank" rel="noopener" class="dc-ltr" lang="en"><?php echo esc_html($meta['father']); ?></a>
+                                            و استارتش کن.
+                                        </li>
+                                        <li>دستور <code class="dc-ltr" lang="en">/newbot</code> رو بفرست.</li>
+                                        <li>یه اسم برای ربات بذار (مثلاً «پشتیبانی <?php echo esc_html(get_bloginfo('name')); ?>»).</li>
+                                        <li>
+                                            بعد آیدی ربات رو می‌خواد. آیدی <strong>حتماً</strong> باید به
+                                            <code class="dc-ltr" lang="en">bot</code> ختم بشه —
+                                            مثلاً <code class="dc-ltr" lang="en"><?php echo esc_html($meta['example']); ?></code>.
+                                        </li>
+                                        <li>یه توکن بلند بهت می‌ده؛ کاملش رو کپی کن و همین بالا بچسبون و «ذخیره و اتصال» رو بزن.</li>
+                                    </ol>
+                                    <p class="ai-agent-hint">
+                                        بعدش حتماً برای ربات یه عکس پروفایل (<code class="dc-ltr" lang="en">/setuserpic</code>)،
+                                        یه اسم درست‌وحسابی (<code class="dc-ltr" lang="en">/setname</code>) و یه توضیح کوتاه
+                                        (<code class="dc-ltr" lang="en">/setdescription</code>) بذار. مشتری قبل از اینکه
+                                        حرف بزنه، همین‌ها رو می‌بینه.
+                                    </p>
+                                </details>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <p class="ai-agent-hint" style="margin-top:16px">
+                        وقتی حداقل یکی از این دو وصل باشه، توی چت سایت هم یه دکمه اضافه می‌شه که
+                        بازدیدکننده می‌تونه ادامه‌ی گفت‌وگوش رو ببره توی پیام‌رسان — به‌دردِ وقتی
+                        می‌خوره که پشتیبان انسانی آنلاین نیست و کاربر نمی‌تونه پای سایت منتظر بمونه.
+                    </p>
+                </section>
+
+                <!-- ---------- دانش دستی و پرسش‌وپاسخ ---------- -->
+                <section class="ai-agent-section" id="ai-agent-knowledge-section">
+                    <div class="ai-agent-section-head">
+                        <h2>اطلاعات اضافه و پرسش‌وپاسخ</h2>
+                        <span class="ai-agent-badge" id="ai-agent-knowledge-badge">—</span>
+                    </div>
+                    <p class="ai-agent-section-intro">
+                        هرچی توی سایت نیست ولی دستیار باید بدونه، همین‌جا اضافه کن: فایل اکسل قیمت‌ها،
+                        سوالات پرتکرار، یه PDF، یا حتی یه عکس. کنار محتوای سایت ایندکس می‌شه و دستیار
+                        موقع جواب‌دادن ازش استفاده می‌کنه.
+                    </p>
+
+                    <?php wp_nonce_field('ai_agent_knowledge_nonce_action', 'ai_agent_knowledge_nonce_field'); ?>
+
+                    <div class="ai-agent-knowledge-tabs" role="tablist">
+                        <button type="button" class="ai-agent-segment is-active" data-knowledge-tab="documents" role="tab">اسناد و فایل‌ها</button>
+                        <button type="button" class="ai-agent-segment" data-knowledge-tab="qa" role="tab">پرسش‌وپاسخ</button>
+                    </div>
+
+                    <!-- اسناد -->
+                    <div class="ai-agent-knowledge-panel is-active" data-knowledge-panel="documents">
+                        <div class="ai-agent-field">
+                            <span class="ai-agent-label">آپلود فایل</span>
+                            <div class="ai-agent-btn-row">
+                                <input type="file" id="ai-agent-knowledge-file" class="ai-agent-input" style="flex:1 1 260px;min-width:0"
+                                       accept=".xlsx,.xlsm,.csv,.tsv,.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.webp" />
+                                <button type="button" id="ai-agent-knowledge-upload" class="ai-agent-btn ai-agent-btn-primary">آپلود و ایندکس</button>
+                            </div>
+                            <p class="ai-agent-hint">
+                                اکسل (<span class="dc-ltr" lang="en">.xlsx</span>)، CSV، PDF، متن و عکس.
+                                فایل اکسل قدیمی <span class="dc-ltr" lang="en">.xls</span> پشتیبانی نمی‌شه؛
+                                با «ذخیره به‌صورت» تبدیلش کن به <span class="dc-ltr" lang="en">.xlsx</span>.
+                            </p>
+                        </div>
+
+                        <div class="ai-agent-field">
+                            <span class="ai-agent-label">یا متن رو مستقیم بنویس</span>
+                            <input type="text" id="ai-agent-knowledge-title" class="ai-agent-input"
+                                   placeholder="عنوان — مثلاً «شرایط مرجوعی کالا»" />
+                            <textarea id="ai-agent-knowledge-content" class="ai-agent-input" rows="4"
+                                      placeholder="متن کامل…"></textarea>
+                            <div class="ai-agent-btn-row">
+                                <button type="button" id="ai-agent-knowledge-add" class="ai-agent-btn ai-agent-btn-primary">افزودن و ایندکس</button>
+                                <button type="button" id="ai-agent-knowledge-reindex-all" class="ai-agent-btn">ایندکس دوباره‌ی همه</button>
+                            </div>
+                            <span id="ai-agent-knowledge-status" class="ai-agent-status-text"></span>
+                        </div>
+
+                        <div id="ai-agent-knowledge-list" class="ai-agent-knowledge-list"></div>
+                    </div>
+
+                    <!-- پرسش‌وپاسخ -->
+                    <div class="ai-agent-knowledge-panel" data-knowledge-panel="qa">
+                        <p class="ai-agent-hint">
+                            «اگه این رو پرسیدن، این رو جواب بده.» هر جفت پرسش‌وپاسخ جدا ایندکس می‌شه،
+                            پس دستیار دقیقاً همون جوابی رو می‌ده که تو نوشتی.
+                        </p>
+                        <div class="ai-agent-field">
+                            <input type="text" id="ai-agent-qa-question" class="ai-agent-input"
+                                   placeholder="پرسش — مثلاً «هزینه ارسال چقدره؟»" />
+                            <textarea id="ai-agent-qa-answer" class="ai-agent-input" rows="3"
+                                      placeholder="پاسخی که دستیار باید بده…"></textarea>
+                            <div class="ai-agent-btn-row">
+                                <button type="button" id="ai-agent-qa-add" class="ai-agent-btn ai-agent-btn-primary">افزودن پرسش‌وپاسخ</button>
+                            </div>
+                            <span id="ai-agent-qa-status" class="ai-agent-status-text"></span>
+                        </div>
+
+                        <div id="ai-agent-qa-list" class="ai-agent-knowledge-list"></div>
                     </div>
                 </section>
 

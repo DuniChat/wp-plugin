@@ -768,6 +768,8 @@ jQuery(function ($) {
 
         stopPolling();
         setChatDisabled(false);
+        unlockChatAfterTransfer();
+        loadTransferOptions();
         closeDrawer();
         clearSuggestions();
 
@@ -2909,6 +2911,17 @@ function renderHistoryMessage(msg) {
                 // به‌روزرسانی کوکی تعداد پیام‌های دیده‌شده با تعداد کل پیام‌های جلسه
                 setMsgCount(msgs.length);
 
+                /*
+                گفت‌وگویی که به پیام‌رسان منتقل شده، بعد از رفرش هم باید
+                بسته بماند. قبل از بررسی وضعیت چک می‌شود چون وضعیتش
+                ممکن است هنوز pending_human باشد — کاربر منتظر پشتیبان
+                است، فقط نه این‌جا.
+                */
+                if (data.transferred) {
+                    lockChatForTransfer();
+                    return;
+                }
+
                 // بر اساس وضعیت جلسه، پیام سیستمی مناسب نمایش می‌دهیم
                 if (sessionStatus === 'closed') {
                     addClosedMessage();
@@ -2925,6 +2938,145 @@ function renderHistoryMessage(msg) {
             }
         });
     }
+
+
+    /*
+    ============================================
+    ادامه‌ی گفت‌وگو در تلگرام یا بله
+
+    چرا اصلاً وجود دارد: کاربر پشتیبان انسانی خواسته و پشتیبان آن لحظه
+    آنلاین نیست. نگه‌داشتنش پای یک تب باز تا وقتی کسی جواب بدهد بدترین
+    کار ممکن است؛ به‌جایش یک کد شش‌رقمی می‌گیرد، در ربات سایت واردش
+    می‌کند، و جواب — هر وقت آمد — روی گوشی‌اش می‌رسد.
+
+    کد را سرور می‌سازد و متن راهنما را هم سرور می‌نویسد، تا چیزی که
+    این‌جا نوشته می‌شود دقیقاً همان چیزی باشد که ربات قبولش دارد.
+    ============================================
+    */
+    const transferBtn      = $("#ai-agent-transfer");
+    const transferDialog   = $("#ai-agent-transfer-dialog");
+    const transferOptions  = $("#ai-agent-transfer-options");
+    const transferText     = $("#ai-agent-transfer-text");
+    const transferConfirm  = $("#ai-agent-transfer-confirm");
+    const transferredBar   = $("#ai-agent-transferred-bar");
+
+    let transferChoices = [];
+
+    const PLATFORM_LINK_LABEL = {
+        telegram: 'تلگرام',
+        bale: 'بله'
+    };
+
+    function loadTransferOptions() {
+        if (!transferBtn.length) return;
+
+        $.post(ai_agent.ajax_url, {
+            action: 'ai_agent_transfer_options',
+            nonce: ai_agent.transfer_nonce
+        }).done(function (response) {
+            const options = (response && response.success && response.data && response.data.options) || [];
+            transferChoices = options;
+            // بدون ربات، دکمه اصلاً نمی‌آید. دکمه‌ای که به بن‌بست ختم
+            // می‌شود بدتر از نبودنش است.
+            if (options.length) {
+                transferBtn.removeAttr('hidden');
+            } else {
+                transferBtn.attr('hidden', true);
+            }
+        });
+    }
+
+    function openTransferDialog() {
+        if (!transferChoices.length) return;
+
+        const names = transferChoices.map(function (option) {
+            return (PLATFORM_LINK_LABEL[option.platform] || option.platform) + ' (@' + option.bot_username + ')';
+        }).join(' یا ');
+
+        transferText.text(
+            'می‌تونی ادامه‌ی همین گفت‌وگو رو توی ' + names + ' داشته باشی. ' +
+            'این‌طوری لازم نیست این صفحه رو باز نگه داری — یه کد بهت می‌دیم، ' +
+            'توی ربات واردش می‌کنی و از همون‌جا ادامه می‌دیم.'
+        );
+
+        transferOptions.empty();
+        transferChoices.forEach(function (option) {
+            transferOptions.append(
+                $('<a class="ai-agent-transfer-option" target="_blank" rel="noopener"></a>')
+                    .attr('href', option.bot_link)
+                    .text((PLATFORM_LINK_LABEL[option.platform] || option.platform) + ' · @' + option.bot_username)
+            );
+        });
+
+        transferDialog.removeAttr('hidden');
+    }
+
+    function closeTransferDialog() {
+        transferDialog.attr('hidden', true);
+    }
+
+    /*
+    بعد از انتقال، فیلد پیام برداشته می‌شود و یک نوار توضیح جایش
+    می‌نشیند — نه اینکه فقط خاکستر شود. یک فیلد غیرفعال هنوز دعوت به
+    نوشتن است، و پیامی که این‌جا نوشته شود دیگر به دست هیچ‌کس نمی‌رسد.
+    */
+    function lockChatForTransfer() {
+        $('#ai-agent-footer .ai-agent-footer-row').attr('hidden', true);
+        transferredBar.removeAttr('hidden');
+        transferBtn.attr('hidden', true);
+        stopPolling();
+    }
+
+    function unlockChatAfterTransfer() {
+        $('#ai-agent-footer .ai-agent-footer-row').removeAttr('hidden');
+        transferredBar.attr('hidden', true);
+    }
+
+    transferBtn.on('click', openTransferDialog);
+    $('#ai-agent-transfer-cancel').on('click', closeTransferDialog);
+    transferDialog.on('click', function (event) {
+        if (event.target === this) closeTransferDialog();
+    });
+
+    transferConfirm.on('click', function () {
+        if (!sessionId) {
+            // هنوز حرفی زده نشده، پس گفت‌وگویی هم نیست که منتقل شود.
+            closeTransferDialog();
+            addMessage('bot', 'اول یه پیام بفرست تا گفت‌وگو شروع بشه، بعد می‌تونیم ببریمش توی پیام‌رسان.');
+            return;
+        }
+
+        transferConfirm.prop('disabled', true).text('یه لحظه…');
+
+        $.post(ai_agent.ajax_url, {
+            action: 'ai_agent_transfer_session',
+            nonce: ai_agent.transfer_nonce,
+            session_id: sessionId
+        }).done(function (response) {
+            transferConfirm.prop('disabled', false).text('بریم');
+            closeTransferDialog();
+
+            if (!response || !response.success) {
+                const message = (response && response.data && response.data.message)
+                    || 'انتقال گفت‌وگو انجام نشد. دوباره تلاش کن.';
+                addMessage('bot', message);
+                return;
+            }
+
+            // همان دو پیامی که سرور در تاریخچه‌ی گفت‌وگو ثبت کرده، این‌جا
+            // هم نشان داده می‌شوند تا کاربر بعد از رفرش صفحه همان چیزی را
+            // ببیند که الان می‌بیند.
+            addMessage('user', 'بیا ادامه‌ی گفت‌وگو را در پیام‌رسان ادامه بدهیم.');
+            addMessage('bot', response.data.message || '');
+            lockChatForTransfer();
+        }).fail(function () {
+            transferConfirm.prop('disabled', false).text('بریم');
+            closeTransferDialog();
+            addMessage('bot', 'ارتباط با سرور برقرار نشد. یه بار دیگه امتحان کن.');
+        });
+    });
+
+    loadTransferOptions();
 
     /*
     شروع: اگر گفت‌وگوی قبلی وجود دارد ادامه‌اش را نشان می‌دهیم، وگرنه

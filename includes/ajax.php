@@ -436,6 +436,8 @@ function ai_agent_get_history_handler() {
         'messages'          => $messages,
         'status'            => $session_status,
         'last_message_role' => $last_message_role,
+        // گفت‌وگویی که به پیام‌رسان رفته، باید بعد از رفرش هم بسته بماند.
+        'transferred'       => (is_array($result) && !empty($result['transferred'])),
     ));
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');

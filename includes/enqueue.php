@@ -214,6 +214,15 @@ function ai_agent_enqueue(){
         'contacts'         => $contacts,
         // حداکثر تعداد عکس‌های مجاز در هر پیام چت (سنجاق)
         'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 4,
+        /*
+        nonce انتقال گفت‌وگو به پیام‌رسان.
+
+        استریم چت خودش nonce ندارد چون هر بازدیدکننده‌ای — از جمله
+        خارج‌شده از حساب — باید بتواند پیام بفرستد. اما «انتقال»
+        گفت‌وگوی جاری را می‌بندد و برایش کد صادر می‌کند، پس همان
+        محافظت ارزانِ CSRF را می‌گیرد.
+        */
+        'transfer_nonce'   => wp_create_nonce('ai_agent_chat_nonce_action'),
     )
 );
 
