@@ -164,24 +164,27 @@ function ai_agent_widget(){
 
                 <?php
                 /*
-                دکمه‌ی ورودی صوتی فعلاً از رابط کاربری برداشته شده (کدش
-                کامنت شده، نه حذف — دوباره فعالش می‌کنیم). کد جاوااسکریپت
-                مربوطه در ai-agent.js دست‌نخورده مانده و به‌محض نبودِ
-                #ai-agent-voice در صفحه، بی‌اثر باقی می‌ماند.
+                دکمه‌ی ضبط صدا، کنار سنجاق.
 
-                <button id="ai-agent-voice" title="ورودی صوتی" type="button" aria-label="ورودی صوتی">
+                برخلاف نسخه‌ی قبل که به Web Speech API مرورگر وابسته بود و
+                روی موبایل عمداً خاموش می‌ماند، حالا صدا ضبط و برای تبدیل
+                به متن به سرور فرستاده می‌شود؛ پس این دکمه روی موبایل هم
+                کار می‌کند — همان‌جایی که بیشترین کاربرِ ویس هست.
+
+                کلاس voice-not-supported را جاوااسکریپت فقط وقتی اضافه
+                می‌کند که مرورگر واقعاً MediaRecorder نداشته باشد.
+                */ ?>
+                <button id="ai-agent-voice" title="ضبط پیام صوتی" type="button" aria-label="ضبط پیام صوتی">
                     <svg class="ai-voice-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                         <line x1="12" y1="19" x2="12" y2="23"/>
                         <line x1="8" y1="23" x2="16" y2="23"/>
                     </svg>
-                    <svg class="ai-voice-icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none;">
+                    <svg class="ai-voice-icon-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                         <rect x="6" y="6" width="12" height="12" rx="2"/>
                     </svg>
                 </button>
-                */
-                ?>
 
                 <textarea id="ai-agent-input" rows="1" placeholder="پیام خود را بنویسید..."></textarea>
 

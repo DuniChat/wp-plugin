@@ -2083,14 +2083,22 @@ function buildReferencesListBox(references) {
     شود (تایپ، ارسال، چت جدید، پایان ضبط صدا و ...).
     ============================================
     */
+    /*
+    در حال ضبط صدا؟ ماژول صوتی این را نگه می‌دارد تا دکمه‌ی ارسال بداند
+    که «فیلد خالی است» در آن لحظه دلیل غیرفعال‌بودن نیست: کاربر دارد حرف
+    می‌زند و متنش هنوز نوشته نشده.
+    */
+    let voiceIsRecording = false;
+
     function updateSendButtonState() {
         // اگر فوتر قفل است (چت بسته شده)، دکمه باید غیرفعال بماند
         if ($("#ai-agent-footer").hasClass("is-disabled")) {
             send.prop('disabled', true).addClass('is-empty');
             return;
         }
-        // وجود متن شرط فعال بودن دکمه است (عکس به‌تنهایی کافی نیست)
-        const hasText = $.trim(input.val() || '').length > 0;
+        // وجود متن شرط فعال بودن دکمه است (عکس به‌تنهایی کافی نیست) — مگر
+        // وسط ضبط صدا، که زدنِ ارسال یعنی «تمامش کن و بفرست».
+        const hasText = $.trim(input.val() || '').length > 0 || voiceIsRecording;
         send.prop('disabled', !hasText);
         send.toggleClass('is-empty', !hasText);
     }
@@ -2098,14 +2106,30 @@ function buildReferencesListBox(references) {
     send.on("click", function () {
         // دکمه‌ی غیرفعال به‌هرحال کلیک نمی‌گیرد؛ این گارد صرفاً محافظ است
         if (send.prop('disabled')) return;
+        if (requestSend()) return;
         sendMessage();
     });
 
+    /*
+    «ارسال» همیشه به‌معنای فرستادنِ فوریِ متنِ داخل فیلد نیست: اگر ضبط
+    صدا در جریان باشد، ماژول صوتی این قصد را برمی‌دارد، ضبط را تمام
+    می‌کند و بعد از آماده‌شدنِ متن خودش ارسال را انجام می‌دهد.
+
+    برگشتی true یعنی «کسی این کار را به عهده گرفت، تو ادامه نده».
+    */
+    function requestSend() {
+        const intent = { handled: false };
+        $(document).trigger("ai-agent-send-intent", [intent]);
+        return intent.handled;
+    }
+
+    // Enter هم همان قصد ارسال است و باید همان‌طور رفتار کند.
     input.on("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             // اگر دکمه‌ی ارسال غیرفعال است (متن خالی)، ارسال انجام نمی‌شود
             if (send.prop('disabled')) return;
+            if (requestSend()) return;
             sendMessage();
         }
     });
@@ -2141,636 +2165,437 @@ function buildReferencesListBox(references) {
 
     /*
     ============================================
-    ورودی صوتی با Web Speech API (میکروفون) — حالت ضبط کامل
-    ============================================
+    ورودی صوتی: ضبط در مرورگر، تبدیل به متن روی سرور
 
-    با کلیک روی دکمه #ai-agent-voice، ضبط صدا آغاز می‌شود. در حین ضبط،
-    هیچ متنی به‌صورت زنده داخل textarea نوشته نمی‌شود؛ به‌جای آن نوار
-    ضبط (نقطه‌ی قرمز پالسی، موج صدا و شمارنده‌ی زمان) نمایش داده می‌شود
-    و در پایان ضبط، کل متنِ صحبت — یکجا و فقط یک‌بار — با همان سرویس
-    تشخیص گفتار (Web Speech API) داخل textarea نوشته می‌شود.
+    نسخه‌ی قبلی از Web Speech API خودِ مرورگر استفاده می‌کرد. آن API
+    فقط روی کروم دسکتاپ کار می‌کرد و روی موبایل عمداً خاموش بود —
+    یعنی دقیقاً روی دستگاهی که بیشترین کاربرِ ویس را دارد، دکمه‌ی
+    میکروفون وجود نداشت. حالا صدا با MediaRecorder ضبط و برای تبدیل
+    به متن به سرور دانی‌چت فرستاده می‌شود (Whisper)، که هم روی همه‌ی
+    مرورگرهای امروزی کار می‌کند و هم فارسی را به‌مراتب بهتر می‌فهمد.
 
-    ============================================
-    سازگاری کامل با موبایل (iOS و اندروید) — رفع باگ‌های این نسخه:
-    ============================================
+    جریان کار:
+      ۱. کاربر روی میکروفون می‌زند → مجوز میکروفون → ضبط شروع می‌شود.
+      ۲. در حین ضبط، به‌جای فیلد متن، نوار ضبط دیده می‌شود: میله‌های
+         فرکانسی که واقعاً از صدای کاربر می‌آیند (AnalyserNode)، نه
+         یک انیمیشن تزئینی.
+      ۳. کاربر یا روی «توقف» می‌زند، یا مستقیم روی «ارسال» — دومی
+         ضبط را تمام می‌کند و پیام را بدون مکث می‌فرستد، چون کسی که
+         حرفش تمام شده و دستش روی ارسال است، منظورش همین است.
+      ۴. صدا به سرور می‌رود، متن برمی‌گردد و داخل فیلد می‌نشیند تا
+         کاربر پیش از ارسال ببیندش و در صورت لزوم اصلاح کند.
 
-    ۱) باگ iOS («قطع شدن ضبط در همان لحظه‌ی شروع»):
-       سافاری iOS دیالوگِ اجازه‌ی میکروفونِ خودِ SpeechRecognition را
-       به‌درستی نشان نمی‌دهد؛ در نتیجه onerror("not-allowed") تقریباً
-       بلافاصله بعد از start() می‌آید و ضبط در همان هزارم ثانیه تمام
-       می‌شود. راه‌حل استاندارد: قبل از اولین start()، مجوز میکروفون
-       با navigator.mediaDevices.getUserMedia({audio:true}) گرفته
-       می‌شود (دیالوگِ واقعیِ iOS نشان داده می‌شود)، استریم بلافاصله
-       متوقف می‌شود و سپس SpeechRecognition بدون مشکل کار می‌کند.
-
-    ۲) باگ سافاری روی continuous:
-       سافاری (iOS و macOS) حالت continuous=true را واقعاً پشتیبانی
-       نمی‌کند و نشست همان لحظه بسته می‌شود. روی سافاری از
-       continuous=false استفاده می‌شود و «پیوستگی» با ری‌استارتِ
-       بی‌صدای بعد از هر جمله تأمین می‌شود؛ از دید کاربر ضبط پیوسته
-       است. روی کروم/اندروید/دسکتاپ continuous=true باقی می‌ماند.
-
-    ۳) باگ تکرار/گم شدن کلمات روی اندروید:
-       موتور STT مرورگر نشست‌ها را وسط صحبت می‌بندد و نمونه‌ی جدیدِ
-       ری‌استارت‌شده، لحظه‌های آخر صحبت را دوباره می‌شنود؛ اگر
-       تشخیصِ دوباره حتی یک نویسه فرق کند (نیم‌فاصله، ي/ی عربی و ...)
-       متن دوبار ثبت می‌شد و اگر اندیس نتایج ریست شود، کلمه‌ها گم
-       می‌شدند. راه‌حل‌های این نسخه:
-       - متن هر نشست به‌صورت «کل» از event.results بازسازی می‌شود
-         (بدون اتکا به resultIndex و بدون ردیابیِ اندیس‌محور) تا
-         باگِ پرش/ریستِ اندیس‌ها در کروم اندروید اثری نداشته باشد.
-       - ادغامِ مرزِ نشست‌ها با «تطبیق نرمال‌شده» انجام می‌شود:
-         نیم‌فاصله حذف می‌شود، ي/ك عربی به ی/ک فارسی تبدیل می‌شوند و
-         اعراب حذف می‌شود؛ در نتیجه تکرارِ صوتیِ مرزی به‌درستی حذف
-         و محتوای واقعی دست‌نخورده باقی می‌ماند.
-       - متنِ موقتِ ناتمامِ هر نشست در onend به متن نهایی «نجات»
-         داده می‌شود تا هیچ حرفی از قلم نیفتد.
-
-    ۴) رفتن صفحه به پس‌زمینه (تعویض اپ) روی موبایل، نشست ضبط را
-       می‌کشد؛ اینجا ضبط به‌صورت تمیز و با حفظ متنِ تا آن لحظه
-       پایان داده می‌شود.
+    چرا متن اول نشان داده می‌شود و مستقیم ارسال نمی‌شود: تشخیص گفتار
+    گاهی اشتباه می‌کند، و اصلاحِ یک کلمه خیلی بهتر از این است که ربات
+    با اطمینان به سوالی جواب بدهد که کسی نپرسیده.
     ============================================
     */
     const voiceBtn = $("#ai-agent-voice");
-    const voiceIconMic = voiceBtn.find(".ai-voice-icon-mic");
-    const voiceIconStop = voiceBtn.find(".ai-voice-icon-stop");
     const recordingBar = $("#ai-agent-recording-bar");
     const recordingTimerEl = $("#ai-agent-recording-timer");
     const recordingLabelEl = $("#ai-agent-recording-bar .ai-recording-label");
+    const waveformEl = $("#ai-agent-recording-bar .ai-recording-waveform");
 
-    const RECORDING_LABEL_ACTIVE = "در حال ضبط صدا...";
-    const RECORDING_LABEL_PROCESSING = "در حال پردازش نهایی...";
-    const RECORDING_LABEL_PREPARING = "در حال آماده‌سازی میکروفون...";
+    const RECORDING_LABEL_ACTIVE = "در حال ضبط…";
+    const RECORDING_LABEL_PROCESSING = "در حال تبدیل به متن…";
+    const RECORDING_LABEL_PREPARING = "در حال آماده‌سازی میکروفون…";
 
-    const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    // بیشترین طول ضبط. سرور هم سقف حجم دارد؛ این‌جا قطعش می‌کنیم تا
+    // کاربر بعد از دو دقیقه حرف زدن با خطای «فایل بزرگ است» روبه‌رو نشود.
+    const MAX_RECORDING_MS = 120000;
 
-    // ————— تشخیص موبایل/تبلت —————
-    // روی این دستگاه‌ها ورودی صوتی به‌طور کامل غیرفعال است (نه فقط مخفی):
-    // هم از طریق User-Agent (موبایل/تبلت‌های شناخته‌شده و iPadOS که خودش را
-    // مثل مک معرفی می‌کند) و هم از طریق ترکیب لمسی‌بودن + عرض صفحه، تا هم
-    // تبلت‌های لندسکیپ و هم موبایل‌ها پوشش داده شوند.
-    const AI_AGENT_VOICE_UA = navigator.userAgent || "";
-    const AI_AGENT_IS_MOBILE_OR_TABLET =
-        /Mobi|Android|iPad|iPhone|iPod|Tablet|Silk|Kindle|PlayBook/i.test(AI_AGENT_VOICE_UA) ||
-        (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1) ||
-        (((navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window) &&
-            window.matchMedia && window.matchMedia("(max-width: 1024px)").matches);
+    const AI_AGENT_RECORDER_SUPPORTED =
+        typeof window.MediaRecorder !== "undefined" &&
+        !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
-    if (!SpeechRecognitionImpl || AI_AGENT_IS_MOBILE_OR_TABLET) {
-        // مرورگر از Web Speech API پشتیبانی نمی‌کند یا دستگاه موبایل/تبلت است؛ دکمه را مخفی می‌کنیم
+    if (!AI_AGENT_RECORDER_SUPPORTED) {
+        // مرورگر ضبط صدا ندارد (خیلی قدیمی، یا صفحه روی http بدون TLS
+        // باز شده که getUserMedia در آن اصلاً وجود ندارد).
         voiceBtn.addClass("voice-not-supported");
     } else {
-        let recognition = null;          // نمونه‌ی فعال Recognition
-        let isRecording = false;         // آیا نشستِ ضبط فعال است؟
-        // آیا در حال گرفتن مجوز میکروفون (فقط بارِ اول) هستیم؟
+        let mediaRecorder = null;
+        let mediaStream = null;
+        let chunks = [];
+        let isRecording = false;
         let isPreparing = false;
-        // آیا کاربر/سیستم به‌صورت قطعی درخواست پایان ضبط داده است؟
-        // این فلگ جلوی ری‌استارت خودکار را می‌گیرد.
-        let userRequestedStop = false;
-        // آیا در بازه‌ی بین «کلیک روی توقف» و «رسیدن onend واقعی» هستیم؟
-        let isFinalizing = false;
-        let finalTranscript = "";        // متنِ نهاییِ ثبت‌شده (انباشته، فقط در حافظه)
-        // کل متنِ نشستِ جاری (نتایج نهایی + موقت) تا این لحظه
-        let currentSessionText = "";
-        // آیا نشستِ جاری به onend رسیده است؟ (رویدادهای دیرهنگام نادیده گرفته می‌شوند)
-        let sessionEnded = false;
-        // متنی که کاربر پیش از شروع ضبط در textarea داشته؛ بعد از پایان
-        // ضبط، متن صوتی به انتهای همین متن اضافه می‌شود.
-        let preExistingText = "";
-        // تایمر ری‌استارت خودکار + شمارنده‌ی تلاش‌های پشت‌سرهم ناموفق
-        let restartTimer = null;
-        let consecutiveRestarts = 0;
-        // تایمر نمایش/به‌روزرسانی شمارنده‌ی زمان ضبط + لحظه‌ی شروع ضبط
-        let recordingTickTimer = null;
+        let isProcessing = false;
+        // وقتی کاربر به‌جای «توقف»، «ارسال» را زده باشد: بعد از آمدن
+        // متن، پیام بلافاصله فرستاده می‌شود.
+        let sendWhenReady = false;
+
         let recordingStartTime = 0;
-        // تایمر محافظ: اگر onend واقعی هرگز نرسد، خودمان بعد از چند ثانیه تمام می‌کنیم
-        let finalizeFallbackTimer = null;
-        // مجوز میکروفون حداقل یک‌بار در این صفحه گرفته شده است
-        let micPermissionGranted = false;
+        let recordingTickTimer = null;
+        let maxLengthTimer = null;
 
-        // ————— تشخیص پلتفرم —————
-        const UA_STRING = navigator.userAgent || "";
-        const IS_IOS = /iPad|iPhone|iPod/.test(UA_STRING) ||
-            (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
-        // سافاریِ واقعی = دارد Safari ولی ندارد Chrome/CriOS/EdgiOS/FxiOS/...
-        const IS_SAFARI = /Safari\//.test(UA_STRING) &&
-            !/Chrome|Chromium|Edg|OPR|Firefox|FxiOS|CriOS|EdgiOS/.test(UA_STRING);
-        // سافاری (iOS و macOS) حالت continuous واقعی ندارد → با ری‌استارت
-        // خودکارِ بعد از هر جمله، ضبط از دید کاربر پیوسته می‌ماند.
-        const USE_CONTINUOUS = !(IS_IOS || IS_SAFARI);
-        // سافاری بعد از onend برای start دوباره به کمی تأخیر بیشتری نیاز دارد
-        const RESTART_DELAY_MS = (IS_IOS || IS_SAFARI) ? 300 : 100;
+        // Web Audio، فقط برای میله‌های فرکانسی
+        let audioContext = null;
+        let analyser = null;
+        let analyserSource = null;
+        let waveformFrame = null;
+        let waveformBars = [];
 
-        const MAX_AUTO_RESTARTS = 200;            // سقف ری‌استارتِ پشت‌سرهمِ ناموفق
-        const MAX_RECORDING_MS = 10 * 60 * 1000;  // محدودیت زمانی ضبط: ۱۰ دقیقه
-        const FINALIZE_FALLBACK_MS = 4000;        // اگر onend نیامد، خودمان نهایی می‌کنیم
-        const MAX_OVERLAP_WORDS = 12;             // حداکثر هم‌پوشانیِ بررسی‌شده بین دو نشست
-
-        /*
-        افزودن امن یک تکه متن با تفکیک فاصله؛
-        فاصله‌های تکراری حذف و بین دو تکه دقیقاً یک فاصله قرار می‌گیرد.
-        */
-        function appendChunk(target, chunk) {
-            const text = (chunk || "").replace(/\s+/g, " ").trim();
-            if (!text) return target;
-            if (target && !/\s$/.test(target)) return target + " " + text;
-            return target + text;
-        }
-
-        /*
-        نرمال‌سازی یک کلمه فقط برای «مقایسه» (نه نمایش):
-        - حذف نیم‌فاصله (ZWNJ) و کاراکترهای نامرئی/کنترلی
-        - تبدیل ي و ك عربی به ی و ک فارسی
-        - حذف اعراب (فتحه، کسره و ...)
-        - یکسان‌سازی آ/أ/إ با ا
-        علت: موتور STT گاهی همان کلمه را یک‌بار «می‌خواهم» و بار دیگر
-        «میخواهم» یا با حروف عربی برمی‌گرداند؛ بدون این نرمال‌سازی،
-        تطبیقِ هم‌پوشانی بین دو نشست شکست می‌خورد و کلمه دوبار ثبت
-        می‌شود. چون نرمال‌سازی فقط برای مقایسه است، متنِ اصلیِ سرویس
-        بدون تغییر نمایش داده می‌شود.
-        */
-        function normalizeWordForCompare(word) {
-            return (word || "")
-                .replace(/\u200c/g, "")                                  // نیم‌فاصله (ZWNJ)
-                .replace(/[\u200e\u200f\u202a-\u202e\ufeff]/g, "")      // کاراکترهای کنترلی جهت/نامرئی
-                .replace(/[\u064B-\u065F\u0670]/g, "")                   // اعراب عربی/فارسی
-                .replace(/\u064A/g, "\u06CC")                            // ي عربی → ی فارسی
-                .replace(/\u0643/g, "\u06A9")                            // ك عربی → ک فارسی
-                .replace(/[\u0622\u0623\u0625]/g, "\u0627")             // آ/أ/إ → ا
-                .trim();
-        }
-
-        /*
-        ادغام هوشمند با حذفِ هم‌پوشانی — مرزِ بین دو نشستِ Recognition.
-
-        هر بار که Recognition به‌خاطر ری‌استارتِ خودکار عوض می‌شود (روی
-        موبایل پرتکرار است)، نمونه‌ی جدید ممکن است چند صدم ثانیه از
-        صدای آخرین کلماتِ قبلاً-تشخیص‌داده‌شده را دوباره بشنود و آن‌ها را
-        به‌عنوان نتیجه‌ی تازه گزارش کند. اینجا در سطحِ کلمه و با
-        «مقایسه‌ی نرمال‌شده» کار می‌کنیم: طولانی‌ترین هم‌پوشانی ممکن
-        بین «چند کلمه‌ی پایانیِ متنِ قبلی» و «چند کلمه‌ی ابتداییِ تکه‌ی
-        جدید» را پیدا کرده و فقط بخشِ واقعاً جدید را اضافه می‌کنیم.
-
-        جست‌وجوی هم‌پوشانی عمداً به حداکثر MAX_OVERLAP_WORDS کلمه محدود
-        شده تا اگر کاربر واقعاً یک عبارت را عمداً دوبار تکرار کرد، به‌اشتباه
-        حذف نشود.
-        */
-        function mergeWithOverlap(existing, incoming) {
-            const incomingWords = (incoming || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-            if (!incomingWords.length) return existing || "";
-            const existingWords = (existing || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-            if (!existingWords.length) return incomingWords.join(" ");
-
-            const existingNorm = existingWords.map(normalizeWordForCompare);
-            const incomingNorm = incomingWords.map(normalizeWordForCompare);
-            const maxOverlap = Math.min(existingWords.length, incomingWords.length, MAX_OVERLAP_WORDS);
-
-            for (let k = maxOverlap; k >= 1; k--) {
-                let matched = true;
-                for (let j = 0; j < k; j++) {
-                    if (existingNorm[existingNorm.length - k + j] !== incomingNorm[j]) {
-                        matched = false;
-                        break;
-                    }
-                }
-                if (matched) {
-                    const remainder = incomingWords.slice(k).join(" ");
-                    return appendChunk(existingWords.join(" "), remainder);
-                }
-            }
-            // هیچ هم‌پوشانی‌ای پیدا نشد؛ تکه‌ی جدید کاملاً تازه است
-            return appendChunk(existingWords.join(" "), incomingWords.join(" "));
-        }
-
-        /*
-        ثبتِ متنِ نشستِ جاری در متنِ نهایی — فقط در مرزِ نشست‌ها صدا زده
-        می‌شود (onend یا مسیرهای پایان اضطراری). بعد از ثبت،
-        currentSessionText خالی می‌شود تا همان متن هرگز دوبار merge نشود.
-        */
-        function commitSessionText() {
-            if (currentSessionText) {
-                finalTranscript = mergeWithOverlap(finalTranscript, currentSessionText);
-                currentSessionText = "";
-            }
-        }
-
-        // متن نهاییِ قابل‌نمایش: متن دستیِ قبل از ضبط + کل متن صوتیِ ضبط‌شده
-        function buildFinalText() {
-            let voicePart = finalTranscript;
-            // مسیرِ محافظ: اگر onend هرگز نیامد، متنِ هنوز-ثبت‌نشده‌ی
-            // نشستِ فعال را هم نجات می‌دهیم (ضد گم شدن محتوا)
-            if (currentSessionText) {
-                voicePart = mergeWithOverlap(voicePart, currentSessionText);
-            }
-            const trimmed = preExistingText.replace(/\s+$/, "");
-            if (trimmed && voicePart) return trimmed + " " + voicePart;
-            return trimmed + voicePart;
-        }
+        /* ---------- نمایش زمان ---------- */
 
         function formatDuration(ms) {
-            const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-            const m = Math.floor(totalSeconds / 60);
-            const s = totalSeconds % 60;
-            return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+            const total = Math.floor(ms / 1000);
+            const minutes = String(Math.floor(total / 60)).padStart(2, "0");
+            const seconds = String(total % 60).padStart(2, "0");
+            return minutes + ":" + seconds;
         }
 
-        // به‌روزرسانی شمارنده‌ی زمان روی نوار ضبط؛ با رسیدن به سقف ۱۰ دقیقه،
-        // دقیقاً مثل کلیکِ کاربر روی دکمه‌ی توقف، ضبط را متوقف می‌کنیم.
-        function tickRecordingTimer() {
-            const elapsed = Date.now() - recordingStartTime;
-            recordingTimerEl.text(formatDuration(elapsed));
-            if (elapsed >= MAX_RECORDING_MS) {
-                stopRecording();
+        function tickTimer() {
+            recordingTimerEl.text(formatDuration(Date.now() - recordingStartTime));
+        }
+
+        /* ---------- میله‌های فرکانسی ---------- */
+
+        /*
+        میله‌ها از روی خودِ صدا حرکت می‌کنند، نه با یک انیمیشن CSS.
+        تفاوتش را کاربر بلافاصله می‌فهمد: وقتی حرف نمی‌زند میله‌ها
+        می‌خوابند، و همین تنها نشانه‌ای است که به او می‌گوید میکروفون
+        واقعاً صدایش را می‌شنود.
+        */
+        const WAVEFORM_BAR_COUNT = 28;
+
+        function buildWaveformBars() {
+            waveformEl.empty();
+            waveformBars = [];
+            for (let i = 0; i < WAVEFORM_BAR_COUNT; i++) {
+                const bar = document.createElement("span");
+                waveformEl[0].appendChild(bar);
+                waveformBars.push(bar);
             }
         }
 
-        // نمایش نوار ضبط (افکت شبیه ضبط ویس) و پنهان کردن فیلد متن/دکمه ارسال
-        function showRecordingUI(label) {
+        function startWaveform(stream) {
+            const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextImpl) {
+                buildWaveformBars();
+                recordingBar.addClass("no-analyser");
+                return;
+            }
+
+            try {
+                audioContext = new AudioContextImpl();
+                analyserSource = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                // 64 خانه‌ی فرکانسی برای ۲۸ میله کافی است و روی موبایل‌های
+                // ضعیف هم هر فریم به‌موقع تمام می‌شود.
+                analyser.fftSize = 64;
+                analyser.smoothingTimeConstant = 0.7;
+                analyserSource.connect(analyser);
+            } catch (err) {
+                // Web Audio در دسترس نیست (سافاریِ قدیمی، یا سقف تعداد
+                // AudioContext). ضبط سر جایش است؛ فقط میله‌ها به‌جای
+                // دنبال‌کردن صدا، یک انیمیشن ساده می‌گیرند تا نوار مرده
+                // به نظر نرسد.
+                analyser = null;
+                buildWaveformBars();
+                recordingBar.addClass("no-analyser");
+                return;
+            }
+
+            recordingBar.removeClass("no-analyser");
+            buildWaveformBars();
+            const data = new Uint8Array(analyser.frequencyBinCount);
+
+            function draw() {
+                if (!analyser) return;
+                analyser.getByteFrequencyData(data);
+
+                for (let i = 0; i < waveformBars.length; i++) {
+                    // نگاشت میله‌ها روی خانه‌های فرکانسی؛ بم‌ها سمت
+                    // چپ، زیرها سمت راست.
+                    const value = data[Math.floor((i / waveformBars.length) * data.length)] || 0;
+                    // کف ۱۵٪ تا وقتی سکوت است هم نوار «زنده» به نظر برسد
+                    // و شبیه یک خط مرده نباشد.
+                    const height = 15 + (value / 255) * 85;
+                    waveformBars[i].style.height = height + "%";
+                }
+
+                waveformFrame = window.requestAnimationFrame(draw);
+            }
+
+            draw();
+        }
+
+        function stopWaveform() {
+            if (waveformFrame) {
+                window.cancelAnimationFrame(waveformFrame);
+                waveformFrame = null;
+            }
+            if (analyserSource) {
+                try { analyserSource.disconnect(); } catch (err) { /* قبلاً بسته شده */ }
+                analyserSource = null;
+            }
+            analyser = null;
+            if (audioContext) {
+                // close() پرامیس برمی‌گرداند؛ نتیجه‌اش برای ما مهم نیست،
+                // ولی رهاکردن AudioContext روی سافاری بعد از چند ضبط به
+                // سقف تعداد کانتکست‌ها می‌خورد.
+                try { audioContext.close(); } catch (err) { /* بی‌اهمیت */ }
+                audioContext = null;
+            }
+        }
+
+        /* ---------- وضعیت ظاهری ---------- */
+
+        function showRecordingBar(label) {
             recordingLabelEl.text(label || RECORDING_LABEL_ACTIVE);
-            recordingBar.removeClass('is-processing');
-            input.prop('disabled', true);
-            input.attr('aria-hidden', 'true').hide();
-            send.hide();
-            recordingBar.addClass('is-active').attr('aria-hidden', 'false');
-            recordingTimerEl.text('00:00');
+            recordingBar.addClass("is-active").removeClass("is-processing").attr("aria-hidden", "false");
+            recordingTimerEl.text("00:00");
+            input.attr("hidden", true);
         }
 
-        // بازگرداندن فیلد متن/دکمه ارسال و پنهان کردن نوار ضبط
-        function hideRecordingUI() {
-            recordingBar.removeClass('is-active is-processing').attr('aria-hidden', 'true');
-            input.prop('disabled', false);
-            input.attr('aria-hidden', 'false').show();
-            send.show();
-        }
-
-        // تغییر نوار ضبط به حالت «در حال پردازش نهایی...» — بین کلیکِ
-        // توقف و رسیدنِ onend واقعی.
-        function showProcessingUI() {
+        function showProcessingBar() {
             recordingLabelEl.text(RECORDING_LABEL_PROCESSING);
-            recordingBar.addClass('is-processing');
+            recordingBar.addClass("is-active is-processing").attr("aria-hidden", "false");
         }
 
-        // هماهنگ‌کننده‌ی وضعیت کامل UI دکمه‌ی میکروفون: هم آیکونِ خودِ
-        // دکمه (میکروفون ⇄ استاپ) و کلاس قرمزِ پالسی را عوض می‌کند، هم
-        // نوار ضبط/فیلد متن را نمایش یا پنهان می‌کند.
-        function setRecordingUI(recording, label) {
-            if (recording) {
-                voiceBtn.addClass("is-recording");
-                voiceIconMic.hide();
-                voiceIconStop.show();
-                showRecordingUI(label);
-            } else {
-                voiceBtn.removeClass("is-recording");
-                voiceIconMic.show();
-                voiceIconStop.hide();
-                hideRecordingUI();
-            }
+        function hideRecordingBar() {
+            recordingBar.removeClass("is-active is-processing no-analyser").attr("aria-hidden", "true");
+            input.removeAttr("hidden");
         }
 
-        // پاکسازی کامل تایمرهای مربوط به یک نشستِ ضبط
-        function clearRecordingTimers() {
-            if (restartTimer) {
-                clearTimeout(restartTimer);
-                restartTimer = null;
-            }
+        function setVoiceButtonState() {
+            voiceBtn.toggleClass("is-recording", isRecording);
+            voiceBtn.attr(
+                "aria-label",
+                isRecording ? "توقف ضبط" : "ضبط پیام صوتی"
+            );
+            voiceBtn.attr("title", isRecording ? "توقف ضبط" : "ضبط پیام صوتی");
+        }
+
+        function clearTimers() {
             if (recordingTickTimer) {
                 clearInterval(recordingTickTimer);
                 recordingTickTimer = null;
             }
-            if (finalizeFallbackTimer) {
-                clearTimeout(finalizeFallbackTimer);
-                finalizeFallbackTimer = null;
+            if (maxLengthTimer) {
+                clearTimeout(maxLengthTimer);
+                maxLengthTimer = null;
             }
         }
 
-        /*
-        پایان کامل ضبط — این تابع «ایمن در برابر اجرای تکراری»
-        (idempotent) است: اگر یک‌بار اجرا شود، اجرای دوباره‌اش (مثلاً
-        هم از رویداد onerror هم از onend) هیچ اثری ندارد. متنِ نهایی
-        فقط همین‌جا و فقط یک‌بار در textarea نوشته می‌شود.
-        */
-        function finishRecording(discard) {
-            if (!isRecording) return; // قبلاً پایان یافته؛ از اجرای دوباره جلوگیری می‌کنیم
-
-            clearRecordingTimers();
-            // نجات آخرین متنِ هنوز-ثبت‌نشده‌ی نشستِ فعال (مسیر محافظ)
-            commitSessionText();
-            isRecording = false;
-            isFinalizing = false;
-            setRecordingUI(false);
-
-            if (!discard) {
-                const finalText = buildFinalText();
-                input.val(finalText);
-                autoResizeInput();
-                // متن نهایی صدا در ورودی نوشته شد → در صورت خالی نبودن متن،
-                // دکمه‌ی ارسال فعال می‌شود
-                updateSendButtonState();
-                // نشاندن مکان‌نمای متن در انتهای متن نهایی
-                const el = input[0];
-                if (el && typeof el.setSelectionRange === 'function') {
-                    const len = finalText.length;
-                    try { el.setSelectionRange(len, len); } catch (e) { /* نادیده گرفتن */ }
-                }
-                input.focus();
-            }
-
-            // ریست وضعیت برای نشست بعدی
-            finalTranscript = "";
-            currentSessionText = "";
-            preExistingText = "";
-            sessionEnded = false;
-        }
-
-        /*
-        جدا کردن امن هندلرهای یک نمونه‌ی قدیمی Recognition.
-        موقع ری‌استارت، نمونه‌ی قبلی باید «کاملاً خاموش» شود تا
-        رویدادهای دیرهنگام آن با نشست جدید تداخل نکنند.
-        */
-        function discardRecognition(rec) {
-            if (!rec) return;
-            try {
-                rec.onstart = null;
-                rec.onresult = null;
-                rec.onerror = null;
-                rec.onend = null;
-                try { rec.abort(); } catch (e) { /* نادیده گرفتن */ }
-            } catch (e) { /* نادیده گرفتن */ }
-        }
-
-        function createRecognition() {
-            const rec = new SpeechRecognitionImpl();
-
-            rec.lang = "fa-IR";           // زبان فارسی
-            rec.continuous = USE_CONTINUOUS; // روی سافاری false (پشتیبانی نمی‌شود)؛ بقیه: true
-            rec.interimResults = true;     // نتایج موقت هم می‌آیند (ضد گم شدن صحبتِ ناتمام)
-            rec.maxAlternatives = 1;
-
-            // نشست جدید ⇒ متنِ نشست و وضعیتِ پایانِ آن ریست می‌شود
-            currentSessionText = "";
-            sessionEnded = false;
-
-            rec.onstart = function () {
-                if (rec !== recognition) return; // رویداد کهنه‌ی نمونه‌ی قبلی
-                isRecording = true;
-                consecutiveRestarts = 0;
-            };
-
-            rec.onresult = function (event) {
-                if (rec !== recognition || sessionEnded) return;
-
-                /*
-                متنِ «کل» این نشست را از تمامِ لیست نتایج بازسازی
-                می‌کنیم — بدون اتکا به resultIndex و بدون ردیابیِ
-                اندیس‌محور. دلایل:
-                - کروم اندروید گاهی اندیس نتایج را بازتنظیم/بازاستفاده
-                  می‌کند؛ ردیابیِ اندیس‌محور (نسخه‌ی قبل) باعث گم شدن
-                  یا تکرار کلمه می‌شد.
-                - بازسازیِ کامل همیشه آخرین وضعیتِ سرویس را منعکس
-                  می‌کند؛ هر نتیجه (نهایی یا موقت) دقیقاً یک‌بار در
-                  متن ظاهر می‌شود.
-                متن فقط در حافظه نگه‌داری می‌شود و در پایان ضبط
-                یکجا و فقط یک‌بار نمایش داده می‌شود.
-                */
-                let sessionText = "";
-                const results = event.results;
-                for (let i = 0; i < results.length; i++) {
-                    const result = results[i];
-                    if (!result || !result[0]) continue;
-                    sessionText = appendChunk(sessionText, result[0].transcript || "");
-                }
-                currentSessionText = sessionText;
-                consecutiveRestarts = 0; // دریافت نتیجه = سرویس سالم است
-            };
-
-            rec.onerror = function (event) {
-                if (rec !== recognition) return;
-                const errorType = (event && event.error) || "";
-
-                if (errorType === "not-allowed" || errorType === "service-not-allowed") {
-                    // دسترسی به میکروفون رد شده؛ هر متنی که تا این لحظه
-                    // گرفته شده (اگر بوده) حفظ می‌شود و کاربر راهنمایی می‌شود.
-                    userRequestedStop = true;
-                    finishRecording(false);
-                    showMicDeniedMessage();
-                } else if (errorType === "audio-capture") {
-                    // میکروفون فیزیکی در دسترس نیست؛ تکرارِ بی‌فایده نمی‌کنیم
-                    userRequestedStop = true;
-                    finishRecording(false);
-                }
-                // سایر خطاها (no-speech / network / aborted) بی‌صدا نادیده
-                // گرفته می‌شوند و در onend با ری‌استارت مدیریت می‌گردند.
-            };
-
-            rec.onend = function () {
-                if (rec !== recognition) return;
-
-                /*
-                نخست متنِ این نشست را در متنِ نهایی ثبت می‌کنیم. چون
-                currentSessionText نتایجِ موقتِ ناتمام را هم شامل می‌شود،
-                اگر نشست وسط صحبتِ کاربر بسته شده باشد، هیچ حرفی از
-                قلم نمی‌افتد.
-                */
-                sessionEnded = true;
-                commitSessionText();
-
-                // اگر هنوز درخواست قطعیِ پایان ضبط نداریم و مرورگر خودکار
-                // متوقف شده (مکث موقت، محدودیت داخلی یا پایان جمله روی
-                // سافاری)، بی‌صدا ری‌استارت می‌کنیم تا کاربر متوجه قطع‌شدن
-                // نشود و ضبط از نگاه او پیوسته ادامه پیدا کند.
-                if (!userRequestedStop) {
-                    scheduleRestart();
-                    return;
-                }
-
-                // کاربر درخواست توقف داده و سرویس هم واقعاً کارش تمام
-                // شده — اینجا و فقط اینجا (یا از مسیر محافظ) متنِ نهایی
-                // یکجا نوشته می‌شود.
-                finishRecording(false);
-            };
-
-            return rec;
-        }
-
-        function scheduleRestart() {
-            if (restartTimer) return; // یک ری‌استارت هم‌اکنون در انتظار است
-
-            consecutiveRestarts++;
-            if (consecutiveRestarts > MAX_AUTO_RESTARTS) {
-                // ری‌استارت بی‌فایده است (میکروفون/شبکه دچار مشکل دائمی
-                // است)؛ ضبط را با هر متنِ گرفته‌شده تا این لحظه تمیز
-                // پایان می‌دهیم.
-                userRequestedStop = true;
-                finishRecording(false);
-                return;
-            }
-
-            restartTimer = setTimeout(function () {
-                restartTimer = null;
-                // اگر در این فاصله کاربر توقف را درخواست کرده، دیگر کاری نمی‌کنیم
-                if (!isRecording || isFinalizing || userRequestedStop) return;
-
-                discardRecognition(recognition); // خاموش کردن کامل نمونه‌ی قبلی
-                try {
-                    recognition = createRecognition();
-                    recognition.start();
-                    // اگر start با خطا مواجه شد، در catch دوباره زمان‌بندی می‌کنیم
-                } catch (e) {
-                    scheduleRestart();
-                }
-            }, RESTART_DELAY_MS);
-        }
-
-        // پیام راهنما وقتی دسترسی میکروفون رد شده است
-        function showMicDeniedMessage() {
-            alert("دسترسی به میکروفون رد شده است.\n\n" +
-                "لطفاً اجازه‌ی دسترسی به میکروفون را برای این سایت فعال کنید و دوباره تلاش کنید.\n" +
-                "- در iPhone/iPad: Settings ← Safari (یا مرورگر خود) ← Microphone ← Allow\n" +
-                "- در اندروید: Settings ← Apps ← مرورگر ← Permissions ← Microphone");
-        }
-
-        /*
-        گرفتن مجوز میکروفون با getUserMedia — رفعِ باگِ اصلیِ iOS:
-        سافاری iOS دیالوگِ مجوزِ خودِ SpeechRecognition را درست نشان
-        نمی‌دهد و فوراً خطای not-allowed می‌دهد؛ اما دیالوگِ
-        getUserMedia به‌درستی کار می‌کند. بعد از اولین اجازه، این
-        مرحله در همین صفحه رد می‌شود. استریم فقط برای گرفتن مجوز است
-        و بلافاصله متوقف می‌شود.
-        این تابع باید مستقیماً در زنجیره‌ی کلیک کاربر صدا زده شود.
-        */
-        function ensureMicPermission(onReady) {
-            if (micPermissionGranted) { onReady(true); return; }
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                // محیط بدون getUserMedia (خیلی نادر) — مستقیم به سراغ
-                // SpeechRecognition می‌رویم تا خودش مجوز را بخواهد
-                onReady(true);
-                return;
-            }
-            try {
-                navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-                    try {
-                        if (stream && typeof stream.getTracks === "function") {
-                            const tracks = stream.getTracks();
-                            for (let i = 0; i < tracks.length; i++) {
-                                try { tracks[i].stop(); } catch (e) { /* نادیده گرفتن */ }
-                            }
-                        }
-                    } catch (e) { /* نادیده گرفتن */ }
-                    micPermissionGranted = true;
-                    onReady(true);
-                }).catch(function () {
-                    onReady(false);
+        function releaseStream() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(function (track) {
+                    try { track.stop(); } catch (err) { /* قبلاً متوقف شده */ }
                 });
-            } catch (e) {
-                onReady(false);
+                mediaStream = null;
             }
         }
 
-        // شروعِ واقعیِ نشست Recognition (بعد از اطمینان از مجوز میکروفون)
-        function beginRecognitionSession() {
-            discardRecognition(recognition); // نمونه‌ی قدیمی (در صورت وجود) خاموش شود
+        /*
+        پایان کامل: هر منبعی که گرفته شده آزاد می‌شود. اگر میکروفون آزاد
+        نشود، چراغ ضبطِ مرورگر روشن می‌ماند و کاربر حق دارد فکر کند
+        سایت دارد بی‌اجازه به او گوش می‌دهد.
+        */
+        function teardown() {
+            clearTimers();
+            stopWaveform();
+            releaseStream();
+            isRecording = false;
+            isPreparing = false;
+            voiceIsRecording = false;
+            setVoiceButtonState();
+            updateSendButtonState();
+        }
 
+        /* ---------- انتخاب فرمت ---------- */
+
+        /*
+        هر مرورگر فرمت متفاوتی می‌دهد: کروم و فایرفاکس webm/opus،
+        سافاری mp4/aac. هر سه را Whisper می‌خواند، پس فقط اولین
+        فرمتی که مرورگر واقعاً پشتیبانی می‌کند انتخاب می‌شود.
+        */
+        function pickMimeType() {
+            const candidates = [
+                "audio/webm;codecs=opus",
+                "audio/webm",
+                "audio/ogg;codecs=opus",
+                "audio/mp4",
+            ];
+            for (let i = 0; i < candidates.length; i++) {
+                if (window.MediaRecorder.isTypeSupported &&
+                    window.MediaRecorder.isTypeSupported(candidates[i])) {
+                    return candidates[i];
+                }
+            }
+            return "";
+        }
+
+        function extensionFor(mimeType) {
+            if (mimeType.indexOf("mp4") !== -1) return "m4a";
+            if (mimeType.indexOf("ogg") !== -1) return "ogg";
+            return "webm";
+        }
+
+        /* ---------- ضبط ---------- */
+
+        async function startRecording() {
+            if (isRecording || isPreparing || isProcessing) return;
+
+            isPreparing = true;
+            showRecordingBar(RECORDING_LABEL_PREPARING);
+
+            let stream;
             try {
-                recognition = createRecognition();
-                recognition.start();
-            } catch (e) {
-                // start() خطا داد (مثلاً InvalidStateError) → با ری‌استارت
-                // خودکار دوباره تلاش می‌شود؛ UI ضبط همین‌جا فعال می‌ماند
-                scheduleRestart();
-            }
-
-            isRecording = true;
-            recordingStartTime = Date.now();
-            setRecordingUI(true);
-            // شمارنده‌ی زمان: هر نیم‌ثانیه به‌روزرسانی می‌شود و سقف ۱۰
-            // دقیقه را هم همین‌جا بررسی می‌کند
-            recordingTickTimer = setInterval(tickRecordingTimer, 500);
-        }
-
-        function startRecording() {
-            if (isRecording || isFinalizing || isPreparing) return; // از شروع دوباره جلوگیری می‌کنیم
-
-            // ذخیره‌ی متنی که کاربر پیش از ضبط در textarea داشته
-            preExistingText = input.val() || "";
-            finalTranscript = "";
-            currentSessionText = "";
-            sessionEnded = false;
-            userRequestedStop = false;
-            isFinalizing = false;
-            consecutiveRestarts = 0;
-
-            if (micPermissionGranted) {
-                beginRecognitionSession();
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+            } catch (err) {
+                isPreparing = false;
+                hideRecordingBar();
+                // رد کردن مجوز و «میکروفونی وجود ندارد» دو مشکل کاملاً
+                // متفاوت‌اند و راه‌حلشان هم فرق دارد.
+                const denied = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+                addMessage(
+                    "bot",
+                    denied
+                        ? "برای ضبط صدا باید دسترسی میکروفون را به این سایت بدهید. از نوار آدرس مرورگر اجازه‌ی میکروفون را روشن کنید و دوباره امتحان کنید."
+                        : "میکروفونی پیدا نشد. اگر میکروفون دارید، اتصالش را بررسی کنید — یا سوالتان را تایپ کنید."
+                );
                 return;
             }
 
-            /*
-            بارِ اول: مجوز میکروفون را با getUserMedia می‌گیریم (رفعِ
-            باگِ iOS). این فراخوانی مستقیماً از زنجیره‌ی کلیک کاربر
-            انجام می‌شود تا دیالوگِ مجوز به‌درستی نمایش داده شود. تا
-            آماده شدن، نوار ضبط حالت «در حال آماده‌سازی میکروفون...»
-            را نشان می‌دهد.
-            */
-            isPreparing = true;
-            setRecordingUI(true, RECORDING_LABEL_PREPARING);
+            mediaStream = stream;
+            const mimeType = pickMimeType();
 
-            ensureMicPermission(function (granted) {
+            try {
+                mediaRecorder = mimeType
+                    ? new window.MediaRecorder(stream, { mimeType: mimeType })
+                    : new window.MediaRecorder(stream);
+            } catch (err) {
                 isPreparing = false;
-                if (!granted) {
-                    setRecordingUI(false);
-                    showMicDeniedMessage();
+                hideRecordingBar();
+                releaseStream();
+                addMessage("bot", "ضبط صدا در این مرورگر ممکن نشد. لطفاً پیامتان را بنویسید.");
+                return;
+            }
+
+            chunks = [];
+            mediaRecorder.addEventListener("dataavailable", function (event) {
+                if (event.data && event.data.size > 0) chunks.push(event.data);
+            });
+            mediaRecorder.addEventListener("stop", function () {
+                const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+                const seconds = (Date.now() - recordingStartTime) / 1000;
+                teardown();
+                uploadRecording(blob, extensionFor(mediaRecorder.mimeType || ""), seconds);
+            });
+
+            mediaRecorder.start();
+            isPreparing = false;
+            isRecording = true;
+            voiceIsRecording = true;
+            recordingStartTime = Date.now();
+
+            showRecordingBar(RECORDING_LABEL_ACTIVE);
+            setVoiceButtonState();
+            startWaveform(stream);
+
+            recordingTickTimer = setInterval(tickTimer, 250);
+            // ضبطِ فراموش‌شده نباید تا ابد ادامه پیدا کند.
+            maxLengthTimer = setTimeout(function () {
+                if (isRecording) stopRecording();
+            }, MAX_RECORDING_MS);
+
+            // در حال ضبط، «ارسال» یعنی «تمام کن و بفرست».
+            updateSendButtonState();
+        }
+
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            // ضبط‌های خیلی کوتاه معمولاً کلیک اشتباهی‌اند و چیزی در
+            // آن‌ها نیست؛ فرستادنشان فقط هزینه و یک پاسخ گیج‌کننده دارد.
+            const tooShort = Date.now() - recordingStartTime < 500;
+            if (tooShort) {
+                sendWhenReady = false;
+                chunks = [];
+            }
+            try {
+                mediaRecorder.stop();
+            } catch (err) {
+                teardown();
+                hideRecordingBar();
+            }
+        }
+
+        /* ---------- تبدیل به متن ---------- */
+
+        function uploadRecording(blob, extension, seconds) {
+            if (!blob || blob.size === 0) {
+                hideRecordingBar();
+                sendWhenReady = false;
+                return;
+            }
+
+            isProcessing = true;
+            showProcessingBar();
+
+            const form = new FormData();
+            form.append("action", "ai_agent_transcribe");
+            form.append("nonce", ai_agent.transfer_nonce);
+            form.append("duration_seconds", String(Math.round(seconds * 10) / 10));
+            form.append("audio", blob, "voice." + extension);
+
+            $.ajax({
+                url: ai_agent.ajax_url,
+                method: "POST",
+                data: form,
+                processData: false,
+                contentType: false,
+            }).done(function (response) {
+                isProcessing = false;
+                hideRecordingBar();
+
+                if (!response || !response.success || !response.data) {
+                    sendWhenReady = false;
+                    addMessage(
+                        "bot",
+                        (response && response.data && response.data.message) ||
+                            "تبدیل صدا به متن انجام نشد. دوباره تلاش کنید یا پیام را تایپ کنید."
+                    );
                     return;
                 }
-                beginRecognitionSession();
+
+                const text = (response.data.text || "").trim();
+                if (!text) {
+                    sendWhenReady = false;
+                    addMessage("bot", "صدای پیام واضح نبود و چیزی متوجه نشدم. یک بار دیگر بفرستید یا بنویسید.");
+                    return;
+                }
+
+                // متن به آنچه کاربر از قبل نوشته اضافه می‌شود، نه
+                // جایگزینش: ممکن است نصف سوالش را تایپ کرده باشد.
+                const existing = input.val().trim();
+                input.val(existing ? existing + " " + text : text);
+                autoResizeInput();
+                updateSendButtonState();
+
+                if (sendWhenReady) {
+                    sendWhenReady = false;
+                    sendMessage();
+                } else {
+                    input.trigger("focus");
+                }
+            }).fail(function () {
+                isProcessing = false;
+                hideRecordingBar();
+                sendWhenReady = false;
+                addMessage("bot", "ارتباط با سرور برای تبدیل صدا برقرار نشد. دوباره تلاش کنید.");
             });
         }
 
-        /*
-        توقفِ ایمنِ ضبط.
-
-        این تابع بلافاصله متن را نمی‌نویسد و متغیرهای انباشت را خالی
-        نمی‌کند. فقط از سرویس می‌خواهد متوقف شود و منتظر رویداد واقعیِ
-        onend می‌ماند؛ نوشتنِ نهاییِ متن فقط داخل finishRecording (که
-        از onend یا تایمر محافظ صدا زده می‌شود) اتفاق می‌افتد. به همین
-        دلیل هیچ‌وقت یک نتیجه‌ی دیرهنگام و ناقص، متنِ کامل را بازنویسی
-        نمی‌کند.
-        */
-        function stopRecording() {
-            if (!isRecording || isFinalizing) return;
-
-            userRequestedStop = true;
-            isFinalizing = true;
-            clearRecordingTimers();
-            showProcessingUI();
-
-            if (recognition) {
-                try {
-                    recognition.stop();
-                } catch (e) {
-                    // اگر stop() با خطا مواجه شد (مثلاً از قبل متوقف شده)،
-                    // مستقیم با متنِ موجود تمام می‌کنیم
-                    finishRecording(false);
-                    return;
-                }
-            } else {
-                finishRecording(false);
-                return;
-            }
-
-            // تایمر محافظ: اگر onend واقعی تا چند ثانیه‌ی دیگر نرسید (نادر،
-            // ولی در برخی مرورگرها/سافاری رخ می‌دهد)، خودمان با همان متنِ
-            // انباشته‌شده تا این لحظه، ضبط را تمیز پایان می‌دهیم.
-            finalizeFallbackTimer = setTimeout(function () {
-                finalizeFallbackTimer = null;
-                if (isRecording) finishRecording(false);
-            }, FINALIZE_FALLBACK_MS);
-        }
+        /* ---------- اتصال به رابط ---------- */
 
         voiceBtn.on("click", function () {
-            // اگر فوتر غیرفعال است (چت بسته شده)، در حال پردازشِ نهاییِ
-            // نشستِ قبلی هستیم یا در حال گرفتن مجوز میکروفون، کاری نکن
-            if ($("#ai-agent-footer").hasClass("is-disabled")) return;
-            if (isFinalizing || isPreparing) return;
+            if (isProcessing) return;
             if (isRecording) {
                 stopRecording();
             } else {
@@ -2778,22 +2603,35 @@ function buildReferencesListBox(references) {
             }
         });
 
-        // توقف ضبط هنگام ریست چت (چت جدید). هر متنِ در حال ضبط طبق
-        // همان مسیر ایمنِ stopRecording نهایی می‌شود (نه دور ریخته می‌شود).
+        /*
+        زدن «ارسال» وسط ضبط: ضبط تمام می‌شود و به‌محض آماده‌شدنِ متن،
+        پیام می‌رود. کسی که حرفش تمام شده و دستش روی ارسال است، منظورش
+        همین است و نباید مجبور شود دو دکمه را پشت‌سرهم بزند.
+        */
+        $(document).on("ai-agent-send-intent", function (event, intent) {
+            if (isRecording) {
+                intent.handled = true;
+                sendWhenReady = true;
+                stopRecording();
+            }
+        });
+
+        // چت جدید یا انتقال گفت‌وگو: ضبطِ نیمه‌کاره باید تمیز تمام شود،
+        // نه اینکه در پس‌زمینه رها بماند.
         $(document).on("ai-agent-chat-reset", function () {
-            if (isRecording) stopRecording();
+            if (isRecording) {
+                sendWhenReady = false;
+                stopRecording();
+            }
         });
 
         /*
-        روی موبایل، با رفتن صفحه به پس‌زمینه (تعویض اپ/قفل صفحه)،
-        سیستم‌عامل نشستِ ضبط را می‌کشد. اینجا ضبط را تمیز و با حفظِ
-        متنِ تا آن لحظه پایان می‌دهیم تا وقتی کاربر برمی‌گردد، متنش
-        سر جایش باشد و ضبطِ «زامبی» باقی نماند.
+        رفتن صفحه به پس‌زمینه روی موبایل، ضبط را از دست سیستم‌عامل
+        می‌گیرد. تمامش می‌کنیم تا چیزی که ضبط شده از دست نرود و
+        میکروفون هم آزاد شود.
         */
         document.addEventListener("visibilitychange", function () {
-            if (document.hidden && isRecording && !isFinalizing) {
-                stopRecording();
-            }
+            if (document.hidden && isRecording) stopRecording();
         });
     }
 
