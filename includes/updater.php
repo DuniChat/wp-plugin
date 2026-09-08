@@ -4,33 +4,41 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * =========================================================
- *  به‌روزرسان خودکار دانیچت (بر پایه‌ی ریلیزهای گیت‌هاب)
+ *  به‌روزرسان خودکار دانیچت (از روی سایت دانیچت)
  * =========================================================
  *
- * این کلاس آخرین ریلیز گیت‌هاب را چک می‌کند و در صورت وجود نسخه‌ی جدید،
- * اعلان به‌روزرسانی را - دقیقاً مثل افزونه‌های مخزن وردپرس - در صفحه‌ی
- * افزونه‌ها نمایش می‌دهد و فرآیند دانلود و نصب را خود وردپرس انجام می‌دهد.
+ * این کلاس آخرین نسخه‌ی منتشرشده در دانیچت را چک می‌کند و در صورت وجود
+ * نسخه‌ی جدید، اعلان به‌روزرسانی را — دقیقاً مثل افزونه‌های مخزن وردپرس —
+ * در صفحه‌ی افزونه‌ها نمایش می‌دهد و دانلود و نصب را خود وردپرس انجام
+ * می‌دهد.
  *
- * فرآیند انتشار نسخه‌ی جدید (چک‌لیست توسعه‌دهنده):
- *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده (مثلاً 1.0.5)
- *   ۲) تغییرات را کامیت و پوش کن
- *   ۳) در گیت‌هاب یک Release با تگ vX.Y.Z (مثلاً v1.0.5) منتشر کن
- *      - لازم نیست فایل زیپی پیوست کنی؛ اگر زیپی پیوست شود (با پسوند .zip)
- *        همان دانلود می‌شود وگرنه از زیپ سورسِ خود تگ استفاده می‌شود.
- *      - ریلیزهای Draft و Pre-release نادیده گرفته می‌شوند.
+ * قبلاً منبع، ریلیزهای گیت‌هاب بود. مشکلش این نبود که کار نمی‌کرد؛ مشکل
+ * این بود که منتشرکننده‌ی واقعی، گیت‌هاب نبود: فایل از گیت‌هاب برداشته و
+ * دستی در پنل دانیچت آپلود می‌شد، پس بین لحظه‌ای که تگ در گیت‌هاب ساخته
+ * می‌شد و لحظه‌ای که همان بیلد در دانیچت قرار می‌گرفت، هزاران سایت
+ * آپدیتی را پیشنهاد می‌گرفتند که هنوز منتشر نشده بود. حالا همان جایی که
+ * نسخه در آن منتشر می‌شود، همان جایی است که سایت‌ها از آن می‌پرسند.
+ *
+ * ضمناً میزبان‌های داخل ایران معمولاً به api.github.com دسترسی ندارند، پس
+ * برای بسیاری از سایت‌ها این چک اصلاً موفق نمی‌شد؛ سرور دانیچت همان جایی
+ * است که افزونه برای هر کار دیگری هم با آن حرف می‌زند.
+ *
+ * فرآیند انتشار نسخه‌ی جدید (چک‌لیست):
+ *   ۱) مقدار Version در هدر فایل ai-agent.php را افزایش بده
+ *   ۲) زیپ افزونه را در پنل ادمین دانیچت آپلود کن و همان شماره‌ی نسخه و
+ *      متن تغییرات را وارد کن
+ *   ۳) تمام. سایت‌ها حداکثر ۱۲ ساعت بعد (یا با باز کردن صفحه‌ی افزونه‌ها،
+ *      بلافاصله) آپدیت را می‌بینند.
  *
  * تشخیص مشکل:
  *   در صفحه‌ی افزونه‌ها، زیر توضیحات افزونه‌ی دانیچت، وضعیت آخرین بررسی
- *   گیت‌هاب نمایش داده می‌شود (زمان، موفقیت/خطا و کد HTTP).
- *   اگر همیشه «ناموفق» بود، احتمالاً هاست شما به api.github.com دسترسی
- *   ندارد یا محدودیت نرخ درخواست (rate limit) خورده است.
+ *   نمایش داده می‌شود (زمان، موفقیت/خطا و کد HTTP).
  *
  * نکته: نتیجه‌ی چک تا ۱۲ ساعت کش می‌شود؛ اما هر بار که ادمین صفحه‌ی
- * افزونه‌ها یا به‌روزرسانی‌ها را باز کند (اگر بیش از ۲ دقیقه از آخرین
- * چک گذشته باشد) یک چک تازه انجام می‌شود تا ریلیزهای جدید بلافاصله
- * دیده شوند.
+ * افزونه‌ها یا به‌روزرسانی‌ها را باز کند یک چک تازه انجام می‌شود تا
+ * نسخه‌های جدید بلافاصله دیده شوند.
  */
-class Dunichat_GitHub_Updater
+class Dunichat_Updater
 {
     /**
      * مسیر کامل فایل اصلی افزونه
@@ -51,22 +59,19 @@ class Dunichat_GitHub_Updater
     private $folder;
 
     /**
-     * نام مخزن گیت‌هاب به شکل owner/repo
-     * @var string
-     */
-    private $repo = 'DuniChat/wp-plugin';
-
-    /**
-     * اندپوینت آخرین ریلیز
+     * اندپوینت اطلاعات آخرین نسخه در دانیچت
      * @var string
      */
     private $api_url;
 
     /**
      * کلید کش (transient)
+     *
+     * نامش عوض شده تا کشِ به‌جا مانده از نسخه‌های قبلی — که ساختار دیگری
+     * دارد — بعد از آپدیت خوانده نشود.
      * @var string
      */
-    private $cache_key = 'dunichat_github_latest_release';
+    private $cache_key = 'dunichat_latest_release';
 
     /**
      * کلید گزینه‌ی وضعیت آخرین بررسی (برای نمایش در ردیف افزونه)
@@ -85,7 +90,12 @@ class Dunichat_GitHub_Updater
         $this->file     = $plugin_file;
         $this->basename = plugin_basename($plugin_file);
         $this->folder   = dirname($this->basename);
-        $this->api_url  = 'https://api.github.com/repos/' . $this->repo . '/releases/latest';
+        // همان ریشه‌ای که بقیه‌ی افزونه با آن حرف می‌زند، تا آدرس API فقط
+        // در یک جا تعریف شده باشد.
+        $base = function_exists('ai_agent_api_base')
+            ? ai_agent_api_base()
+            : 'https://api.dunichat.ir/api/v1';
+        $this->api_url = $base . '/plugin/info';
 
         // تزریق نسخه‌ی جدید به لیست به‌روزرسانی‌های وردپرس (مسیر رسمی وردپرس)
         add_filter('pre_set_site_transient_update_plugins', array($this, 'inject_update'));
@@ -96,7 +106,7 @@ class Dunichat_GitHub_Updater
         // پر کردن مودال «مشاهده جزئیات نسخه» (توضیحات + تغییرات)
         add_filter('plugins_api', array($this, 'plugin_information'), 20, 3);
 
-        // زیپ گیت‌هاب یا نام پوشه‌ی دیگری دارد یا اصلاً پوشه‌ی والد ندارد؛
+        // زیپ آپلودشده ممکن است نام پوشه‌ی دیگری داشته باشد یا اصلاً پوشه‌ی والد نداشته باشد؛
         // این هوک نام پوشه‌ی دانلودشده را به نام فعلی افزونه برمی‌گرداند تا آپدیت خراب نشود
         add_filter('upgrader_source_selection', array($this, 'fix_source_folder'), 10, 4);
 
@@ -104,12 +114,12 @@ class Dunichat_GitHub_Updater
         add_action('upgrader_process_complete', array($this, 'clear_cache'), 10, 2);
 
         // ⚠ اولویت ۵ حیاتی است: باید «قبل از» wp_update_plugins هسته (اولویت ۱۰)
-        // اجرا شود تا کش گیت‌هاب پاک شده و داده‌ی تازه در همان چرخه‌ی رسمی
+        // اجرا شود تا کش پاک شده و داده‌ی تازه در همان چرخه‌ی رسمی
         // وردپرس گرفته و در transient ذخیره شود
         add_action('load-plugins.php', array($this, 'clear_cache'), 5);
         add_action('load-update-core.php', array($this, 'clear_cache'), 5);
 
-        // نمایش وضعیت آخرین بررسی گیت‌هاب در ردیف افزونه (ابزار تشخیص مشکل)
+        // نمایش وضعیت آخرین بررسی در ردیف افزونه (ابزار تشخیص مشکل)
         add_filter('plugin_row_meta', array($this, 'row_meta'), 10, 2);
     }
 
@@ -133,7 +143,7 @@ class Dunichat_GitHub_Updater
 
         $entry = $this->get_update_entry();
         if (null === $entry) {
-            return $transient; // مثلاً گیت‌هاب در دسترس نبود
+            return $transient; // مثلاً سرور دانیچت در دسترس نبود
         }
 
         if ($entry['available']) {
@@ -160,7 +170,7 @@ class Dunichat_GitHub_Updater
      * چکِ موفق را نشان می‌دهد! بنابراین عمداً هیچ گارد per-request وجود ندارد
      * و هر خواندن مستقلاً تزریق می‌کند. هزینه‌ی این کار ناچیز است چون
      * get_release() به کش transient متکی است و در هر ریکوئست حداکثر یک
-     * درخواست HTTP به گیت‌هاب زده می‌شود.
+     * درخواست HTTP به سرور دانیچت زده می‌شود.
      *
      * همچنین ورودی‌های قبلی ذخیره‌شده در transient (no_update کهنه یا response
      * قدیمی) ممکن است کهنه باشند؛ بنابراین مگر این‌که ورودیِ معتبرِ جدیدتری از
@@ -193,7 +203,7 @@ class Dunichat_GitHub_Updater
         $entry = $this->get_update_entry();
 
         if (null === $entry) {
-            // گیت‌هاب در دسترس نبود؛ ورودی‌های فعلی دست‌نخورده می‌مانند
+            // سرور دانیچت در دسترس نبود؛ ورودی‌های فعلی دست‌نخورده می‌مانند
             return $transient;
         }
 
@@ -220,7 +230,7 @@ class Dunichat_GitHub_Updater
             return null;
         }
 
-        $new_version     = $this->normalize_version($release['tag_name']);
+        $new_version     = $release['version'];
         $current_version = $this->get_current_version();
         $available       = version_compare($new_version, $current_version, '>');
 
@@ -228,14 +238,14 @@ class Dunichat_GitHub_Updater
         $object->slug        = $this->folder;
         $object->plugin      = $this->basename;
         $object->new_version = $new_version;
-        $object->url         = !empty($release['html_url']) ? $release['html_url'] : 'https://dunichat.ir';
-        $object->package     = $this->get_package_url($release);
+        $object->url         = 'https://dunichat.ir';
+        $object->package     = $release['package'];
         $object->tested      = get_bloginfo('version');
         $object->requires    = '6.0';
         $object->requires_php = '7.4';
 
-        if (!empty($release['published_at'])) {
-            $object->last_updated = gmdate('Y-m-d g:i a', strtotime($release['published_at']));
+        if (!empty($release['released_at'])) {
+            $object->last_updated = gmdate('Y-m-d g:i a', strtotime($release['released_at']));
         }
 
         // آیکون افزونه در ردیف به‌روزرسانی
@@ -271,12 +281,12 @@ class Dunichat_GitHub_Updater
             return $result;
         }
 
-        $download_link = $this->get_package_url($release);
+        $download_link = $release['package'];
 
         $info = new stdClass();
         $info->name            = 'Dunichat';
         $info->slug            = $this->folder;
-        $info->version         = $this->normalize_version($release['tag_name']);
+        $info->version         = $release['version'];
         $info->author          = '<a href="https://dunichat.ir" target="_blank" rel="noopener">Dunijet</a>';
         $info->author_profile  = 'https://dunichat.ir';
         $info->homepage        = 'https://dunichat.ir';
@@ -287,14 +297,14 @@ class Dunichat_GitHub_Updater
         $info->requires_php    = '7.4';
         $info->downloaded      = 0;
         $info->active_installs = 0;
-        $info->last_updated    = !empty($release['published_at'])
-            ? date_i18n(get_option('date_format'), strtotime($release['published_at']))
+        $info->last_updated    = !empty($release['released_at'])
+            ? date_i18n(get_option('date_format'), strtotime($release['released_at']))
             : '';
 
         $info->sections = array(
             'description' => '<p>دستیار هوشمند دانیچت محصولی از دانیجت؛ ویجت چت مبتنی بر هوش مصنوعی برای پشتیبانی آنلاین و پاسخ به سؤالات بازدیدکنندگان بر اساس محتوای واقعی سایت شما (نوشته‌ها، برگه‌ها و محصولات ووکامرس).</p>'
                 . '<p><a href="https://dunichat.ir" target="_blank" rel="noopener">dunichat.ir</a></p>',
-            'changelog'   => $this->format_changelog(isset($release['body']) ? $release['body'] : ''),
+            'changelog'   => $this->format_changelog(isset($release['changelog']) ? $release['changelog'] : ''),
         );
 
         if (defined('AI_AGENT_URL') && defined('AI_AGENT_PATH') && file_exists(AI_AGENT_PATH . 'assets/images/logo.png')) {
@@ -306,10 +316,10 @@ class Dunichat_GitHub_Updater
     }
 
     /**
-     * گیت‌هاب سورس را یا با پوشه‌ی والدی مثل wp-plugin-v1.0.1 می‌دهد
-     * یا (در حالت asset سفارشی) فایل‌ها را بدون پوشه‌ی والد زیپ می‌کند؛
-     * در هر دو حالت وردپرس پیش‌فرض پوشه را با نام درست (نام فعلی افزونه) جابه‌جا نمی‌کند
-     * و آپدیت خراب می‌شود. این متد نام پوشه را قبل از جابه‌جایی اصلاح می‌کند.
+     * زیپی که آپلود شده ممکن است پوشه‌ی والدی با نام دیگری داشته باشد
+     * (مثل wp-plugin-1.9.0) یا اصلاً پوشه‌ی والد نداشته باشد؛ در هر دو حالت
+     * وردپرس پوشه را با نام درست (نام فعلی افزونه) جابه‌جا نمی‌کند و آپدیت
+     * خراب می‌شود. این متد نام پوشه را قبل از جابه‌جایی اصلاح می‌کند.
      */
     public function fix_source_folder($source, $remote_source, $upgrader, $hook_extra = array())
     {
@@ -354,7 +364,7 @@ class Dunichat_GitHub_Updater
      * پاک کردن کش؛ دو حالت دارد:
      *  ۱) بعد از پایان موفق آپدیت (upgrader_process_complete) → پاک کردن کامل
      *  ۲) باز شدن صفحه‌ی افزونه‌ها/به‌روزرسانی‌ها → فقط اگر بیش از ۲ دقیقه از آخرین چک گذشته باشد
-     *     (تا هر رفرشِ پشت‌سرهم، درخواست اضافه به گیت‌هاب نزند)
+     *     (تا هر رفرشِ پشت‌سرهم، درخواست اضافه به سرور نزند)
      */
     public function clear_cache($upgrader_object = null, $options = null)
     {
@@ -411,66 +421,70 @@ class Dunichat_GitHub_Updater
     }
 
     /**
-     * درخواست تازه به API گیت‌هاب و ذخیره در کش
+     * درخواست تازه به دانیچت و ذخیره در کش
+     *
+     * پاسخ به شکل داخلیِ ثابتی نرمال می‌شود تا بقیه‌ی کلاس به شکل دقیق
+     * پاسخ سرور وابسته نباشد.
      */
     private function fetch_release()
     {
-        $headers = array(
-            'Accept'     => 'application/vnd.github+json',
-            'User-Agent' => 'Dunichat-WordPress-Plugin',
-        );
-
-        // اختیاری: برای رفع محدودیت نرخ درخواست (rate limit) هاست‌های اشتراکی،
-        // می‌توانید توکن گیت‌هاب را در wp-config.php تعریف کنید:
-        //   define('DUNICHAT_GITHUB_TOKEN', 'ghp_xxxxxxxxxxxxxxxxxxxx');
-        if (defined('DUNICHAT_GITHUB_TOKEN') && DUNICHAT_GITHUB_TOKEN) {
-            $headers['Authorization'] = 'Bearer ' . DUNICHAT_GITHUB_TOKEN;
-        }
-
         $response = wp_remote_get($this->api_url, array(
             'timeout' => 15,
-            'headers' => $headers,
+            'headers' => array(
+                'Accept'     => 'application/json',
+                'User-Agent' => 'Dunichat-WordPress-Plugin',
+            ),
         ));
 
         if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
             $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
             $this->store_status(false, $code, array());
-            // کش منفی کوتاه تا در صورت خطا، هر ریکوئست به گیت‌هاب کوبیده نشود
+            // کش منفی کوتاه تا در صورت خطا، هر ریکوئست به سرور کوبیده نشود
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
         }
 
-        $release = json_decode(wp_remote_retrieve_body($response), true);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
 
-        if (!is_array($release) || empty($release['tag_name'])) {
+        /*
+        دو حالت که هر دو یعنی «چیزی برای پیشنهاددادن نیست»، نه «خطا»:
+        نبودِ شماره‌ی نسخه، و available=false که یعنی هنوز هیچ زیپی در
+        دانیچت آپلود نشده. در هر دو حالت باید ساکت بمانیم؛ پیشنهاد آپدیت
+        به نسخه‌ای که فایلش وجود ندارد، آپدیت را وسط کار می‌شکند.
+        */
+        if (!is_array($body) || empty($body['version']) || empty($body['available'])) {
             $this->store_status(false, 200, array());
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
         }
 
+        $package = '';
+        if (!empty($body['package_url'])) {
+            $package = (string) $body['package_url'];
+        } elseif (!empty($body['download_url'])) {
+            $package = (string) $body['download_url'];
+        }
+
+        // آدرس نسبی یعنی سرور آدرس عمومی خودش را نمی‌داند. دانلود با چنین
+        // آدرسی روی دامنه‌ی خودِ مشتری حل می‌شود و به هیچ فایلی نمی‌رسد،
+        // پس به‌جای پیشنهاد آپدیتِ خراب، همان‌جا می‌ایستیم.
+        if ('' === $package || 0 !== strpos($package, 'http')) {
+            $this->store_status(false, 200, array());
+            set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
+            return array();
+        }
+
+        $release = array(
+            'version'     => $this->normalize_version($body['version']),
+            'package'     => $package,
+            'changelog'   => isset($body['changelog']) ? (string) $body['changelog'] : '',
+            'released_at' => isset($body['released_at']) ? (string) $body['released_at'] : '',
+        );
+
         $this->store_status(true, 200, $release);
         set_transient($this->cache_key, array('fetched_at' => time(), 'release' => $release), 12 * HOUR_IN_SECONDS);
 
         return $release;
-    }
-
-    /**
-     * آدرس فایل زیپ برای دانلود:
-     * اولویت ۱: asset زیپی که خودت به ریلیز پیوست کرده‌ای (هر فایل .zip)
-     * اولویت ۲: زیپ سورس خود تگ (zipball) که گیت‌هاب خودکار می‌سازد
-     */
-    private function get_package_url($release)
-    {
-        if (!empty($release['assets']) && is_array($release['assets'])) {
-            foreach ($release['assets'] as $asset) {
-                if (!empty($asset['browser_download_url']) && !empty($asset['name'])
-                    && '.zip' === strtolower(substr($asset['name'], -4))) {
-                    return $asset['browser_download_url'];
-                }
-            }
-        }
-
-        return !empty($release['zipball_url']) ? $release['zipball_url'] : '';
     }
 
     /**
@@ -505,13 +519,13 @@ class Dunichat_GitHub_Updater
             'time' => time(),
             'ok'   => (bool) $ok,
             'code' => (int) $code,
-            'tag'  => !empty($release['tag_name']) ? $release['tag_name'] : '',
+            'version' => !empty($release['version']) ? $release['version'] : '',
         ), false);
     }
 
     /**
-     * نمایش وضعیت آخرین بررسی گیت‌هاب زیر توضیحات افزونه در صفحه‌ی افزونه‌ها
-     * (ابزار تشخیص: اگر «ناموفق» بود یعنی درخواست به api.github.com انجام نمی‌شود)
+     * نمایش وضعیت آخرین بررسی زیر توضیحات افزونه در صفحه‌ی افزونه‌ها
+     * (ابزار تشخیص: اگر «ناموفق» بود یعنی درخواست به سرور دانیچت انجام نمی‌شود)
      */
     public function row_meta($links, $file)
     {
@@ -531,8 +545,8 @@ class Dunichat_GitHub_Updater
 
         if (!empty($status['ok'])) {
             $text = 'بررسی آپدیت : ' . $ago . ' پیش — موفق';
-            if (!empty($status['tag'])) {
-                $text .= ' (آخرین ریلیز: ' . $status['tag'] . ')';
+            if (!empty($status['version'])) {
+                $text .= ' (آخرین نسخه: ' . $status['version'] . ')';
             }
         } else {
             $text = 'بررسی آپدیت : ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
