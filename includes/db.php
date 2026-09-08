@@ -107,6 +107,35 @@ add_action('admin_init', 'ai_agent_maybe_install');
 
 /*
 ============================================
+Migration: روشن‌کردن پیش‌فرض «اتصال به حساب و سبد خرید کاربر»
+
+این گزینه از ابتدا خاموش بود و حالا پیش‌فرضش روشن شده است. تغییرِ آرایه‌ی
+پیش‌فرض‌ها فقط نصب‌های تازه را می‌گیرد؛ سایتی که قبلاً تنظیمات را ذخیره
+کرده مقدار صفرِ ذخیره‌شده را نگه می‌دارد و صاحبش دلیلش را نمی‌فهمد.
+
+این مهاجرت فقط یک‌بار اجرا می‌شود (با پرچمِ ai_agent_shop_bridge_default_on)
+تا اگر کسی بعداً عمداً خاموشش کرد، دفعه‌ی بعد دوباره روشن نشود.
+============================================
+*/
+function ai_agent_maybe_default_shop_bridge_on() {
+    if (get_option('ai_agent_shop_bridge_default_on')) {
+        return;
+    }
+    update_option('ai_agent_shop_bridge_default_on', 1, false);
+
+    $settings = get_option('ai_agent_settings');
+    if (!is_array($settings)) {
+        return; // نصب تازه: آرایه‌ی پیش‌فرض‌ها خودش مقدار درست را می‌دهد
+    }
+    if (empty($settings['shop_bridge_enabled'])) {
+        $settings['shop_bridge_enabled'] = 1;
+        update_option('ai_agent_settings', $settings);
+    }
+}
+add_action('admin_init', 'ai_agent_maybe_default_shop_bridge_on');
+
+/*
+============================================
 رمزنگاری / رمزگشایی و ذخیره‌سازی امن API Key
 
 از openssl (روش AES-256-CBC) برای رمزنگاری استفاده می‌شود.

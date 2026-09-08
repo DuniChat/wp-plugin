@@ -623,6 +623,48 @@
             });
         });
 
+        // ----- حذف توکن سایت -----
+        // یک سایت هم‌زمان فقط به یک حساب وصل می‌شود؛ این تنها راهِ آزاد کردن
+        // دامنه برای یک حساب دیگر است. چون برگشت‌پذیر نیست، یک تأیید می‌گیرد.
+        $('#ai-agent-disconnect-site').on('click', function(e) {
+            e.preventDefault();
+            var $btn      = $(this);
+            var $statusEl = $('#ai-agent-save-api-key-status');
+            var token     = $('#ai_agent_disconnect_site_nonce_field').val();
+
+            if (!window.confirm('توکن این سایت حذف شود؟ دستیار تا ثبت توکن جدید پاسخ نمی‌دهد.')) {
+                return;
+            }
+
+            $btn.prop('disabled', true).addClass('is-loading');
+            $statusEl.removeClass('is-ok is-error').text('در حال حذف توکن...');
+
+            $.ajax({
+                url: ajaxurl,
+                method: 'POST',
+                data: {
+                    action: 'ai_agent_disconnect_site',
+                    nonce: token
+                },
+                success: function(response) {
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    if (response.success) {
+                        $statusEl.removeClass('is-error').addClass('is-ok')
+                                 .text((response.data && response.data.message) || 'توکن حذف شد.');
+                        window.setTimeout(function() { window.location.reload(); }, 1200);
+                    } else {
+                        $statusEl.removeClass('is-ok').addClass('is-error')
+                                 .text((response.data && response.data.message) || 'حذف توکن ناموفق بود.');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).removeClass('is-loading');
+                    $statusEl.removeClass('is-ok').addClass('is-error')
+                             .text('خطای غیرمنتظره در ارتباط با وردپرس رخ داد.');
+                }
+            });
+        });
+
         // نوار اعلان‌ها حذف شد — یک کارت که فقط یک آیکون بلندگو داشت و
         // معلوم نبود چیست؛ اعلان‌های واقعی جای بهتری برای رسیدن به کاربر دارند.
 

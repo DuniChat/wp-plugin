@@ -179,6 +179,42 @@ wp_send_json تمام می‌شد؛ یعنی فقط با کلیک کاربر ق�
 خروجی: array('success' => bool, 'data' => array(...))
 ================================================================
 */
+/*
+================================================================
+تازه‌کردن وضعیت پردازش آیتم‌ها از روی سرور
+
+job_id های ذخیره‌شده را دسته‌ای استعلام می‌کند و ستون status جدول
+synced_items را به‌روز می‌کند. خروجی: تعداد ردیف‌های تغییرکرده
+(در صورت خطا صفر). این تابع هیچ خروجی JSON نمی‌دهد تا هم از هندلر
+AJAX و هم از سینک زمان‌بندی‌شده قابل استفاده باشد.
+================================================================
+*/
+function ai_agent_refresh_synced_statuses() {
+    $job_ids = ai_agent_get_all_synced_job_ids();
+    if (empty($job_ids)) {
+        return 0;
+    }
+
+    $result = ai_agent_fetch_sync_status_batch($job_ids);
+    if (!isset($result['status']) || $result['status'] !== 'success'
+        || empty($result['results']) || !is_array($result['results'])) {
+        return 0;
+    }
+
+    $updated_count = 0;
+    foreach ($result['results'] as $r) {
+        if (!is_array($r) || empty($r['job_id']) || empty($r['status'])) {
+            continue;
+        }
+        $updated = ai_agent_update_synced_status_by_job_id($r['job_id'], $r['status']);
+        if ($updated !== false && $updated > 0) {
+            $updated_count++;
+        }
+    }
+
+    return $updated_count;
+}
+
 function ai_agent_run_incremental_sync() {
 
     // ۱. بررسی API Key
@@ -241,6 +277,18 @@ function ai_agent_run_incremental_sync() {
     در حلقه‌ی تفکیک O(1) باشد.
     ============================================
     */
+    /*
+    پیش از خواندن ناموفق‌ها، وضعیت کارهای در جریان را یک‌بار از سرور
+    تازه می‌کنیم. تا پیش از این، ستون status فقط وقتی به‌روز می‌شد که
+    مدیر دکمه‌ی «بررسی وضعیت» را می‌زد؛ یعنی سینکِ خودکارِ هر سه روز
+    هیچ‌وقت نمی‌فهمید چیزی در سرور ناموفق شده و آن مورد برای همیشه
+    ایندکس‌نشده می‌ماند. حالا هر سینک، ناموفق‌های واقعی را می‌بیند.
+
+    اگر این استعلام خطا بدهد، سینک متوقف نمی‌شود: بدترین حالت این است
+    که این دور، ناموفق‌ها دوباره فرستاده نشوند و دور بعد فرستاده شوند.
+    */
+    ai_agent_refresh_synced_statuses();
+
     $failed_rows = ai_agent_get_failed_synced_items();
     $failed_keys = array();
     if (!empty($failed_rows)) {
@@ -525,7 +573,7 @@ if (!empty($new_items)) {
                 'deleted_count'   => 0,
                 'edited_count'    => 0,
                 'total_count'     => $total_current,
-                'last_sync_time'  => $sync_time,
+                'last_sync_time'  => ai_agent_format_jalali_datetime($sync_time),
             ));
         }
 
@@ -547,7 +595,7 @@ if (!empty($new_items)) {
         'edited_count'        => $edited_processed_count,
         'deleted_count'       => $deleted_sent_count,
         'total_count'         => $total_current,
-        'last_sync_time'      => $sync_time,
+        'last_sync_time'      => ai_agent_format_jalali_datetime($sync_time),
         'sync_type'           => 'incremental',
     ));
 }
@@ -675,7 +723,7 @@ function ai_agent_sync_all_data_handler() {
                 'new_count'      => 0,
                 'deleted_count'  => 0,
                 'total_count'    => 0,
-                'last_sync_time' => ai_agent_get_last_sync_all_time(),
+                'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_all_time()),
             ));
         }
 
@@ -717,7 +765,7 @@ function ai_agent_sync_all_data_handler() {
             'new_count'      => 0,
             'deleted_count'  => $deleted_sent_count,
             'total_count'    => 0,
-            'last_sync_time' => $sync_time,
+            'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
             'sync_type'      => 'full',
         ));
     }
@@ -755,7 +803,7 @@ function ai_agent_sync_all_data_handler() {
             'new_count'      => 0,
             'deleted_count'  => $deleted_sent_count,
             'total_count'    => count($current_items),
-            'last_sync_time' => ai_agent_get_last_sync_all_time(),
+            'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_all_time()),
         ));
     }
 
@@ -820,7 +868,7 @@ function ai_agent_sync_all_data_handler() {
         'new_count'      => $sent_count,
         'deleted_count'  => $deleted_sent_count,
         'total_count'    => $total,
-        'last_sync_time' => $sync_time,
+        'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
         'sync_type'      => 'full',
     ));
 }
@@ -912,7 +960,7 @@ function ai_agent_sync_images_data_handler() {
             'message'        => $content_result['message'],
             'new_count'      => 0,
             'total_count'    => count($current_items),
-            'last_sync_time' => ai_agent_get_last_sync_time(),
+            'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_time()),
         ));
     }
 
@@ -964,7 +1012,7 @@ function ai_agent_sync_images_data_handler() {
             'new_count'      => $sent_count,
             'deleted_count'  => 0,
             'total_count'    => $total,
-            'last_sync_time' => $sync_time,
+            'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
             'sync_type'      => 'images',
         ));
     }

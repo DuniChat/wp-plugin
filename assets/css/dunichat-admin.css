@@ -444,6 +444,22 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
 }
 .ai-agent-app .ai-agent-btn-primary:disabled:hover { background: var(--dc-primary); }
 
+/*
+دکمه‌ی ویرانگر (حذف توکن). پُررنگ نیست: کنارش دکمه‌ی اصلیِ «ذخیره‌ی
+توکن» ایستاده و کاری که این می‌کند برگشت‌پذیر نیست، پس نباید به‌اندازه‌ی
+آن چشمگیر باشد — فقط باید قرمز باشد تا با بقیه اشتباه گرفته نشود.
+*/
+.ai-agent-app .ai-agent-btn-danger {
+    border-color: #dc2626;
+    color: #dc2626;
+    background: transparent;
+}
+.ai-agent-app .ai-agent-btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
 .ai-agent-app .ai-agent-btn-sm { height: 36px; padding: 0 14px; }
 .ai-agent-app .ai-agent-btn-square {
     width: var(--dc-field-h);

@@ -2255,7 +2255,10 @@ function buildReferencesListBox(references) {
         می‌خوابند، و همین تنها نشانه‌ای است که به او می‌گوید میکروفون
         واقعاً صدایش را می‌شنود.
         */
-        const WAVEFORM_BAR_COUNT = 28;
+        // حالا که برچسب متنی از نوار برداشته شده، موج تمام عرض را دارد؛
+        // با تعداد کم، میله‌ها با فاصله‌های بزرگ پخش می‌شدند به‌جای اینکه
+        // فضا را پر کنند.
+        const WAVEFORM_BAR_COUNT = 44;
 
         function buildWaveformBars() {
             waveformEl.empty();
