@@ -352,6 +352,61 @@ add_action('wp_ajax_ai_agent_save_api_key', 'ai_agent_save_api_key_handler');
 
 /*
 ============================================
+هندلر AJAX حذف توکن سایت
+
+یک سایت هم‌زمان فقط به یک حساب دانی‌چت وصل می‌شود. تا وقتی توکن این
+سایت فعال است، هیچ حساب دیگری نمی‌تواند همین دامنه را اضافه کند — و
+بدون راهی برای رها کردنِ آن، صاحب سایت پس از فروش دامنه یا ساختن حساب
+جدید در بن‌بست می‌ماند.
+
+ترتیب کار مهم است: اول به سرور خبر می‌دهیم که این سایت آزاد شده، بعد
+کلید محلی را پاک می‌کنیم. اگر اول کلید پاک می‌شد و بعد درخواست شکست
+می‌خورد، دیگر توکنی نبود که با آن سایت را آزاد کنیم و دامنه برای همیشه
+قفل می‌ماند.
+============================================
+*/
+function ai_agent_disconnect_site_handler() {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
+    }
+
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_disconnect_site_nonce_action')) {
+        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
+    }
+
+    if (empty(ai_agent_get_api_key())) {
+        wp_send_json_error(array('message' => 'توکنی برای حذف ثبت نشده است.'));
+    }
+
+    $result = ai_agent_api_request('POST', '/sync/disconnect');
+
+    /*
+    توکنی که سرور نمی‌شناسد (۴۰۱) هم باید قابل حذف باشد: همان حالتی است
+    که کاربر توکن اشتباه چسبانده و حالا می‌خواهد پاکش کند. بقیه‌ی خطاها
+    (شبکه، ۵xx) کلید را نگه می‌دارند تا دوباره بشود تلاش کرد.
+    */
+    if (empty($result['ok']) && intval($result['code']) !== 401) {
+        wp_send_json_error(array(
+            'message' => 'آزادسازی سایت روی سرور ناموفق بود: ' . $result['error'],
+        ));
+    }
+
+    delete_option(AI_AGENT_API_KEY_OPTION);
+
+    $settings = ai_agent_get_settings();
+    $settings['api_key'] = '';
+    update_option('ai_agent_settings', $settings);
+
+    wp_send_json_success(array(
+        'message' => 'توکن حذف شد. حالا این سایت را می‌توانید به حساب دیگری اضافه کنید.',
+    ));
+}
+add_action('wp_ajax_ai_agent_disconnect_site', 'ai_agent_disconnect_site_handler');
+
+
+/*
+============================================
 هندلر AJAX دریافت اعلان‌های دانیچَت
 
 اندپوینت عمومی است و توکن نمی‌خواهد، اما از سمت سرورِ وردپرس صدا

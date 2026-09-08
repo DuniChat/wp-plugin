@@ -1173,6 +1173,7 @@ button.ai-references-title.ai-references-toggle {
    ============================================ */
 .ai-agent-recording-bar {
     display: none;
+    position: relative;
     align-items: center;
     gap: 10px;
     flex: 1 1 auto;
@@ -1272,19 +1273,23 @@ button.ai-references-title.ai-references-toggle {
 }
 
 /* متن «در حال ضبط صدا...» */
+/*
+برچسب وضعیت («در حال ضبط…»، «در حال تبدیل به متن…») دیده نمی‌شود ولی
+حذف هم نشده: نقطه‌ی قرمز و موج صدا خودشان می‌گویند چه خبر است و متن فقط
+جای میله‌ها را می‌گرفت، اما کسی که با صفحه‌خوان کار می‌کند هیچ‌کدام از
+آن دو را نمی‌بیند. پس از جریان چیدمان بیرون می‌رود تا موج تمام عرض نوار
+را بگیرد، و همچنان خوانده می‌شود.
+*/
 .ai-recording-label {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: #475569;
-    white-space: nowrap;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#ai-agent[data-theme="dark"] .ai-recording-label {
-    color: #cbd5e1;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /* شمارنده‌ی زمان ضبط (mm:ss) */
@@ -1795,6 +1800,14 @@ weight is legible without changing the bubble geometry.
     cursor: pointer;
     position: relative;
     flex-shrink: 0;
+    /*
+    ردیف با flex-end چیده شده تا وقتی متن چندخطی شد دکمه‌ها پایین بمانند،
+    نه اینکه وسط یک فیلد بلند شناور شوند. اما تکست‌اریا در حالت تک‌خطی
+    حدود ۴۱ پیکسل است و دکمه ۳۴؛ نتیجه این بود که دایره‌ها نسبت به متن
+    پایین‌تر می‌نشستند. این فاصله همان اختلاف را نصف می‌کند تا در حالت
+    عادی — که کاربر بیشترِ وقت می‌بیند — دقیقاً وسط باشند.
+    */
+    margin-bottom: 3px;
 }
 
 #ai-agent-attach,

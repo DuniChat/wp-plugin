@@ -48,7 +48,7 @@ function ai_agent_get_settings(){
         دسترسی به پیشخوان وردپرس برای سوءاستفاده از آن کافی بود.
         ============================================
         */
-        'shop_bridge_enabled' => 0,         // اتصال دستیار به سبد خرید و سفارش‌های ووکامرس
+        'shop_bridge_enabled' => 1,         // اتصال دستیار به سبد خرید و سفارش‌های ووکامرس (پیش‌فرض روشن)
         'starter_questions'   => array(),   // سوال‌های پیشنهادی صفحه‌ی شروع چت (خالی = پیشنهادهای خودکار)
         'assistant_tone'      => 'neutral', // formal | professional | neutral | friendly | warm | casual
         'emoji_usage'         => 'low',     // none | low | medium | high
@@ -940,8 +940,17 @@ function ai_agent_settings_page(){
         است؛ همان یادداشت توکن، فقط با رنگ خطا. بقیه‌ی خطاها (شبکه،
         ۵xx) هم همان‌جا می‌نشینند تا صفحه با یک بنر قرمز شروع نشود.
         */
-        $token_note      = $save_result['message'];
-        $token_note_kind = 'error';
+        /*
+        وقتی سرور توکن را نپذیرفته، بج بالای همین بخش خودش می‌گوید
+        «توکن وارد نشده است». تکرارش به‌صورت یک یادداشت نارنجی زیر فیلد،
+        چیزی به کاربر نمی‌گفت و فقط بخش را شلوغ می‌کرد. بقیه‌ی خطاها
+        (قطعی شبکه، خطای ۵xx) همچنان نوشته می‌شوند، چون بج آن‌ها را
+        پوشش نمی‌دهد و کاربر بدون‌شان نمی‌فهمد چرا چیزی کار نمی‌کند.
+        */
+        if ($save_result['message'] !== ai_agent_http_error_message(401)) {
+            $token_note      = $save_result['message'];
+            $token_note_kind = 'error';
+        }
     }
 
     $tone_options  = ai_agent_tone_options();
@@ -1011,7 +1020,7 @@ function ai_agent_settings_page(){
                         <?php if ($token_state === 'connected') : ?>
                             <span class="ai-agent-badge ai-agent-badge-ok">متصل</span>
                         <?php elseif ($token_state === 'invalid') : ?>
-                            <span class="ai-agent-badge ai-agent-badge-warn">توکن پذیرفته نشد</span>
+                            <span class="ai-agent-badge ai-agent-badge-warn">توکن وارد نشده است</span>
                         <?php else : ?>
                             <span class="ai-agent-badge ai-agent-badge-warn">ثبت نشده</span>
                         <?php endif; ?>
@@ -1039,6 +1048,20 @@ function ai_agent_settings_page(){
                         <button type="button" id="ai-agent-save-api-key" class="ai-agent-btn ai-agent-btn-primary">ذخیره‌ی توکن</button>
                         <?php wp_nonce_field('ai_agent_save_api_key_nonce_action', 'ai_agent_save_api_key_nonce_field'); ?>
                         <a class="ai-agent-btn" href="https://dunichat.ir/login" target="_blank" rel="noopener">دریافت توکن از دانیچَت</a>
+                        <?php
+                        /*
+                        یک سایت هم‌زمان فقط به یک حساب دانی‌چت وصل می‌شود. بدون
+                        این دکمه، کسی که سایتش را به حساب دیگری منتقل می‌کند در
+                        بن‌بست می‌ماند: حساب تازه اجازه‌ی افزودن همین دامنه را
+                        ندارد و راهی هم برای آزاد کردنش نیست.
+
+                        فقط وقتی نشان داده می‌شود که توکنی برای حذف وجود دارد.
+                        */
+                        if ($has_api_key) :
+                        ?>
+                            <button type="button" id="ai-agent-disconnect-site" class="ai-agent-btn ai-agent-btn-danger">حذف توکن</button>
+                            <?php wp_nonce_field('ai_agent_disconnect_site_nonce_action', 'ai_agent_disconnect_site_nonce_field'); ?>
+                        <?php endif; ?>
                     </div>
                     <span id="ai-agent-save-api-key-status" class="ai-agent-status-text"></span>
                     <?php if ($token_note !== '') : ?>
@@ -1508,19 +1531,19 @@ function ai_agent_settings_page(){
                         <div class="ai-agent-stat ai-agent-last-sync-item" data-sync-slot="last">
                             <span class="ai-agent-stat-label">آخرین به‌روزرسانی</span>
                             <span class="ai-agent-stat-value ai-agent-last-sync-value<?php echo empty($last_sync_time) ? ' is-empty' : ''; ?>"><?php
-                                echo !empty($last_sync_time) ? esc_html($last_sync_time) : 'ثبت نشده';
+                                echo !empty($last_sync_time) ? esc_html(ai_agent_format_jalali_datetime($last_sync_time)) : 'ثبت نشده';
                             ?></span>
                         </div>
                         <div class="ai-agent-stat ai-agent-last-sync-item" data-sync-slot="all">
                             <span class="ai-agent-stat-label">ایندکس کامل</span>
                             <span class="ai-agent-stat-value ai-agent-last-sync-value<?php echo empty($last_sync_all_time) ? ' is-empty' : ''; ?>"><?php
-                                echo !empty($last_sync_all_time) ? esc_html($last_sync_all_time) : 'ثبت نشده';
+                                echo !empty($last_sync_all_time) ? esc_html(ai_agent_format_jalali_datetime($last_sync_all_time)) : 'ثبت نشده';
                             ?></span>
                         </div>
                         <div class="ai-agent-stat">
                             <span class="ai-agent-stat-label">آخرین اجرای خودکار</span>
                             <span class="ai-agent-stat-value<?php echo empty($last_scheduled['time']) ? ' is-empty' : ''; ?>"><?php
-                                echo !empty($last_scheduled['time']) ? esc_html($last_scheduled['time']) : 'هنوز اجرا نشده';
+                                echo !empty($last_scheduled['time']) ? esc_html(ai_agent_format_jalali_datetime($last_scheduled['time'])) : 'هنوز اجرا نشده';
                             ?></span>
                         </div>
                     </div>

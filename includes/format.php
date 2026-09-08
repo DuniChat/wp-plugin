@@ -66,6 +66,78 @@ function ai_agent_http_error_message($code, $prefix = 'سرور') {
 }
 
 /**
+ * Gregorian to Jalali (Solar Hijri), the standard integer algorithm.
+ *
+ * Returns array(year, month, day).
+ */
+function ai_agent_gregorian_to_jalali($gy, $gm, $gd) {
+    $g_d_m = array(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334);
+
+    $gy2 = ($gm > 2) ? ($gy + 1) : $gy;
+    $days = 355666 + (365 * $gy) + ((int) (($gy2 + 3) / 4)) - ((int) (($gy2 + 99) / 100))
+          + ((int) (($gy2 + 399) / 400)) + $gd + $g_d_m[$gm - 1];
+
+    $jy = -1595 + (33 * ((int) ($days / 12053)));
+    $days %= 12053;
+
+    $jy += 4 * ((int) ($days / 1461));
+    $days %= 1461;
+
+    if ($days > 365) {
+        $jy += (int) (($days - 1) / 365);
+        $days = ($days - 1) % 365;
+    }
+
+    if ($days < 186) {
+        $jm = 1 + (int) ($days / 31);
+        $jd = 1 + ($days % 31);
+    } else {
+        $jm = 7 + (int) (($days - 186) / 30);
+        $jd = 1 + (($days - 186) % 30);
+    }
+
+    return array($jy, $jm, $jd);
+}
+
+/**
+ * A stored MySQL datetime as a Persian date a site owner can read.
+ *
+ * Timestamps are stored as ordinary MySQL datetimes -- sortable, comparable,
+ * and the same shape WordPress uses everywhere else -- and converted here, at
+ * the display boundary, exactly as rial is converted to toman above.
+ * Converting at the storage end instead would make every stored value a string
+ * nothing can compare, and would break every timestamp already written.
+ *
+ * Returns the input unchanged if it is not a date, so a malformed option value
+ * shows as itself rather than as a wrong date.
+ */
+function ai_agent_format_jalali_datetime($mysql_datetime, $with_time = true) {
+
+    $value = trim((string) $mysql_datetime);
+    if ($value === '') {
+        return '';
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false) {
+        return $value;
+    }
+
+    list($jy, $jm, $jd) = ai_agent_gregorian_to_jalali(
+        (int) date('Y', $timestamp),
+        (int) date('n', $timestamp),
+        (int) date('j', $timestamp)
+    );
+
+    $out = sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
+    if ($with_time) {
+        $out .= ' ' . date('H:i', $timestamp);
+    }
+
+    return ai_agent_fa_digits($out);
+}
+
+/**
  * Below this balance (in rial) the plugin warns the owner. 50,000 toman is
  * roughly a few days of a small site's usage, which is enough notice to top up
  * before the assistant stops answering.
