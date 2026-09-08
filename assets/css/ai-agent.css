@@ -578,66 +578,17 @@ hover هر دو دکمه را قرمز و ۹۰ درجه می‌چرخاند — 
     box-shadow: 0 0 0 3px rgba(var(--ai-agent-theme-color-rgb, 37, 99, 235), 0.1);
 }
 
-/* دکمه ارسال: فقط خود SVG بدون هیچ بک‌گراند/حاشیه/سایه‌ای
-   آیکون send.svg به‌عنوان خود دکمه عمل می‌کند. */
-#ai-agent-send {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 0 !important;
-    border: none !important;
-    outline: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    margin: 0;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    align-self: center; /* برای هم‌محور شدن با فوتر که align-items: flex-end داره */
-}
-
-#ai-agent-send:hover,
-#ai-agent-send:active,
-#ai-agent-send:focus {
-    background: transparent !important;
-    box-shadow: none !important;
-}
-
-
-
-#ai-agent-send:hover img {
-    transform: translateX(-3px) scale(1.12);   /* افکت حرکت به سمت چپ (جهت ارسال در RTL) */
-}
-
-#ai-agent-send:active img {
-    transform: scale(.95);
-}
-
 /*
-============================================
-حالت غیرفعال دکمه‌ی ارسال (ورودی متن خالی)
+دکمه‌ی ارسال، پایین‌تر در همین فایل تعریف می‌شود (دایره‌ی پرِ رنگ برند با
+پیکان سفید).
 
-تا وقتی کاربر متنی ننوشته باشد، دکمه‌ی ارسال غیرفعال (disabled) و
-کلاس is-empty دارد تا به‌صورت بصری هم خاموش دیده شود. توجه: عکسِ
-به‌تنهایی ورودی را «خالی» محسوب می‌کند و برای فعال شدن دکمه حتماً
-باید متنی نوشته شده باشد.
-============================================
+قانون‌های قدیمیِ اینجا حذف شدند، نه بازنویسی: از دورانی مانده بودند که
+دکمه یک <img> بی‌پس‌زمینه بود، و با `background: transparent !important`
+پس‌زمینه‌ی نسخه‌ی جدید را می‌کشتند. نتیجه‌اش دقیقاً همان باگی بود که
+دیده می‌شد — به‌محض تایپ‌کردن، رنگ متن دکمه سفید می‌شد ولی دایره‌ی
+رنگی هیچ‌وقت نمی‌آمد، پس پیکانِ سفید روی فوترِ سفید عملاً ناپدید
+می‌شد. قانون‌های img هم بی‌اثر بودند: دکمه دیگر img ندارد، svg دارد.
 */
-#ai-agent-send:disabled,
-#ai-agent-send.is-empty {
-    cursor: not-allowed !important;
-    opacity: 0.45;
-}
-
-#ai-agent-send:disabled img,
-#ai-agent-send.is-empty img {
-    filter: grayscale(1);
-    opacity: 0.55;
-    transform: none !important; /* افکت‌های hover/active در حالت خالی اجرا نمی‌شود */
-}
 
 /*
 ============================================
@@ -1865,13 +1816,27 @@ weight is legible without changing the bubble geometry.
     display: block;
 }
 
+/*
+دکمه‌ی ارسالِ فعال: دایره‌ی تیره با پیکان سفید.
+
+رنگ برند نیست، و این عمدی است. رنگ برند را صاحب سایت انتخاب می‌کند و
+می‌تواند هر چیزی باشد — از جمله رنگی روشن که روی فوترِ روشن گم می‌شود.
+دکمه‌ی ارسال تنها کنترلی است که کاربر باید بی‌مکث پیدایش کند، پس رنگش
+از متنِ همان تم می‌آید: در حالت روشن تقریباً مشکی، در حالت تاریک روشن —
+یعنی همیشه بیشترین کنتراست را با زمینه‌اش دارد، هر رنگ برندی که انتخاب
+شده باشد.
+*/
 #ai-agent-send {
-    background: var(--ai-agent-theme-color);
-    color: #fff;
+    background: var(--ai-text);
+    color: var(--ai-surface);
 }
 
 #ai-agent-send:hover {
-    filter: brightness(0.94);
+    filter: brightness(1.35);
+}
+
+#ai-agent[data-theme="dark"] #ai-agent-send:hover {
+    filter: brightness(0.88);
 }
 
 /*
@@ -2407,4 +2372,30 @@ weight is legible without changing the bubble geometry.
 */
 #ai-agent-input[hidden] {
     display: none !important;
+}
+
+/*
+نشان بله در هدر چت و در دیالوگ انتقال.
+
+دکمه‌ی هدر یک SVG رنگی است نه آیکون تک‌رنگ، پس برخلاف بقیه‌ی آیکون‌های
+هدر رنگش را از currentColor نمی‌گیرد و همان نشانِ خودِ بله می‌ماند —
+هدفش هم همین است: کاربر باید از روی دکمه بفهمد قرار است کجا برود.
+*/
+#ai-agent-transfer img {
+    width: 19px;
+    height: 19px;
+    display: block;
+    pointer-events: none;
+}
+
+.ai-agent-bale-mark {
+    width: 1.15em;
+    height: 1.15em;
+    vertical-align: -0.2em;
+    margin-inline-end: 6px;
+}
+
+.ai-agent-modal-card h3 {
+    display: flex;
+    align-items: center;
 }

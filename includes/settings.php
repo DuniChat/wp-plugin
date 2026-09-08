@@ -49,6 +49,7 @@ function ai_agent_get_settings(){
         ============================================
         */
         'shop_bridge_enabled' => 0,         // اتصال دستیار به سبد خرید و سفارش‌های ووکامرس
+        'starter_questions'   => array(),   // سوال‌های پیشنهادی صفحه‌ی شروع چت (خالی = پیشنهادهای خودکار)
         'assistant_tone'      => 'neutral', // formal | professional | neutral | friendly | warm | casual
         'emoji_usage'         => 'low',     // none | low | medium | high
         'organization_name'   => '',
@@ -220,6 +221,28 @@ function ai_agent_sanitize_settings($input){
     ============================================
     */
     $output['shop_bridge_enabled'] = !empty($input['shop_bridge_enabled']) ? 1 : 0;
+
+    /*
+    سوال‌های پیشنهادی صفحه‌ی شروع.
+
+    خالی گذاشتنش یعنی «خودت تصمیم بگیر» و پیشنهادهای خودکار (از روی
+    همین تنظیمات) نمایش داده می‌شوند. به‌محض اینکه مدیر حتی یک سوال
+    بنویسد، فهرست خودکار کنار می‌رود: کسی که سوال خودش را نوشته، آن را
+    نوشته چون همان را می‌خواهد، نه اینکه به فهرست ما اضافه شود.
+
+    چهارتا سقف است چون صفحه‌ی شروع بیشتر از این جا نمی‌گیرد و در عمل
+    تبدیل می‌شود به فهرستی که کاربر از رویش رد می‌شود.
+    */
+    $starters = array();
+    if (isset($input['starter_questions']) && is_array($input['starter_questions'])) {
+        foreach ($input['starter_questions'] as $question) {
+            $clean = trim(sanitize_text_field($question));
+            if ($clean !== '') {
+                $starters[] = mb_substr($clean, 0, 120);
+            }
+        }
+    }
+    $output['starter_questions'] = array_slice(array_values(array_unique($starters)), 0, 4);
 
     $allowed_tones = array('formal', 'professional', 'neutral', 'friendly', 'warm', 'casual');
     $tone = isset($input['assistant_tone']) ? sanitize_text_field($input['assistant_tone']) : '';
@@ -890,14 +913,28 @@ function ai_agent_settings_page(){
 
     $has_api_key = !empty(ai_agent_get_api_key());
 
+    /*
+    وضعیت توکن، بر اساس اینکه سرور واقعاً قبولش کرده یا نه.
+
+    قبلاً فقط «آیا رشته‌ای ذخیره شده؟» بررسی می‌شد و بج «ثبت شده» را نشان
+    می‌داد — حتی وقتی همان رشته را سرور رد کرده بود. یعنی بج دقیقاً در
+    حالتی که باید هشدار می‌داد، می‌گفت همه‌چیز مرتب است.
+
+    سه حالت: نبودِ توکن، توکنی که سرور قبول کرده، و توکنی که رد شده.
+    */
+    $token_state = 'missing';
+
     if ($save_result['status'] === 'success') {
         $settings = $save_result['data'];
+        $token_state = 'connected';
     } elseif ($save_result['status'] === 'skipped') {
-        // هنوز توکنی ثبت نشده — حالت عادیِ نصب تازه، نه خطا.
-        if (!$has_api_key) {
-            $token_note = 'کلید API خودتون رو وارد کنین تا دستیار راه بیفته.';
+        // هنوز توکنی ثبت نشده — حالت عادیِ نصب تازه، نه خطا. بج
+        // «ثبت نشده» خودش گویاست و به یادداشت اضافه‌ای نیاز نیست.
+        if ($has_api_key) {
+            $token_state = 'invalid';
         }
     } else {
+        $token_state = $has_api_key ? 'invalid' : 'missing';
         /*
         خطای واقعی. اگر توکن ثبت شده ولی سرور ۴۰۱ داده، یعنی توکن غلط
         است؛ همان یادداشت توکن، فقط با رنگ خطا. بقیه‌ی خطاها (شبکه،
@@ -971,8 +1008,10 @@ function ai_agent_settings_page(){
                 <section class="ai-agent-section">
                     <div class="ai-agent-section-head">
                         <h2>توکن سایت</h2>
-                        <?php if ($has_api_key) : ?>
-                            <span class="ai-agent-badge ai-agent-badge-ok">ثبت شده</span>
+                        <?php if ($token_state === 'connected') : ?>
+                            <span class="ai-agent-badge ai-agent-badge-ok">متصل</span>
+                        <?php elseif ($token_state === 'invalid') : ?>
+                            <span class="ai-agent-badge ai-agent-badge-warn">توکن پذیرفته نشد</span>
                         <?php else : ?>
                             <span class="ai-agent-badge ai-agent-badge-warn">ثبت نشده</span>
                         <?php endif; ?>
@@ -987,12 +1026,16 @@ function ai_agent_settings_page(){
                         مقدار ذخیره‌شده هیچ‌وقت در HTML چاپ نمی‌شود — نه حتی به‌صورت
                         password. فیلد همیشه خالی باز می‌شود و خالی ماندنش یعنی
                         «توکن را عوض نکن».
+
+                        دکمه‌ی «نمایش» هم برداشته شد: چیزی برای نمایش وجود ندارد
+                        (فیلد همیشه خالی باز می‌شود) و تنها کارش این بود که
+                        توکنِ تازه‌تایپ‌شده را روی صفحه‌ای که ممکن است کسی پشت سر
+                        صاحب سایت ببیندش، آشکار کند.
                         */ ?>
                         <input type="password" id="ai_agent_api_key" name="ai_agent_settings[api_key]"
                                value="" class="ai-agent-input ai-agent-input-sm dc-ltr" lang="en"
                                style="flex:1 1 280px;min-width:0;width:auto"
                                autocomplete="off" placeholder="sk_live_..." />
-                        <button type="button" id="ai-agent-toggle-api-key" class="ai-agent-btn">نمایش</button>
                         <button type="button" id="ai-agent-save-api-key" class="ai-agent-btn ai-agent-btn-primary">ذخیره‌ی توکن</button>
                         <?php wp_nonce_field('ai_agent_save_api_key_nonce_action', 'ai_agent_save_api_key_nonce_field'); ?>
                         <a class="ai-agent-btn" href="https://dunichat.ir/login" target="_blank" rel="noopener">دریافت توکن از دانیچَت</a>
@@ -1115,6 +1158,81 @@ function ai_agent_settings_page(){
                         استفاده روی سرور پاک‌سازی می‌شوند و به‌عنوان «داده» در اختیار مدل
                         قرار می‌گیرند، نه دستور.
                     </p>
+                </section>
+
+                <!-- ---------- سوال‌های پیشنهادی شروع ---------- -->
+                <section class="ai-agent-section" id="ai-agent-starters-section">
+                    <h2>سوال‌های پیشنهادی صفحه‌ی شروع</h2>
+                    <p class="ai-agent-section-intro">
+                        وقتی کسی چت رو باز می‌کنه، به‌جای یه فیلد خالی چندتا سوال آماده می‌بینه.
+                        اگه این‌جا خالی بذاری، دانی‌چت خودش از روی تنظیمات بالا چندتا سوال
+                        می‌سازه. ولی هر فروشگاهی سوال‌های خودش رو داره — مثلاً اگه یه محصول
+                        پرفروش داری، بهتره سوال درباره‌ی همون باشه.
+                    </p>
+
+                    <?php
+                    $starter_values  = isset($settings['starter_questions']) && is_array($settings['starter_questions'])
+                        ? $settings['starter_questions'] : array();
+                    // چهار ردیف همیشه نمایش داده می‌شود؛ خالی‌ها ذخیره نمی‌شوند.
+                    $starter_values  = array_pad(array_slice($starter_values, 0, 4), 4, '');
+
+                    /*
+                    نمونه‌ها. کلیک روی هرکدام، متنش را در اولین ردیف خالی
+                    می‌نشاند — نه اینکه مستقیم ذخیره‌اش کند، چون مدیر
+                    معمولاً می‌خواهد کمی تغییرش بدهد.
+                    */
+                    $starter_samples = array(
+                        'ساعت کاری‌تون چطوره؟',
+                        'هزینه و زمان ارسال چقدره؟',
+                        'شماره تماس پشتیبانی چنده؟',
+                        'شرایط مرجوعی کالا چیه؟',
+                        'الان چه تخفیفی دارید؟',
+                        'پرفروش‌ترین محصولتون چیه؟',
+                        'روش‌های پرداخت چیه؟',
+                        'گارانتی محصولات چند ساله‌ست؟',
+                    );
+                    ?>
+
+                    <div class="ai-agent-field-group">
+                        <span class="ai-agent-label">سوال‌های تو (حداکثر ۴ تا)</span>
+                        <div class="ai-agent-starter-rows" id="ai-agent-starter-rows">
+                            <?php foreach ($starter_values as $index => $starter_value) : ?>
+                                <input type="text" class="ai-agent-input ai-agent-starter-input" maxlength="120"
+                                       name="ai_agent_settings[starter_questions][]"
+                                       value="<?php echo esc_attr($starter_value); ?>"
+                                       placeholder="<?php echo esc_attr('سوال ' . ($index + 1) . ' — خالی بذاری نادیده گرفته می‌شه'); ?>" />
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="ai-agent-field-group" style="margin-top:18px">
+                        <span class="ai-agent-label">یا از این نمونه‌ها بردار</span>
+                        <div class="ai-agent-starter-samples">
+                            <?php foreach ($starter_samples as $sample) : ?>
+                                <button type="button" class="ai-agent-chip" data-starter-sample="<?php echo esc_attr($sample); ?>">
+                                    <?php echo esc_html($sample); ?>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                        <p class="ai-agent-hint" style="margin-top:10px">
+                            روی هر نمونه بزنی، توی اولین ردیف خالی می‌شینه و می‌تونی ویرایشش کنی.
+                        </p>
+                    </div>
+
+                    <div class="ai-agent-note ai-agent-note-warn" style="margin-top:18px">
+                        <strong>حواست به این دو تا باشه:</strong>
+                        <br />
+                        ۱) سوالی بذار که دستیار جوابشو داشته باشه. مثلاً «شماره تماستون چنده؟»
+                        فقط وقتی درست جواب می‌گیره که شماره‌ت رو بالا توی «شماره‌های تماس
+                        پشتیبانی» ذخیره کرده باشی؛ وگرنه ربات می‌گه نمی‌دونم و بازدیدکننده
+                        فکر می‌کنه ربات خرابه.
+                        <br />
+                        ۲) برای سوال‌هایی که جوابشون توی سایت نیست (مثلاً شرایط مرجوعی یا
+                        تخفیف‌های این ماه)، همون سوال و جوابش رو توی بخش
+                        «اطلاعات اضافه و پرسش‌وپاسخ» پایین همین صفحه هم اضافه کن. اون‌جوری
+                        دستیار دقیقاً همون چیزی رو می‌گه که تو نوشتی، نه چیزی که از متن
+                        سایت حدس زده.
+                    </div>
                 </section>
 
                 <!-- ---------- رنگ دستیار ---------- -->
@@ -1452,86 +1570,77 @@ function ai_agent_settings_page(){
                     </p>
                 </section>
 
-                <!-- ---------- ربات تلگرام و بله ---------- -->
+                <!-- ---------- ربات بله ---------- -->
                 <section class="ai-agent-section" id="ai-agent-bots-section">
                     <div class="ai-agent-section-head">
-                        <h2>ربات پشتیبانی در تلگرام و بله</h2>
+                        <h2>
+                            <img class="ai-agent-bale-mark" src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/bale.svg'); ?>" alt="" />
+                            ربات پشتیبانی در بله
+                        </h2>
                         <span class="ai-agent-badge" id="ai-agent-bots-badge">در حال بررسی…</span>
                     </div>
                     <p class="ai-agent-section-intro">
-                        همین دستیار می‌تونه توی تلگرام یا بله هم جواب مشتری‌هات رو بده — با همون
-                        اطلاعات سایت و همون مدلی که بالا انتخاب کردی. کافیه توکن ربات رو بدی.
-                        می‌تونی هر دو رو وصل کنی؛ اگه یه روز تلگرام قطع شد، بله سرِ پاست.
+                        همین دستیار می‌تونه توی بله هم جواب مشتری‌هات رو بده — با همون اطلاعات
+                        سایت و همون مدلی که بالا انتخاب کردی. کافیه توکن ربات رو بدی.
+                    </p>
+                    <p class="ai-agent-hint" style="margin-bottom:16px">
+                        چرا فقط بله؟ سرورهای دانی‌چت داخل ایران هستن و به تلگرام دسترسی ندارن.
+                        ربات تلگرام توکن رو قبول می‌کرد ولی هیچ‌وقت به کسی جواب نمی‌داد، پس
+                        به‌جای یه قابلیت خراب، فقط بله رو داریم.
                     </p>
 
                     <?php wp_nonce_field('ai_agent_bots_nonce_action', 'ai_agent_bots_nonce_field'); ?>
 
                     <div class="ai-agent-bot-cards">
-                        <?php
-                        $bot_platforms = array(
-                            'telegram' => array(
-                                'label'   => 'تلگرام',
-                                'father'  => '@BotFather',
-                                'link'    => 'https://t.me/BotFather',
-                                'example' => '@yourshop_bot',
-                            ),
-                            'bale' => array(
-                                'label'   => 'بله',
-                                'father'  => '@botfather',
-                                'link'    => 'https://ble.ir/botfather',
-                                'example' => '@yourshop_bot',
-                            ),
-                        );
-                        foreach ($bot_platforms as $platform => $meta) : ?>
-                            <div class="ai-agent-bot-card" data-platform="<?php echo esc_attr($platform); ?>">
-                                <div class="ai-agent-bot-card-head">
-                                    <strong><?php echo esc_html($meta['label']); ?></strong>
-                                    <span class="ai-agent-badge ai-agent-bot-state">وصل نیست</span>
-                                </div>
-
-                                <p class="ai-agent-hint ai-agent-bot-username" hidden></p>
-
-                                <div class="ai-agent-btn-row">
-                                    <input type="password" class="ai-agent-input ai-agent-input-sm dc-ltr ai-agent-bot-token"
-                                           lang="en" autocomplete="off" placeholder="123456789:AA..."
-                                           style="flex:1 1 240px;min-width:0;width:auto" />
-                                    <button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-bot-save">ذخیره و اتصال</button>
-                                    <button type="button" class="ai-agent-btn ai-agent-bot-delete" hidden>حذف ربات</button>
-                                </div>
-                                <span class="ai-agent-status-text ai-agent-bot-status"></span>
-
-                                <details class="ai-agent-bot-guide">
-                                    <summary>توکن رو از کجا بیارم؟</summary>
-                                    <ol>
-                                        <li>
-                                            توی <?php echo esc_html($meta['label']); ?> برو سراغ
-                                            <a href="<?php echo esc_url($meta['link']); ?>" target="_blank" rel="noopener" class="dc-ltr" lang="en"><?php echo esc_html($meta['father']); ?></a>
-                                            و استارتش کن.
-                                        </li>
-                                        <li>دستور <code class="dc-ltr" lang="en">/newbot</code> رو بفرست.</li>
-                                        <li>یه اسم برای ربات بذار (مثلاً «پشتیبانی <?php echo esc_html(get_bloginfo('name')); ?>»).</li>
-                                        <li>
-                                            بعد آیدی ربات رو می‌خواد. آیدی <strong>حتماً</strong> باید به
-                                            <code class="dc-ltr" lang="en">bot</code> ختم بشه —
-                                            مثلاً <code class="dc-ltr" lang="en"><?php echo esc_html($meta['example']); ?></code>.
-                                        </li>
-                                        <li>یه توکن بلند بهت می‌ده؛ کاملش رو کپی کن و همین بالا بچسبون و «ذخیره و اتصال» رو بزن.</li>
-                                    </ol>
-                                    <p class="ai-agent-hint">
-                                        بعدش حتماً برای ربات یه عکس پروفایل (<code class="dc-ltr" lang="en">/setuserpic</code>)،
-                                        یه اسم درست‌وحسابی (<code class="dc-ltr" lang="en">/setname</code>) و یه توضیح کوتاه
-                                        (<code class="dc-ltr" lang="en">/setdescription</code>) بذار. مشتری قبل از اینکه
-                                        حرف بزنه، همین‌ها رو می‌بینه.
-                                    </p>
-                                </details>
+                        <div class="ai-agent-bot-card" data-platform="bale">
+                            <div class="ai-agent-bot-card-head">
+                                <strong>
+                                    <img class="ai-agent-bale-mark" src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/bale.svg'); ?>" alt="" />
+                                    بله
+                                </strong>
+                                <span class="ai-agent-badge ai-agent-bot-state">وصل نیست</span>
                             </div>
-                        <?php endforeach; ?>
+
+                            <p class="ai-agent-hint ai-agent-bot-username" hidden></p>
+
+                            <div class="ai-agent-btn-row">
+                                <input type="password" class="ai-agent-input ai-agent-input-sm dc-ltr ai-agent-bot-token"
+                                       lang="en" autocomplete="off" placeholder="123456789:AA..."
+                                       style="flex:1 1 240px;min-width:0;width:auto" />
+                                <button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-bot-save">ذخیره و اتصال</button>
+                                <button type="button" class="ai-agent-btn ai-agent-bot-delete" hidden>حذف ربات</button>
+                            </div>
+                            <span class="ai-agent-status-text ai-agent-bot-status"></span>
+
+                            <details class="ai-agent-bot-guide">
+                                <summary>توکن رو از کجا بیارم؟</summary>
+                                <ol>
+                                    <li>
+                                        توی بله برو سراغ
+                                        <a href="https://ble.ir/botfather" target="_blank" rel="noopener" class="dc-ltr" lang="en">@botfather</a>
+                                        و استارتش کن.
+                                    </li>
+                                    <li>دستور <code class="dc-ltr" lang="en">/newbot</code> رو بفرست.</li>
+                                    <li>یه اسم برای ربات بذار (مثلاً «پشتیبانی <?php echo esc_html(get_bloginfo('name')); ?>»).</li>
+                                    <li>
+                                        بعد آیدی ربات رو می‌خواد. آیدی <strong>حتماً</strong> باید به
+                                        <code class="dc-ltr" lang="en">bot</code> ختم بشه —
+                                        مثلاً <code class="dc-ltr" lang="en">@yourshop_bot</code>.
+                                    </li>
+                                    <li>یه توکن بلند بهت می‌ده؛ کاملش رو کپی کن و همین بالا بچسبون و «ذخیره و اتصال» رو بزن.</li>
+                                </ol>
+                                <p class="ai-agent-hint">
+                                    بعدش حتماً برای ربات یه عکس پروفایل، یه اسم درست‌وحسابی و یه توضیح
+                                    کوتاه بذار. مشتری قبل از اینکه حرف بزنه، همین‌ها رو می‌بینه.
+                                </p>
+                            </details>
+                        </div>
                     </div>
 
                     <p class="ai-agent-hint" style="margin-top:16px">
-                        وقتی حداقل یکی از این دو وصل باشه، توی چت سایت هم یه دکمه اضافه می‌شه که
-                        بازدیدکننده می‌تونه ادامه‌ی گفت‌وگوش رو ببره توی پیام‌رسان — به‌دردِ وقتی
-                        می‌خوره که پشتیبان انسانی آنلاین نیست و کاربر نمی‌تونه پای سایت منتظر بمونه.
+                        وقتی ربات وصل باشه، توی چت سایت هم یه دکمه اضافه می‌شه که بازدیدکننده
+                        می‌تونه ادامه‌ی گفت‌وگوش رو ببره توی بله — به‌درد وقتی می‌خوره که پشتیبان
+                        انسانی آنلاین نیست و کاربر نمی‌تونه پای سایت منتظر بمونه.
                     </p>
                 </section>
 

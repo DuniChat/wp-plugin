@@ -331,8 +331,22 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
 .ai-agent-field-group + .ai-agent-grid,
 .ai-agent-grid + .ai-agent-field-group { margin-top: 22px; }
 
-.ai-agent-input,
-.ai-agent-app select.ai-agent-input {
+/*
+همه‌ی قانون‌های زیر با .ai-agent-app شروع می‌شوند، و این عمدی است.
+
+وردپرس برای input[type=text]، textarea و select استایل خودش را با
+انتخابگرِ «صفت + عنصر» می‌نویسد، که از یک کلاسِ تنها قوی‌تر است. نتیجه‌اش
+این بود که .ai-agent-input روی همان فیلدهایی که بیشتر دیده می‌شوند —
+نام مجموعه، حوزه‌ی کاری، توکن — بی‌اثر می‌ماند و آن‌ها گوشه‌تیز و با
+بوردر وردپرس رندر می‌شدند، در حالی که بقیه‌ی صفحه گرد و یکدست بود.
+
+افزودن .ai-agent-app جلوی هر انتخابگر، وزن را به دو کلاس می‌رساند و
+مسابقه را تمام می‌کند. !important عمداً استفاده نشده: بالا بردن وزن،
+مشکل را حل می‌کند بدون اینکه راه را برای هر بازنویسی بعدی ببندد.
+*/
+.ai-agent-app .ai-agent-input,
+.ai-agent-app select.ai-agent-input,
+.ai-agent-app textarea.ai-agent-input {
     width: 100%;
     height: var(--dc-field-h);
     padding: 0 12px;
@@ -343,8 +357,17 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
     color: var(--dc-text);
     transition: border-color 150ms ease;
 }
-.ai-agent-input:focus { border-color: var(--dc-primary); }
-.ai-agent-input::placeholder { color: #A8A49C; }
+.ai-agent-app .ai-agent-input:focus { border-color: var(--dc-primary); }
+.ai-agent-app .ai-agent-input::placeholder { color: #A8A49C; }
+
+/* متن چندخطی ارتفاع ثابت ندارد؛ بقیه‌ی ظاهرش همان فیلد تک‌خطی است. */
+.ai-agent-app textarea.ai-agent-input {
+    height: auto;
+    min-height: 84px;
+    padding: 10px 12px;
+    line-height: 1.9;
+    resize: vertical;
+}
 
 .ai-agent-app select.ai-agent-input {
     cursor: pointer;
@@ -357,9 +380,9 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
     padding-left: 34px;
 }
 
-.ai-agent-input-sm { height: var(--dc-control-h); }
-.ai-agent-input-num { width: 110px; }
-.ai-agent-input-hex { width: 130px; height: var(--dc-control-h); }
+.ai-agent-app .ai-agent-input-sm { height: var(--dc-control-h); }
+.ai-agent-app .ai-agent-input-num { width: 110px; }
+.ai-agent-app .ai-agent-input-hex { width: 130px; height: var(--dc-control-h); }
 
 .ai-agent-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ai-agent-inline-end { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
@@ -370,7 +393,15 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
 
    فقط عمل اصلی هر بخش پرِ نارنجی است. بقیه سفید با بوردر خنثی.
    ---------------------------------------------------------------------- */
-.ai-agent-btn {
+/*
+همان مسئله‌ی وزن، این‌بار از سمت خودمان: بلوکِ «پاک کردن استایل وردپرس»
+بالاتر در همین فایل با «.ai-agent-app button» رنگ متن را ست می‌کند، که از
+یک کلاسِ تنها قوی‌تر است. نتیجه این بود که دکمه‌های نارنجی متنِ تیره
+داشتند و فقط موقع هاور — که وزن انتخابگر یک درجه بالا می‌رفت — سفید
+می‌شدند؛ یعنی رنگ متن دقیقاً وقتی درست می‌شد که کاربر ماوس را روی دکمه
+می‌برد.
+*/
+.ai-agent-app .ai-agent-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -389,26 +420,32 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
     white-space: nowrap;
     transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
 }
-.ai-agent-btn:hover { background: var(--dc-hover); color: var(--dc-text); text-decoration: none; }
-.ai-agent-btn:disabled,
-.ai-agent-btn.is-busy { opacity: .55; cursor: default; }
-.ai-agent-btn:disabled:hover { background: var(--dc-surface); }
+.ai-agent-app .ai-agent-btn:hover { background: var(--dc-hover); color: var(--dc-text); text-decoration: none; }
+.ai-agent-app .ai-agent-btn:disabled,
+.ai-agent-app .ai-agent-btn.is-busy { opacity: .55; cursor: default; }
+.ai-agent-app .ai-agent-btn:disabled:hover { background: var(--dc-surface); }
 
-.ai-agent-btn-primary {
+.ai-agent-app .ai-agent-btn-primary,
+.ai-agent-app .ai-agent-btn-primary:hover,
+.ai-agent-app .ai-agent-btn-primary:focus,
+.ai-agent-app .ai-agent-btn-primary:disabled {
+    /* متن سفید در همه‌ی حالت‌ها. رنگی که فقط موقع هاور درست می‌شود،
+       بقیه‌ی وقت‌ها غلط است. */
+    color: #fff;
+}
+.ai-agent-app .ai-agent-btn-primary {
     border-color: var(--dc-primary);
     background: var(--dc-primary);
-    color: #fff;
     padding: 0 18px;
 }
-.ai-agent-btn-primary:hover {
+.ai-agent-app .ai-agent-btn-primary:hover {
     background: var(--dc-primary-hover);
     border-color: var(--dc-primary-hover);
-    color: #fff;
 }
-.ai-agent-btn-primary:disabled:hover { background: var(--dc-primary); }
+.ai-agent-app .ai-agent-btn-primary:disabled:hover { background: var(--dc-primary); }
 
-.ai-agent-btn-sm { height: 36px; padding: 0 14px; }
-.ai-agent-btn-square {
+.ai-agent-app .ai-agent-btn-sm { height: 36px; padding: 0 14px; }
+.ai-agent-app .ai-agent-btn-square {
     width: var(--dc-field-h);
     height: var(--dc-field-h);
     flex: 0 0 var(--dc-field-h);
@@ -1081,4 +1118,58 @@ lang روی خود عنصر ست می‌شود و این‌جا locl هم خام
     border: 1px solid var(--dc-line);
     border-radius: 999px;
     padding: 2px 10px;
+}
+
+/*
+نشان بله، کنار عنوان بخش و روی کارت ربات.
+
+اندازه‌اش به فونت گره خورده (em) تا اگر اندازه‌ی عنوان عوض شد، آیکون هم
+با آن جابه‌جا شود و نصفه‌کاره روی خط ننشیند.
+*/
+.ai-agent-bale-mark {
+    width: 1.15em;
+    height: 1.15em;
+    vertical-align: -0.2em;
+    margin-inline-end: 6px;
+    flex: 0 0 auto;
+}
+
+/* ----------------------------------------------------------------------
+   سوال‌های پیشنهادی شروع
+   ---------------------------------------------------------------------- */
+
+.ai-agent-starter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ai-agent-starter-samples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/*
+نمونه‌ها «تراشه»‌اند نه دکمه‌ی کامل: قرار نیست به‌اندازه‌ی «افزودن و
+ایندکس» مهم به نظر برسند، فقط متنی را در فیلد می‌گذارند.
+*/
+.ai-agent-app .ai-agent-chip {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px dashed var(--dc-line-strong);
+    border-radius: 999px;
+    background: var(--dc-sunken);
+    color: var(--dc-text-soft);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.ai-agent-app .ai-agent-chip:hover {
+    border-style: solid;
+    border-color: var(--dc-primary);
+    color: var(--dc-primary);
+    background: var(--dc-primary-tint);
 }

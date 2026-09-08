@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="بله">
+  <!--
+    نشان پیام‌رسان بله: یک حباب گفت‌وگو با گوشه‌ی بالا-چپ تیز، با گرادیان
+    از سرمه‌ای تا سبز نعنایی و یک تیک سفید در میان.
+
+    به‌صورت SVG درون‌خطی نگه داشته شده تا در هر اندازه‌ای تیز بماند و در
+    حالت تاریک هم رنگ‌هایش دست‌نخورده باقی بماند.
+  -->
+  <defs>
+    <linearGradient id="dc-bale-gradient" x1="8%" y1="92%" x2="92%" y2="8%">
+      <stop offset="0%" stop-color="#1B2C6B" />
+      <stop offset="45%" stop-color="#2E6EA6" />
+      <stop offset="100%" stop-color="#4ADE9E" />
+    </linearGradient>
+  </defs>
+
+  <path
+    fill="url(#dc-bale-gradient)"
+    d="M32 4c15.46 0 28 12.54 28 28S47.46 60 32 60 4 47.46 4 32c0-5.2 1.42-10.07 3.89-14.25L4.6 8.9a3 3 0 0 1 3.9-3.86l9.06 3.5A27.86 27.86 0 0 1 32 4z" />
+
+  <path
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M20 33.5 28.5 42 45 24" />
+</svg>
