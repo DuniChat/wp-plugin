@@ -1859,6 +1859,12 @@ function buildReferencesListBox(references) {
         body.append('action', 'ai_agent_chat');
         body.append('message', text);
         body.append('session_id', sessionId || '');
+        // فقط هنگام ساخت گفت‌وگوی تازه به کار می‌آید، ولی همیشه فرستاده
+        // می‌شود: کلاینت نمی‌داند سرور جلسه‌ی فعلی را هنوز دارد یا نه.
+        // بدون این، گفت‌وگو به visitor_id مرورگر وصل نمی‌شود و در فهرست
+        // «گفت‌وگوهای پیشین» ظاهر نمی‌شود (و چون هیچ‌وقت پیدا نمی‌شود،
+        // انگار عنوانی هم برایش ساخته نشده).
+        body.append('visitor_id', getVisitorId());
 
         // افزودن عکس‌ها به‌صورت آرایه (images[])؛ هر آیتم یک data URL (base64) است
         // که در سمت سرور (ajax.php) به آرایه‌ی images در بدنه‌ی JSON به اندپوینت
@@ -2559,6 +2565,10 @@ function buildReferencesListBox(references) {
 
                 if (!response || !response.success || !response.data) {
                     sendWhenReady = false;
+                    // پیام نمایش‌داده‌شده به کاربر عمومی است؛ خطای واقعی این‌جا
+                    // ثبت می‌شود تا بشود مشکل را در کنسول مرورگر دید (سرور هم
+                    // خودش را در لاگ PHP با پیشوند AI_AGENT_DEBUG ثبت می‌کند).
+                    console.error("ai-agent: voice transcription failed", response);
                     addMessage(
                         "bot",
                         (response && response.data && response.data.message) ||
@@ -2587,10 +2597,14 @@ function buildReferencesListBox(references) {
                 } else {
                     input.trigger("focus");
                 }
-            }).fail(function () {
+            }).fail(function (jqXHR, textStatus, errorThrown) {
                 isProcessing = false;
                 hideRecordingBar();
                 sendWhenReady = false;
+                console.error(
+                    "ai-agent: voice transcription request failed",
+                    textStatus, errorThrown, jqXHR && jqXHR.responseText
+                );
                 addMessage("bot", "ارتباط با سرور برای تبدیل صدا برقرار نشد. دوباره تلاش کنید.");
             });
         }
