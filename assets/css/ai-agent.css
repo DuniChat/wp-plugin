@@ -1599,6 +1599,20 @@ button.ai-references-title.ai-references-toggle {
         min-height: 44px;
     }
 
+    /*
+    دکمه‌های کامپوزر (به‌خصوص ارسال) روی ۳۴px با margin-bottom: 3px
+    برای ارتفاع تک‌خطیِ دسکتاپ (~۴۱px) کالیبره شده‌اند (نگاه کنید به
+    قانون اصلی #ai-agent-send و توضیح کنارش). این‌جا که تکست‌اریا به
+    ۴۴px می‌رسد، همان فاصله‌ی ۳px دیگر دکمه را وسط نمی‌گذارد — دکمه
+    نسبت به فیلد کمی پایین‌تر می‌نشیند. با تفاضل ۱۰px (۴۴ منهای ۳۴)،
+    نصفش ۵px است.
+    */
+    #ai-agent-attach,
+    #ai-agent-voice,
+    #ai-agent-send {
+        margin-bottom: 5px;
+    }
+
     /* دکمه‌های هدر: نواحی لمسی بزرگ‌تر */
     #ai-agent-new-chat,
     #ai-agent-close {

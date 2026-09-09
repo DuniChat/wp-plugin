@@ -84,16 +84,27 @@ function ai_agent_enqueue(){
 
     $settings = ai_agent_get_settings();
 
+    /*
+    نسخه‌ی افزونه به‌عنوان query string به هر دو فایل اضافه می‌شود
+    (نه null، نه خالی) تا وقتی افزونه به‌روزرسانی می‌شود، مرورگرها و
+    کش‌های میانی (CDN، پراکسی) مجبور به گرفتن نسخه‌ی تازه‌ی فایل شوند.
+    بدون این، آدرس فایل دقیقاً همان می‌ماند و خیلی از بازدیدکننده‌ها
+    تا مدت‌ها همان JS/CSS قدیمیِ کش‌شده را می‌بینند -- یعنی رفعِ یک باگ
+    در کد، تا وقتی خودِ کاربر کش مرورگرش را دستی پاک نکند، هرگز به او
+    نمی‌رسد.
+    */
     wp_enqueue_style(
         'ai-agent-css',
-        AI_AGENT_URL.'assets/css/ai-agent.css'
+        AI_AGENT_URL.'assets/css/ai-agent.css',
+        array(),
+        AI_AGENT_VERSION
     );
 
     wp_enqueue_script(
         'ai-agent-js',
         AI_AGENT_URL.'assets/js/ai-agent.js',
         array('jquery'),
-        null,
+        AI_AGENT_VERSION,
         true
     );
 

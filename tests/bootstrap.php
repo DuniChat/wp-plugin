@@ -35,6 +35,10 @@ final class WPStub
     public static bool $userCan = true;
     /** @var array<int,array{type:string,payload:mixed}> wp_send_json_* calls */
     public static array $json = [];
+    /** @var array<string,array> every wp_enqueue_script() call, keyed by handle */
+    public static array $enqueuedScripts = [];
+    /** @var array<string,array> every wp_enqueue_style() call, keyed by handle */
+    public static array $enqueuedStyles = [];
 
     public static function reset(): void
     {
@@ -44,6 +48,8 @@ final class WPStub
         self::$responses = [];
         self::$userCan = true;
         self::$json = [];
+        self::$enqueuedScripts = [];
+        self::$enqueuedStyles = [];
         // Hooks are not reset: the plugin registers them once, at include time.
     }
 
@@ -229,9 +235,31 @@ function plugin_basename($f) { return 'dunichat/' . basename((string) $f); }
 function register_setting(...$a) { return true; }
 function add_menu_page(...$a) { return 'toplevel_page_stub'; }
 function add_submenu_page(...$a) { return 'stub_submenu'; }
-function wp_enqueue_script(...$a) { return true; }
-function wp_enqueue_style(...$a) { return true; }
+function wp_enqueue_script(...$a)
+{
+    $handle = $a[0] ?? '';
+    WPStub::$enqueuedScripts[$handle] = [
+        'src'     => $a[1] ?? '',
+        'deps'    => $a[2] ?? [],
+        'version' => $a[3] ?? false,
+        'footer'  => $a[4] ?? false,
+    ];
+    return true;
+}
+function wp_enqueue_style(...$a)
+{
+    $handle = $a[0] ?? '';
+    WPStub::$enqueuedStyles[$handle] = [
+        'src'     => $a[1] ?? '',
+        'deps'    => $a[2] ?? [],
+        'version' => $a[3] ?? false,
+        'media'   => $a[4] ?? 'all',
+    ];
+    return true;
+}
 function wp_localize_script(...$a) { return true; }
+function wp_add_inline_style(...$a) { return true; }
+function wp_add_inline_script(...$a) { return true; }
 function wp_register_script(...$a) { return true; }
 function wp_nonce_field(...$a) { return ''; }
 function wp_create_nonce($a = '') { return 'nonce'; }
@@ -302,7 +330,7 @@ define('AUTH_KEY', 'test-auth-key-not-a-real-secret');
 define('AUTH_SALT', 'test-auth-salt-not-a-real-secret');
 
 define('AI_AGENT_TESTS', true);
-define('AI_AGENT_VERSION', '2.4.0');
+define('AI_AGENT_VERSION', '2.5.0');
 define('AI_AGENT_DARK_LIFT', 0.28);
 define('AI_AGENT_PATH', dirname(__DIR__) . '/');
 define('AI_AGENT_URL', 'https://example.test/wp-content/plugins/dunichat/');
