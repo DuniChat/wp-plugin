@@ -302,7 +302,7 @@ define('AUTH_KEY', 'test-auth-key-not-a-real-secret');
 define('AUTH_SALT', 'test-auth-salt-not-a-real-secret');
 
 define('AI_AGENT_TESTS', true);
-define('AI_AGENT_VERSION', '2.3.0');
+define('AI_AGENT_VERSION', '2.4.0');
 define('AI_AGENT_DARK_LIFT', 0.28);
 define('AI_AGENT_PATH', dirname(__DIR__) . '/');
 define('AI_AGENT_URL', 'https://example.test/wp-content/plugins/dunichat/');
