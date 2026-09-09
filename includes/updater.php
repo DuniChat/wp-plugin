@@ -438,7 +438,7 @@ class Dunichat_Updater
 
         if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
             $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
-            $this->store_status(false, $code, array());
+            $this->store_status('error', $code, array());
             // کش منفی کوتاه تا در صورت خطا، هر ریکوئست به سرور کوبیده نشود
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
@@ -450,10 +450,12 @@ class Dunichat_Updater
         دو حالت که هر دو یعنی «چیزی برای پیشنهاددادن نیست»، نه «خطا»:
         نبودِ شماره‌ی نسخه، و available=false که یعنی هنوز هیچ زیپی در
         دانیچت آپلود نشده. در هر دو حالت باید ساکت بمانیم؛ پیشنهاد آپدیت
-        به نسخه‌ای که فایلش وجود ندارد، آپدیت را وسط کار می‌شکند.
+        به نسخه‌ای که فایلش وجود ندارد، آپدیت را وسط کار می‌شکند. ولی این
+        دو حالت با یک خطای واقعی ارتباط یکی نیستند — ردیف افزونه باید
+        بگوید «سرور جواب داد، چیزی برای آپدیت نبود»، نه «ناموفق».
         */
         if (!is_array($body) || empty($body['version']) || empty($body['available'])) {
-            $this->store_status(false, 200, array());
+            $this->store_status('no_release', 200, array());
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
         }
@@ -465,11 +467,14 @@ class Dunichat_Updater
             $package = (string) $body['download_url'];
         }
 
-        // آدرس نسبی یعنی سرور آدرس عمومی خودش را نمی‌داند. دانلود با چنین
-        // آدرسی روی دامنه‌ی خودِ مشتری حل می‌شود و به هیچ فایلی نمی‌رسد،
-        // پس به‌جای پیشنهاد آپدیتِ خراب، همان‌جا می‌ایستیم.
+        // آدرس نسبی یعنی سرور آدرس عمومی خودش را نمی‌داند (احتمالاً
+        // API_PUBLIC_BASE_URL روی سرور دانی‌چت تنظیم نشده). دانلود با
+        // چنین آدرسی روی دامنه‌ی خودِ مشتری حل می‌شود و به هیچ فایلی
+        // نمی‌رسد، پس به‌جای پیشنهاد آپدیتِ خراب، همان‌جا می‌ایستیم —
+        // اما این را هم «ناموفق» نشان نمی‌دهیم، چون خودِ ارتباط با سرور
+        // درست کار کرده؛ پیکربندی سمت سرور ناقص است.
         if ('' === $package || 0 !== strpos($package, 'http')) {
-            $this->store_status(false, 200, array());
+            $this->store_status('bad_package_url', 200, array());
             set_transient($this->cache_key, array('fetched_at' => time(), 'release' => null), 10 * MINUTE_IN_SECONDS);
             return array();
         }
@@ -481,7 +486,7 @@ class Dunichat_Updater
             'released_at' => isset($body['released_at']) ? (string) $body['released_at'] : '',
         );
 
-        $this->store_status(true, 200, $release);
+        $this->store_status('ok', 200, $release);
         set_transient($this->cache_key, array('fetched_at' => time(), 'release' => $release), 12 * HOUR_IN_SECONDS);
 
         return $release;
@@ -512,20 +517,31 @@ class Dunichat_Updater
 
     /**
      * ذخیره‌ی وضعیت آخرین بررسی (برای نمایش در ردیف افزونه)
+     *
+     * $reason یکی از این چهار مقدار است:
+     *   'ok'              ارتباط برقرار شد و نسخه‌ی معتبری برگشت
+     *   'no_release'      ارتباط برقرار شد؛ فعلاً چیزی برای آپدیت نیست
+     *   'bad_package_url' ارتباط برقرار شد؛ سرور آدرس دانلود مطلق نداد
+     *                     (معمولاً یعنی API_PUBLIC_BASE_URL آن‌جا خالی است)
+     *   'error'           ارتباط برقرار نشد یا سرور کد غیر ۲۰۰ داد
      */
-    private function store_status($ok, $code, $release)
+    private function store_status($reason, $code, $release)
     {
         update_option($this->status_key, array(
-            'time' => time(),
-            'ok'   => (bool) $ok,
-            'code' => (int) $code,
+            'time'    => time(),
+            'reason'  => (string) $reason,
+            'code'    => (int) $code,
             'version' => !empty($release['version']) ? $release['version'] : '',
         ), false);
     }
 
     /**
      * نمایش وضعیت آخرین بررسی زیر توضیحات افزونه در صفحه‌ی افزونه‌ها
-     * (ابزار تشخیص: اگر «ناموفق» بود یعنی درخواست به سرور دانیچت انجام نمی‌شود)
+     *
+     * ابزار تشخیص: فقط «error» یعنی ارتباط با سرور دانی‌چت برقرار نشد.
+     * بقیه یعنی ارتباط درست بود ولی چیزی برای آپدیت نیست یا پیکربندی
+     * سمت سرور ناقص است — قبلاً همه‌ی این‌ها «ناموفق» نشان داده می‌شدند،
+     * که یک پاسخ سالم ولی بی‌آپدیت را عین یک خطای واقعی ارتباطی جا می‌زد.
      */
     public function row_meta($links, $file)
     {
@@ -542,14 +558,29 @@ class Dunichat_Updater
         }
 
         $ago = human_time_diff((int) $status['time'], current_time('timestamp'));
+        // نسخه‌های قبل از این تغییر فقط 'ok' بولی ذخیره می‌کردند؛ اگر
+        // گزینه‌ی کش‌شده هنوز آن شکل قدیمی را دارد، به‌عنوان 'error' یا
+        // 'no_release' بخوان تا صفحه خطا ندهد.
+        $reason = isset($status['reason'])
+            ? $status['reason']
+            : (empty($status['ok']) ? 'error' : 'ok');
 
-        if (!empty($status['ok'])) {
-            $text = 'بررسی آپدیت : ' . $ago . ' پیش — موفق';
-            if (!empty($status['version'])) {
-                $text .= ' (آخرین نسخه: ' . $status['version'] . ')';
-            }
-        } else {
-            $text = 'بررسی آپدیت : ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
+        switch ($reason) {
+            case 'ok':
+                $text = 'بررسی آپدیت : ' . $ago . ' پیش — موفق';
+                if (!empty($status['version'])) {
+                    $text .= ' (آخرین نسخه: ' . $status['version'] . ')';
+                }
+                break;
+            case 'no_release':
+                $text = 'بررسی آپدیت : ' . $ago . ' پیش — ارتباط برقرار شد، نسخه‌ی تازه‌ای منتشر نشده';
+                break;
+            case 'bad_package_url':
+                $text = 'بررسی آپدیت : ' . $ago . ' پیش — ارتباط برقرار شد، اما سرور آدرس دانلود معتبر نداد '
+                    . '(به پشتیبانی دانی‌چت اطلاع دهید: پیکربندی سرور ناقص است)';
+                break;
+            default:
+                $text = 'بررسی آپدیت : ' . $ago . ' پیش — ناموفق (کد HTTP: ' . $status['code'] . ')';
         }
 
         $links[] = $text;

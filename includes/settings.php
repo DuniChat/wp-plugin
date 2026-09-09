@@ -110,12 +110,6 @@ function ai_agent_default_settings(){
         // درصد گران‌تربودن چت بله نسبت به چت سایت. از سرور می‌آید؛ صفر یعنی
         // هنوز خبری نرسیده و در آن حالت اصلاً جمله‌ای نشان داده نمی‌شود.
         'bale_surcharge_percent' => 0,
-        // وضعیت طرح؛ همه از سرور می‌آیند.
-        'plan_is_active'         => false,
-        'plan_label'             => '',
-        'plan_expires_at'        => '',
-        'plan_days_remaining'    => 0,
-        'plan_cost_multiplier'   => 1,
 
         /*
         ============================================
@@ -602,16 +596,6 @@ function ai_agent_sync_settings_from_server(){
     صورت‌حساب را می‌سازند؛ نوشتنش این‌جا یعنی روزی که ضریب عوض شود، جمله‌ی
     داخل تنظیمات دروغ بگوید.
     */
-    /*
-    وضعیت طرح سایت، همان‌طور که سرور می‌بیند. در افزونه حساب نمی‌شود چون
-    تاریخ انقضا و ضریب هزینه هر دو تصمیم سروراند و ساعتِ سایت مشتری
-    می‌تواند هرچقدر جلو یا عقب باشد.
-    */
-    foreach (array('plan_is_active', 'plan_label', 'plan_expires_at', 'plan_days_remaining', 'plan_cost_multiplier') as $plan_key) {
-        if (array_key_exists($plan_key, $remote)) {
-            $settings[$plan_key] = $remote[$plan_key];
-        }
-    }
     if (isset($remote['bale_surcharge_percent'])) {
         $settings['bale_surcharge_percent'] = max(0, intval($remote['bale_surcharge_percent']));
     }
@@ -1150,71 +1134,6 @@ function ai_agent_settings_page(){
                     <?php endif; ?>
                 </section>
 
-                <!-- ---------- طرح سایت ---------- -->
-                <?php
-                /*
-                وضعیت طرح، بلافاصله زیر توکن سایت.
-
-                این‌جا نه ماه محاسبه می‌شود نه ضریب: هر دو را سرور می‌گوید،
-                چون تاریخ انقضا تصمیم اوست و ساعتِ سرورِ مشتری می‌تواند
-                هرچقدر جلو یا عقب باشد. اگر توکنی ثبت نشده باشد، هنوز
-                طرحی هم در کار نیست و کل این بخش نمایش داده نمی‌شود.
-                */
-                if ($has_api_key) :
-                    $plan_active     = !empty($settings['plan_is_active']);
-                    $plan_days       = isset($settings['plan_days_remaining']) ? intval($settings['plan_days_remaining']) : 0;
-                    $plan_label      = isset($settings['plan_label']) ? (string) $settings['plan_label'] : '';
-                    $plan_multiplier = isset($settings['plan_cost_multiplier']) ? floatval($settings['plan_cost_multiplier']) : 1;
-                    $plan_expires    = isset($settings['plan_expires_at']) ? (string) $settings['plan_expires_at'] : '';
-                ?>
-                <section class="ai-agent-section">
-                    <div class="ai-agent-section-head">
-                        <h2>طرح سایت</h2>
-                        <?php if ($plan_active) : ?>
-                            <span class="ai-agent-badge ai-agent-badge-ok">فعال</span>
-                        <?php else : ?>
-                            <span class="ai-agent-badge ai-agent-badge-warn">بدون طرح فعال</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php if ($plan_active) : ?>
-                        <p class="ai-agent-section-intro">
-                            طرح <?php echo esc_html($plan_label ?: 'فعلی'); ?> شما فعاله و
-                            <strong><?php echo ai_agent_fa_digits($plan_days); ?> روز</strong> دیگه اعتبار داره<?php
-                                if ($plan_expires !== '') {
-                                    echo ' — تا ' . esc_html(ai_agent_format_jalali_datetime($plan_expires, false));
-                                }
-                            ?>.
-                        </p>
-                        <?php
-                        /*
-                        هشدار فقط در هفته‌ی آخر. یک نوار زرد که همیشه باشد،
-                        بعد از چند روز دیده نمی‌شود.
-                        */
-                        if ($plan_days > 0 && $plan_days <= 7) : ?>
-                            <p class="ai-agent-note ai-agent-note-warn">
-                                کمتر از یه هفته تا پایان طرح مونده. از پنل دانیچَت تمدیدش کن تا سرویس بدون
-                                وقفه ادامه پیدا کنه.
-                            </p>
-                        <?php endif; ?>
-                    <?php else : ?>
-                        <p class="ai-agent-section-intro">
-                            این سایت طرح فعالی نداره. دستیار همچنان جواب می‌ده — قطعش نمی‌کنیم چون
-                            بازدیدکننده‌ی شما تقصیری نداره — ولی تا وقتی طرح نگیری، هزینه‌ی هر پیام،
-                            هر ویس و هر ایندکس <strong><?php echo ai_agent_fa_digits(rtrim(rtrim(number_format($plan_multiplier, 1), '0'), '.')); ?> برابر</strong>
-                            حساب می‌شه.
-                        </p>
-                    <?php endif; ?>
-
-                    <div class="ai-agent-btn-row">
-                        <a class="ai-agent-btn<?php echo $plan_active ? '' : ' ai-agent-btn-primary'; ?>"
-                           href="https://dunichat.ir/pricing" target="_blank" rel="noopener">
-                            <?php echo $plan_active ? 'تمدید یا تغییر طرح' : 'خرید طرح'; ?>
-                        </a>
-                    </div>
-                </section>
-                <?php endif; ?>
-
                 <!-- ---------- مدل هوش مصنوعی ---------- -->
                 <section class="ai-agent-section">
                     <h2>مدل هوش مصنوعی</h2>
@@ -1322,9 +1241,8 @@ function ai_agent_settings_page(){
                     </div>
 
                     <p class="ai-agent-hint" style="margin-top:22px">
-                        این اطلاعات به دستیار داده می‌شود تا در پاسخ‌ها از آن‌ها استفاده کند و
-                        سوال‌های شروع گفت‌وگو از روی همین‌ها ساخته می‌شوند. متن‌ها پیش از
-                        استفاده روی سرور پاک‌سازی می‌شوند و به‌عنوان «داده» در اختیار مدل
+                        این اطلاعات به دستیار داده می‌شود تا در پاسخ‌ها از آن‌ها استفاده کند. متن‌ها
+                        پیش از استفاده روی سرور پاک‌سازی می‌شوند و به‌عنوان «داده» در اختیار مدل
                         قرار می‌گیرند، نه دستور.
                     </p>
                 </section>
@@ -1333,10 +1251,11 @@ function ai_agent_settings_page(){
                 <section class="ai-agent-section" id="ai-agent-starters-section">
                     <h2>سوال‌های پیشنهادی صفحه‌ی شروع</h2>
                     <p class="ai-agent-section-intro">
-                        وقتی کسی چت رو باز می‌کنه، به‌جای یه فیلد خالی چندتا سوال آماده می‌بینه.
-                        اگه این‌جا خالی بذاری، دانی‌چت خودش از روی تنظیمات بالا چندتا سوال
-                        می‌سازه. ولی هر فروشگاهی سوال‌های خودش رو داره — مثلاً اگه یه محصول
-                        پرفروش داری، بهتره سوال درباره‌ی همون باشه.
+                        وقتی کسی چت رو باز می‌کنه، به‌جای یه فیلد خالی چندتا سوال آماده می‌بینه —
+                        فقط همون‌هایی که خودت این‌جا بنویسی. اگه این‌جا خالی بذاری، هیچ سوال
+                        پیشنهادی نشون داده نمی‌شه؛ چیزی حدسی ساخته نمی‌شه. هر فروشگاهی سوال‌های
+                        خودش رو داره — مثلاً اگه یه محصول پرفروش داری، بهتره سوال درباره‌ی همون
+                        باشه.
                     </p>
 
                     <?php

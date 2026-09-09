@@ -242,6 +242,7 @@ function wp_generate_password($len = 12, $special = true, $extra = false)
 }
 function wp_rand($min = 0, $max = 0) { return $max > $min ? random_int($min, $max) : 0; }
 function current_time($type = 'timestamp', $gmt = 0) { return $type === 'timestamp' ? time() : gmdate('Y-m-d H:i:s'); }
+function human_time_diff($from, $to = 0) { $to = $to ?: time(); $diff = max(0, $to - $from); return $diff < 60 ? 'چند ثانیه' : (int) round($diff / 60) . ' دقیقه'; }
 function wp_date($format, $ts = null) { return gmdate($format, $ts ?? time()); }
 function wp_timezone_string() { return 'Asia/Tehran'; }
 
@@ -311,3 +312,5 @@ require_once AI_AGENT_PATH . 'includes/site-color.php';
 require_once AI_AGENT_PATH . 'includes/db.php';
 require_once AI_AGENT_PATH . 'includes/settings.php';
 require_once AI_AGENT_PATH . 'includes/api.php';
+require_once AI_AGENT_PATH . 'includes/updater.php';
+require_once AI_AGENT_PATH . 'includes/enqueue.php';
