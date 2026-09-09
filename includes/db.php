@@ -107,32 +107,35 @@ add_action('admin_init', 'ai_agent_maybe_install');
 
 /*
 ============================================
-Migration: روشن‌کردن پیش‌فرض «اتصال به حساب و سبد خرید کاربر»
+Migration: پاک‌کردن ته‌مانده‌های «اتصال به حساب و سبد خرید کاربر»
 
-این گزینه از ابتدا خاموش بود و حالا پیش‌فرضش روشن شده است. تغییرِ آرایه‌ی
-پیش‌فرض‌ها فقط نصب‌های تازه را می‌گیرد؛ سایتی که قبلاً تنظیمات را ذخیره
-کرده مقدار صفرِ ذخیره‌شده را نگه می‌دارد و صاحبش دلیلش را نمی‌فهمد.
+این قابلیت حذف شده است. کدش که رفت، سه چیز در دیتابیس جا می‌ماند: کلیدِ
+تنظیماتِ روشن/خاموش، پرچمِ مهاجرتِ قبلی، و از همه مهم‌تر رمزِ پل.
 
-این مهاجرت فقط یک‌بار اجرا می‌شود (با پرچمِ ai_agent_shop_bridge_default_on)
-تا اگر کسی بعداً عمداً خاموشش کرد، دفعه‌ی بعد دوباره روشن نشود.
+رمز، اهمیتش از بقیه بیشتر است: یک راز مشترک است که کسی دیگر مصرفش
+نمی‌کند، و رازی که هیچ‌کس استفاده‌اش نمی‌کند فقط می‌ماند تا روزی لو برود.
+پس همین‌جا پاک می‌شود، نه اینکه بی‌صاحب در wp_options بماند.
+
+مثل مهاجرت‌های دیگر یک‌بار اجرا می‌شود؛ اجرای دوباره‌اش هم بی‌ضرر است
+چون delete_option روی کلیدِ نبوده کاری نمی‌کند.
 ============================================
 */
-function ai_agent_maybe_default_shop_bridge_on() {
-    if (get_option('ai_agent_shop_bridge_default_on')) {
+function ai_agent_maybe_purge_shop_bridge() {
+    if (get_option('ai_agent_shop_bridge_purged')) {
         return;
     }
-    update_option('ai_agent_shop_bridge_default_on', 1, false);
+    update_option('ai_agent_shop_bridge_purged', 1, false);
+
+    delete_option('ai_agent_shop_bridge_secret');
+    delete_option('ai_agent_shop_bridge_default_on');
 
     $settings = get_option('ai_agent_settings');
-    if (!is_array($settings)) {
-        return; // نصب تازه: آرایه‌ی پیش‌فرض‌ها خودش مقدار درست را می‌دهد
-    }
-    if (empty($settings['shop_bridge_enabled'])) {
-        $settings['shop_bridge_enabled'] = 1;
+    if (is_array($settings) && array_key_exists('shop_bridge_enabled', $settings)) {
+        unset($settings['shop_bridge_enabled']);
         update_option('ai_agent_settings', $settings);
     }
 }
-add_action('admin_init', 'ai_agent_maybe_default_shop_bridge_on');
+add_action('admin_init', 'ai_agent_maybe_purge_shop_bridge');
 
 /*
 ============================================

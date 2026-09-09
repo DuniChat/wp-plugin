@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The plugin's own tests. They run without a WordPress install: tests/bootstrap.php
+  provides the small set of WordPress functions the plugin actually calls, backed by
+  an in-memory options table. That keeps the suite fast enough to run on every change,
+  which is the only way it gets run at all.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         beStrictAboutTestsThatDoNotTestAnything="false"
+         convertWarningsToExceptions="true"
+         convertNoticesToExceptions="true"
+         convertDeprecationsToExceptions="false">
+    <testsuites>
+        <testsuite name="dunichat">
+            <directory suffix="Test.php">tests</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

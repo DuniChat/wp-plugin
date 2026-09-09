@@ -40,7 +40,6 @@ require_once AI_AGENT_PATH.'includes/sync.php';
 require_once AI_AGENT_PATH.'includes/enqueue.php';
 require_once AI_AGENT_PATH.'includes/api.php';
 require_once AI_AGENT_PATH.'includes/api-extras.php';
-require_once AI_AGENT_PATH.'includes/shop-bridge.php';
 require_once AI_AGENT_PATH.'includes/ajax.php';
 require_once AI_AGENT_PATH.'includes/ajax-extras.php';
 require_once AI_AGENT_PATH.'includes/widget.php';
