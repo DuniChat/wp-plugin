@@ -407,6 +407,23 @@ hover هر دو دکمه را قرمز و ۹۰ درجه می‌چرخاند — 
     color: #fed7aa;
 }
 
+/* یادآوری «ادامه‌ی گفت‌وگو در بله» زیر پیام escalate — کمکی و اختیاری،
+   پس با یک خط جداکننده‌ی کم‌رنگ از پیام اصلی فاصله می‌گیرد و لحنش
+   آرام‌تر از عنوان است، نه هشدار. */
+.ai-escalate-bale-hint {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(194, 65, 12, 0.25);
+    font-size: 12px;
+    line-height: 1.7;
+    color: #9a3412;
+}
+
+#ai-agent[data-theme="dark"] .ai-escalate-bale-hint {
+    border-top-color: rgba(253, 186, 116, 0.25);
+    color: #fed7aa;
+}
+
 /* پیام سیستمی «این گفتگو بسته شده است»
    از همان ساختار پیام escalate استفاده می‌کند ولی با رنگ قرمز
    تا حس «بسته‌شدن» را منتقل کند. */

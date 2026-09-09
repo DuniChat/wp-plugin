@@ -1135,12 +1135,28 @@ jQuery(function ($) {
         const reasonHtml = reason
             ? '<div class="ai-escalate-reason">' + escapeHtml(reason) + '</div>'
             : '';
+        // یادآوری دوستانه، نه فشار: کسی که منتظر پاسخ کارشناس است ممکن است
+        // نخواهد این تب را باز نگه دارد. دکمه‌ی «ادامه‌ی گفت‌وگو در بله»
+        // (آیکون بله، بالای همین گفتگو -- #ai-agent-transfer) دقیقاً همین
+        // کار را می‌کند: یک کد می‌سازد و همین مکالمه را به بله منتقل می‌کند،
+        // تا جواب کارشناس آنجا برسد. فقط وقتی این پیام واقعاً نمایش داده
+        // می‌شود که آن دکمه هم -- چون سایت رباتی وصل کرده -- در دسترس است،
+        // پس ارجاع به آن هیچ‌وقت به بن‌بست نمی‌خورد.
+        const transferAvailable = transferBtn && transferBtn.length && !transferBtn.attr('hidden');
+        const baleHintHtml = transferAvailable
+            ? '<div class="ai-escalate-bale-hint">' +
+                'اگه نمی‌خوای منتظر بمونی، از دکمه‌ی <strong>«ادامه‌ی گفت‌وگو در بله»</strong> ' +
+                '(آیکون بله، بالای همین گفتگو) بزن؛ یه کد می‌گیری و همین مکالمه به بله منتقل می‌شه — ' +
+                'جواب کارشناس همون‌جا برات می‌رسه.' +
+              '</div>'
+            : '';
         messages.append(
             '<div class="ai-escalate-message fade-in-up">' +
                 '<span class="ai-escalate-icon">🎧</span>' +
                 '<div class="ai-escalate-text">' +
                     '<div class="ai-escalate-title">در حال انتقال گفتگو به پشتیبان انسانی...</div>' +
                     reasonHtml +
+                    baleHintHtml +
                 '</div>' +
             '</div>'
         );
