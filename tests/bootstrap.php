@@ -312,5 +312,6 @@ require_once AI_AGENT_PATH . 'includes/site-color.php';
 require_once AI_AGENT_PATH . 'includes/db.php';
 require_once AI_AGENT_PATH . 'includes/settings.php';
 require_once AI_AGENT_PATH . 'includes/api.php';
+require_once AI_AGENT_PATH . 'includes/api-extras.php';
 require_once AI_AGENT_PATH . 'includes/updater.php';
 require_once AI_AGENT_PATH . 'includes/enqueue.php';

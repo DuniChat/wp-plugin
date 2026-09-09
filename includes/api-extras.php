@@ -360,15 +360,22 @@ function ai_agent_transcribe_audio($file_path, $file_name, $duration_seconds = n
     ));
 
     if (is_wp_error($response)) {
+        error_log('AI_AGENT_DEBUG transcribe WP_Error: ' . $response->get_error_message());
         return array('ok' => false, 'code' => 0, 'error' => 'ارتباط با سرور برای تبدیل صدا برقرار نشد.');
     }
 
     $code = intval(wp_remote_retrieve_response_code($response));
-    $data = json_decode(wp_remote_retrieve_body($response), true);
+    $raw  = wp_remote_retrieve_body($response);
+    $data = json_decode($raw, true);
 
     if ($code >= 200 && $code < 300) {
         return array('ok' => true, 'code' => $code, 'data' => is_array($data) ? $data : array());
     }
+
+    // نبود لاگ همین‌جا بود که این باگ را غیرقابل‌بررسی می‌کرد: کاربر همیشه
+    // همان پیام عمومی «نمی‌توانم به سرویس پاسخ‌گویی وصل شوم» را می‌دید و
+    // هیچ‌جا کد/بدنه‌ی واقعی پاسخ سرور ثبت نمی‌شد.
+    error_log('AI_AGENT_DEBUG transcribe failed, HTTP ' . $code . ': ' . $raw);
 
     return array('ok' => false, 'code' => $code, 'error' => ai_agent_api_error_text($data, $code));
 }
