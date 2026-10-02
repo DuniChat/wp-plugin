@@ -710,6 +710,12 @@ function ai_agent_settings_page(){
                         «ذخیره تنظیمات» انتهای فرم انجام می‌شود.
 
                         از این نسخه:
+                        - توکنِ ذخیره‌شده در دیتابیس، هر بار که صفحه‌ی
+                          تنظیمات باز می‌شود، در همین فیلد نوشته می‌شود.
+                          فیلد از نوع password است تا توکن به‌صورت ماسک‌شده
+                          (•••) دیده شود؛ فقط با کلیک روی دکمه‌ی چشم
+                          نمایان می‌شود. این صفحه فقط در دسترس ادمین‌ها
+                          با دسترسی manage_options است.
                         - دکمه‌ی چشم داخل خود فیلد (سمت راست) توکن را نمایش/
                           مخفی می‌کند.
                         - دکمه‌ی «حذف توکن» کنار فیلد است؛ با تأیید کاربر،
@@ -720,7 +726,8 @@ function ai_agent_settings_page(){
                         */ ?>
                         <div class="ai-agent-token-wrap">
                             <input type="password" id="ai_agent_api_key" name="ai_agent_settings[api_key]"
-                                   value="" class="ai-agent-input ai-agent-input-sm dc-ltr" lang="en"
+                                   value="<?php echo esc_attr(ai_agent_get_api_key()); ?>"
+                                   class="ai-agent-input ai-agent-input-sm dc-ltr" lang="en"
                                    autocomplete="off" placeholder="sk_live_..." />
                             <button type="button" id="ai-agent-token-eye" class="ai-agent-token-eye"
                                     aria-label="نمایش توکن" title="نمایش توکن">
@@ -745,6 +752,64 @@ function ai_agent_settings_page(){
                     <?php if ($token_note !== '') : ?>
                         <p class="ai-agent-note ai-agent-note-<?php echo esc_attr($token_note_kind); ?>"><?php echo esc_html($token_note); ?></p>
                     <?php endif; ?>
+                </section>
+
+                <!-- ---------- ربات بله ---------- -->
+                <?php
+                /*
+                اتصال ربات بله‌ی سایت (مستندات: GET/PUT/DELETE /bots).
+
+                چرا این بخش لازم است: دکمه‌ی «ادامه در بله» در ویجت فقط
+                وقتی نشان داده می‌شود که سایت رباتِ وصل و فعالی داشته
+                باشد؛ ربات هم از همین‌جا با توکن BotFather بله وصل
+                می‌شود. توکن هرگز در HTML چاپ نمی‌شود — سرور فقط
+                «ردپای» توکن (token_hint) را برمی‌گرداند.
+
+                فهرست ربات‌ها با AJAX (اندپوینت‌های ai_agent_bots_*)
+                گرفته و ذخیره می‌شود، نه با submit فرم تنظیمات: بررسی
+                توکن سمت سرور دانی‌چت انجام می‌شود و ممکن است چند
+                ثانیه طول بکشد.
+                */
+                $ai_agent_bots_nonce = wp_create_nonce('ai_agent_bots_nonce_action');
+                ?>
+                <section class="ai-agent-section" id="ai-agent-bots-section">
+                    <div class="ai-agent-section-head">
+                        <h2>ربات پیام‌رسان بله</h2>
+                        <span id="ai-agent-bots-badge" class="ai-agent-badge ai-agent-badge-warn">در حال بررسی…</span>
+                    </div>
+                    <p class="ai-agent-section-intro">
+                        با وصل‌کردن ربات بله، بازدیدکننده می‌تواند گفت‌وگو را در بله ادامه بدهد و
+                        پاسخ‌ها را همان‌جا بگیرد — حتی وقتی سایتت را بسته است. توکن را از
+                        BotFather بله بگیر و همین‌جا بچسبان.
+                    </p>
+
+                    <input type="hidden" id="ai_agent_bots_nonce_field" value="<?php echo esc_attr($ai_agent_bots_nonce); ?>" />
+
+                    <div class="ai-agent-bot-cards">
+                        <div class="ai-agent-bot-card" data-platform="bale">
+                            <div class="ai-agent-bot-card-head">
+                                <strong>بله</strong>
+                                <span class="ai-agent-bot-state ai-agent-badge ai-agent-badge-warn">وصل نیست</span>
+                            </div>
+                            <p class="ai-agent-bot-username" hidden></p>
+                            <div class="ai-agent-btn-row">
+                                <input type="password" class="ai-agent-input ai-agent-input-sm ai-agent-bot-token dc-ltr" lang="en"
+                                       autocomplete="off" placeholder="توکن ربات از BotFather بله" />
+                                <button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-bot-save">وصل کردن ربات</button>
+                                <button type="button" class="ai-agent-btn ai-agent-btn-danger ai-agent-bot-delete" hidden>حذف ربات</button>
+                            </div>
+                            <p class="ai-agent-bot-status"></p>
+                            <details class="ai-agent-bot-guide">
+                                <summary>از کجا توکن ربات بله را بگیرم؟</summary>
+                                <ol>
+                                    <li>در بله با <code>@BotFather</code> گفت‌وگو را شروع کن.</li>
+                                    <li>دستور <code>/newbot</code> را بفرست و یک نام و یک آیدی برای ربات انتخاب کن.</li>
+                                    <li>توکنی که BotFather می‌دهد (شبیه <code>123456:ABC-DEF…</code>) را کپی و همین‌جا بچسبان.</li>
+                                    <li>دکمه‌ی «وصل کردن ربات» را بزن؛ توکن سمت دانی‌چت بررسی و وبهوک ثبت می‌شود.</li>
+                                </ol>
+                            </details>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- ---------- رنگ دستیار ---------- -->

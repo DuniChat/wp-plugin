@@ -604,12 +604,20 @@ function ai_agent_fetch_chat_history($session_id) {
     $session_status = isset($data['status']) ? (string) $data['status'] : '';
     $last_message_role = isset($data['last_message_role']) ? (string) $data['last_message_role'] : '';
 
+    // متادیتای آزاد جلسه (مستندات: session_metadata در پاسخ
+    // GET /chat/sessions/{id}/messages). ویجت با کلید transferred
+    // داخلش می‌فهمد این گفت‌وگو به بله منتقل شده و باید بسته بماند.
+    $session_metadata = isset($data['session_metadata']) && is_array($data['session_metadata'])
+        ? $data['session_metadata']
+        : array();
+
     // فرمت جدید: پاسخ یک شیء است که messages داخل آن قرار دارد
     if (isset($data['messages']) && is_array($data['messages'])) {
         return array(
             'messages'          => $data['messages'],
             'status'            => $session_status,
             'last_message_role' => $last_message_role,
+            'session_metadata'  => $session_metadata,
         );
     }
 
@@ -625,6 +633,7 @@ function ai_agent_fetch_chat_history($session_id) {
             'messages'          => $data,
             'status'            => $session_status,
             'last_message_role' => $last_message_role,
+            'session_metadata'  => $session_metadata,
         );
     }
 
@@ -632,6 +641,7 @@ function ai_agent_fetch_chat_history($session_id) {
         'messages'          => array(),
         'status'            => $session_status,
         'last_message_role' => $last_message_role,
+        'session_metadata'  => $session_metadata,
     );
 }
 
@@ -923,6 +933,64 @@ function ai_agent_fetch_media($key) {
     responses  : آرایه‌ای از پاسخ‌های خام سرور برای هر دسته
 ============================================
 */
+
+/*
+============================================
+تقسیم‌کننده‌ی دسته‌ایِ امن برای ارسال محتوا به سرور
+
+این تابع یک آرایه‌ی آیتم را به دسته‌های کوچک‌تر تقسیم می‌کند به‌گونه‌ای
+که هر دسته هم از سقفِ تعدادِ آیتم (۵۰) و هم از سقفِ حجمِ کل (۵۰ مگابایت)
+تجاوز نکند. اگر یک دسته از سقفِ حجم رد شد، آن را به نصف تقسیم و دوباره
+امتحان می‌کند تا زیرِ سقف بماند. در عمل، دسته‌های آیتم‌های تصویردار به
+اندازه‌ی خیلی کوچک‌تری تقسیم می‌شوند تا زیرِ سقفِ حجم بمانند.
+
+ورودی:
+    $items          : آرایه‌ی آیتم‌های از‌قبلِ پاکسازی‌شده
+    $max_per_batch  : سقف تعداد آیتم در هر دسته (پیش‌فرض ۵۰ طبق Swagger)
+    $max_bytes      : سقف حجم کل بدنه‌ی JSON هر دسته (پیش‌فرض ۵۰MB)
+
+خروجی: آرایه‌ای از دسته‌ها (هر دسته خودش آرایه‌ای از آیتم)
+============================================
+*/
+function ai_agent_chunk_sync_batches($items, $max_per_batch = 50, $max_bytes = 52428800) {
+
+    if (!is_array($items) || empty($items)) {
+        return array();
+    }
+
+    // اول یک دسته‌بندیِ ساده با سقفِ تعداد
+    $initial = array_chunk($items, max(1, intval($max_per_batch)));
+
+    $out = array();
+    foreach ($initial as $batch) {
+        $body_size = strlen(wp_json_encode(array('items' => $batch), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if ($body_size <= $max_bytes) {
+            $out[] = $batch;
+            continue;
+        }
+
+        // دسته از سقفِ حجم رد شده → بازگشتیِ نصفش می‌کنیم تا زیرِ سقف بماند
+        $stack = array($batch);
+        while (!empty($stack)) {
+            $current = array_shift($stack);
+            if (empty($current)) {
+                continue;
+            }
+            $size = strlen(wp_json_encode(array('items' => $current), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            if ($size <= $max_bytes || count($current) <= 1) {
+                $out[] = $current;
+                continue;
+            }
+            // نصفش می‌کنیم و هر دو نیمه را به stack برمی‌گردانیم
+            $half = (int) floor(count($current) / 2);
+            $stack[] = array_slice($current, 0, $half);
+            $stack[] = array_slice($current, $half);
+        }
+    }
+
+    return $out;
+}
+
 function ai_agent_push_sync_content($items) {
 
     // 1. API Key check
@@ -948,6 +1016,22 @@ function ai_agent_push_sync_content($items) {
 
     // 2.b پاکسازی هر آیتم
     $allowed_content_types = array('post', 'page', 'product', 'list');
+
+    /*
+    سقف‌های مستندات API (Swagger):
+      - حداکثر ۵۰ آیتم در هر درخواست (بیشتر با ۴۲۲ رد می‌شود)
+      - content هر آیتم حداکثر ۵۰۰٬۰۰۰ کاراکتر (بیشتر → کل درخواست ۴۲۲)
+      - حداکثر ۱۰ تصویر در هر آیتم
+      - حجم کل هر درخواست حداکثر ۵۰ مگابایت (بیشتر → ۴۱۳)
+      - هر تصویر حداکثر ۱۵ مگابایت (پس از decode)
+    این ثابت‌ها هم در push_sync_delete و status_batch هم استفاده می‌شوند.
+    */
+    $max_items_per_batch     = 50;     // سقف آیتم در هر درخواست
+    $max_content_chars       = 500000; // سقف کاراکتر برای content هر آیتم
+    $max_images_per_item     = 10;     // سقف عکس در هر آیتم
+    $max_request_bytes       = 50 * 1024 * 1024; // ۵۰ مگابایت سقف کل هر درخواست
+    $max_image_bytes_decoded = 15 * 1024 * 1024; // ۱۵ مگابایت سقف هر تصویر پس از decode
+
     $clean_items = array();
     $skipped_count = 0;
 
@@ -965,16 +1049,40 @@ function ai_agent_push_sync_content($items) {
         $content = isset($item['content']) ? (string) $item['content'] : '';
         $url     = isset($item['url'])     ? (string) $item['url']     : '';
 
-        // استخراج عکس‌ها (حداکثر ۱۰ عکس طبق سقف API جدید)؛ رشته‌های خالی و غیررشته‌ای فیلتر می‌شوند
+        /*
+        سقف کاراکتر content: اگر بیشتر از ۵۰۰٬۰۰۰ کاراکتر بود، آن را
+        کوتاه می‌کنیم تا از رد شدن کل درخواست با ۴۲۲ جلوگیری شود. سرور
+        هم محتوای بلند را به‌همین اندازه قطع می‌کند، پس برشِ این‌جا
+        برابر با برشِ سرور است.
+        */
+        $content_len = function_exists('mb_strlen') ? mb_strlen($content, 'UTF-8') : strlen($content);
+        if ($content_len > $max_content_chars) {
+            $content = function_exists('mb_substr')
+                ? mb_substr($content, 0, $max_content_chars, 'UTF-8')
+                : substr($content, 0, $max_content_chars);
+        }
+
+        // استخراج عکس‌ها (حداکثر ۱۰ عکس طبق سقف API)؛ رشته‌های خالی و غیررشته‌ای فیلتر می‌شوند
         $images = array();
         if (isset($item['images']) && is_array($item['images'])) {
             foreach ($item['images'] as $img) {
-                if (count($images) >= 10) {
+                if (count($images) >= $max_images_per_item) {
                     break; // سقف ۱۰ عکس طبق قرارداد API
                 }
-                if (is_string($img) && trim($img) !== '') {
-                    $images[] = $img;
+                if (!is_string($img) || trim($img) === '') {
+                    continue;
                 }
+                /*
+                سقف حجم هر تصویر: اندازه‌ی base64 به‌تنهایی حدود ۱.۳۳ برابر
+                اندازه‌ی decoded است. وقتی base64 بیشتر از حدِ مجازِ
+                decoded (۱۵ مگابایت) شد، یعنی decoded هم از سقف رفته و
+                سرور آن را نادیده می‌گیرد؛ این‌جا هم همان‌طور رد می‌شود
+                تا حجم اضافی بدون دلیل به سرور نرود.
+                */
+                if (strlen($img) > $max_image_bytes_decoded * 1.4) {
+                    continue;
+                }
+                $images[] = $img;
             }
         }
 
@@ -991,10 +1099,10 @@ function ai_agent_push_sync_content($items) {
         $clean_items[] = array(
             'source_id'    => (string) $item['source_id'],
             'content_type' => (string) $item['content_type'],
-            'title'        => $title,
-            'content'      => $content,
-            'url'          => $url,
-            'images'       => $images,
+            'title'         => $title,
+            'content'       => $content,
+            'url'           => $url,
+            'images'        => $images,
         );
     }
 
@@ -1011,14 +1119,18 @@ function ai_agent_push_sync_content($items) {
 
     // ====================================================================
     // صف‌بندی (Batching):
-    // چون فیلد images اضافه شده، حجم هر آیتم به‌طور قابل‌توجهی بیشتر شده است.
-    // برای جلوگیری از ارسال یک‌باره‌ی حجم زیاد به سرور و جلوگیری از timeout
-    // یا خطاهای nginx/PHP، آیتم‌ها را در دسته‌های ۱۰تایی تقسیم کرده و هر
-    // دسته را در یک درخواست مجزا به API ارسال می‌کنیم.
-    // در صورت خطای یک دسته، آن دسته رد شده و بقیه دسته‌ها همچنان ارسال می‌شوند.
+    // سقف API: حداکثر ۵۰ آیتم در هر درخواست. اگر بیشتر فرستاده شود
+    // کل درخواست با ۴۲۲ رد می‌شود.
+    //
+    // نکته‌ی حجم: سقف کل هر درخواست ۵۰ مگابایت است. وقتی آیتم‌ها عکس
+    // دارند (که base64 شده و حجمشان ۱.۳۳ برابر می‌شود)، یک دسته‌ی
+    // ۵۰تایی به‌راحتی از ۵۰ مگابایت رد می‌شود؛ پس اگر حجم یک دسته از
+    // حدِ مجاز رد شد، دسته را به نصف تقسیم می‌کنیم و دوباره امتحان
+    // می‌کنیم تا زیرِ سقف بمانیم. در عمل، دسته‌های ۱۰تایی برای آیتم‌های
+    // تصویردار محیط امن‌تری هستند و خودِ سرور هم همین را پیشنهاد داده.
     // ====================================================================
-    $batch_size = 10;
-    $batches    = array_chunk($clean_items, $batch_size);
+
+    $batches = ai_agent_chunk_sync_batches($clean_items, $max_items_per_batch, $max_request_bytes);
 
     $total_sent   = 0;
     $all_results  = array();
@@ -1316,8 +1428,12 @@ function ai_agent_push_sync_delete($items) {
 
     $url = 'https://api.dunichat.ir/api/v1/sync/delete';
 
-    // 3. Batch (20 per request) - same reasoning as push_sync_content
-    $batches = array_chunk($clean_items, 20);
+    /*
+    3. دسته‌بندی: سقف API حداکثر ۵۰ آیتم در هر درخواست است؛ بیشتر
+    با ۴۲۲ رد می‌شود. حجم هر آیتم delete کم است (فقط source_id و
+    content_type) پس نیازی به بررسیِ حجمِ کل نیست.
+    */
+    $batches = array_chunk($clean_items, 50);
     $total_deleted = 0;
     $all_responses = array();
     $first_error = '';
@@ -1491,47 +1607,67 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
 
     $url = 'https://api.dunichat.ir/api/v1/sync/content/status/batch';
 
-    $body = wp_json_encode(array('job_ids' => $job_ids));
+    /*
+    سقف API: حداکثر ۲۰۰ job_id در هر درخواست. اگر بیشتر فرستاده شود
+    کل درخواست با ۴۲۲ رد می‌شود. وقتی کاربر بیشتر از ۲۰۰ آیتم سینک
+    کرده باشد، درخواست‌ها به چند دسته‌ی ۲۰۰تایی تقسیم و نتایج با هم
+    merge می‌شوند تا روی کلاینت یک فهرستِ واحد دیده شود.
+    */
+    $max_per_batch = 200;
+    $batches = array_chunk($job_ids, $max_per_batch);
 
-    $response = wp_remote_post($url, array(
-        'timeout'     => 30,
-        'redirection' => 0,
-        'httpversion' => '1.1',
-        'headers'     => array(
-            'X-API-Key'    => $api_key,
-            'Accept'       => 'application/json',
-            'Content-Type' => 'application/json; charset=utf-8',
-        ),
-        'body' => $body,
-    ));
+    $merged_results = array();
+    $merged_summary = null;
+    $first_error = '';
 
-    if (is_wp_error($response)) {
-        return array(
-            'status'  => 'error',
-            'message' => 'خطای ارتباطی با سرور استعلام وضعیت: ' . $response->get_error_message(),
-            'results' => array(),
-            'summary' => null,
-        );
+    foreach ($batches as $batch) {
+        $body = wp_json_encode(array('job_ids' => $batch));
+
+        $response = wp_remote_post($url, array(
+            'timeout'     => 30,
+            'redirection' => 0,
+            'httpversion' => '1.1',
+            'headers'     => array(
+                'X-API-Key'    => $api_key,
+                'Accept'       => 'application/json',
+                'Content-Type' => 'application/json; charset=utf-8',
+            ),
+            'body' => $body,
+        ));
+
+        if (is_wp_error($response)) {
+            if ($first_error === '') {
+                $first_error = 'خطای ارتباطی با سرور استعلام وضعیت: ' . $response->get_error_message();
+            }
+            continue;
+        }
+
+        $code      = wp_remote_retrieve_response_code($response);
+        $resp_body = wp_remote_retrieve_body($response);
+        $resp_data = json_decode($resp_body, true);
+
+        if ($code < 200 || $code >= 300) {
+            $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+            if ($first_error === '') {
+                $first_error = 'سرور استعلام وضعیت با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : '');
+            }
+            continue;
+        }
+
+        if (is_array($resp_data) && isset($resp_data['results']) && is_array($resp_data['results'])) {
+            foreach ($resp_data['results'] as $r) {
+                $merged_results[] = $r;
+            }
+            if (is_array($resp_data['summary']) && $merged_summary === null) {
+                $merged_summary = $resp_data['summary'];
+            }
+        }
     }
 
-    $code      = wp_remote_retrieve_response_code($response);
-    $resp_body = wp_remote_retrieve_body($response);
-    $resp_data = json_decode($resp_body, true);
-
-    if ($code < 200 || $code >= 300) {
-        $err_detail = ai_agent_parse_sync_error_detail($resp_data, $resp_body);
+    if (empty($merged_results) && $first_error !== '') {
         return array(
             'status'  => 'error',
-            'message' => 'سرور استعلام وضعیت با کد خطای ' . intval($code) . ' پاسخ داد.' . ($err_detail !== '' ? ' ' . $err_detail : ''),
-            'results' => array(),
-            'summary' => null,
-        );
-    }
-
-    if (!is_array($resp_data) || !isset($resp_data['results']) || !is_array($resp_data['results'])) {
-        return array(
-            'status'  => 'error',
-            'message' => 'پاسخ سرور استعلام وضعیت ساختار مورد انتظار را نداشت.',
+            'message' => $first_error,
             'results' => array(),
             'summary' => null,
         );
@@ -1540,8 +1676,8 @@ function ai_agent_fetch_sync_status_batch($job_ids) {
     return array(
         'status'  => 'success',
         'message' => '',
-        'results' => $resp_data['results'],
-        'summary' => (isset($resp_data['summary']) && is_array($resp_data['summary'])) ? $resp_data['summary'] : null,
+        'results' => $merged_results,
+        'summary' => $merged_summary,
     );
 }
 

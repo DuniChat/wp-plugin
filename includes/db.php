@@ -141,12 +141,22 @@ if (!defined('AI_AGENT_SESSION_COOKIE_EXPIRE')) {
 حداکثر تعداد عکس‌های مجاز در هر پیام چت (قابلیت سنجاق).
 این مقدار از سمت کلاینت (enqueue.php → ai_agent.max_images) و سرور
 (ajax.php هنگام دریافت $_POST['images']) به‌صورت یکسان اعمال می‌شود
-تا نهایتاً ۴ عکس در هر پیام قابل ارسال باشد. در صورت نیاز می‌توان
-این مقدار را در wp-config.php با define('AI_AGENT_MAX_CHAT_IMAGES', n)
-تغییر داد.
+تا نهایتاً ۱۰ عکس در هر پیام قابل ارسال باشد (طبق سقف مستندات API
+برای POST /chat/messages). در صورت نیاز می‌توان این مقدار را در
+wp-config.php با define('AI_AGENT_MAX_CHAT_IMAGES', n) تغییر داد.
 */
 if (!defined('AI_AGENT_MAX_CHAT_IMAGES')) {
-    define('AI_AGENT_MAX_CHAT_IMAGES', 4);
+    define('AI_AGENT_MAX_CHAT_IMAGES', 10);
+}
+
+/*
+سقف کاراکتر متنِ پیام چت. طبق مستندات API (POST /chat/messages)
+پیام نباید بیشتر از ۴۰۰۰ کاراکتر باشد؛ بیشتر از آن سرور را وادار
+می‌کند کل درخواست را رد کند. این ثابت هم در ajax.php هنگام دریافت
+متن پیام چک می‌شود تا قبل از رفتن به سرور، کوتاه شود.
+*/
+if (!defined('AI_AGENT_MAX_CHAT_MESSAGE_CHARS')) {
+    define('AI_AGENT_MAX_CHAT_MESSAGE_CHARS', 4000);
 }
 /*
 تولید یک کلید رمزنگاری ۳۲ بایتی (256 بیت) ثابت و مخصوص همین سایت

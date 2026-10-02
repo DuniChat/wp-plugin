@@ -572,7 +572,7 @@ if (!empty($new_items)) {
                 'deleted_count'   => 0,
                 'edited_count'    => 0,
                 'total_count'     => $total_current,
-                'last_sync_time'  => $sync_time,
+                'last_sync_time'  => ai_agent_format_jalali_datetime($sync_time),
             ));
         }
 
@@ -594,7 +594,7 @@ if (!empty($new_items)) {
         'edited_count'        => $edited_processed_count,
         'deleted_count'       => $deleted_sent_count,
         'total_count'         => $total_current,
-        'last_sync_time'      => $sync_time,
+        'last_sync_time'      => ai_agent_format_jalali_datetime($sync_time),
         'sync_type'           => 'incremental',
     ));
 }
@@ -722,7 +722,7 @@ function ai_agent_sync_all_data_handler() {
                 'new_count'      => 0,
                 'deleted_count'  => 0,
                 'total_count'    => 0,
-                'last_sync_time' => ai_agent_get_last_sync_all_time(),
+                'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_all_time()),
             ));
         }
 
@@ -764,7 +764,7 @@ function ai_agent_sync_all_data_handler() {
             'new_count'      => 0,
             'deleted_count'  => $deleted_sent_count,
             'total_count'    => 0,
-            'last_sync_time' => $sync_time,
+            'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
             'sync_type'      => 'full',
         ));
     }
@@ -802,7 +802,7 @@ function ai_agent_sync_all_data_handler() {
             'new_count'      => 0,
             'deleted_count'  => $deleted_sent_count,
             'total_count'    => count($current_items),
-            'last_sync_time' => ai_agent_get_last_sync_all_time(),
+            'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_all_time()),
         ));
     }
 
@@ -867,7 +867,7 @@ function ai_agent_sync_all_data_handler() {
         'new_count'      => $sent_count,
         'deleted_count'  => $deleted_sent_count,
         'total_count'    => $total,
-        'last_sync_time' => $sync_time,
+        'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
         'sync_type'      => 'full',
     ));
 }
@@ -959,7 +959,7 @@ function ai_agent_sync_images_data_handler() {
             'message'        => $content_result['message'],
             'new_count'      => 0,
             'total_count'    => count($current_items),
-            'last_sync_time' => ai_agent_get_last_sync_time(),
+            'last_sync_time' => ai_agent_format_jalali_datetime(ai_agent_get_last_sync_time()),
         ));
     }
 
@@ -1011,7 +1011,7 @@ function ai_agent_sync_images_data_handler() {
             'new_count'      => $sent_count,
             'deleted_count'  => 0,
             'total_count'    => $total,
-            'last_sync_time' => $sync_time,
+            'last_sync_time' => ai_agent_format_jalali_datetime($sync_time),
             'sync_type'      => 'images',
         ));
     }

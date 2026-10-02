@@ -1938,6 +1938,175 @@
         };
 
 
+        /*
+        ============================================
+        ربات‌های پیام‌رسان (بله)
+        ============================================
+
+        وضعیت اتصال ربات با AJAX از اندپوینت‌های ai_agent_bots_list /
+        ai_agent_bots_save / ai_agent_bots_delete گرفته و ثبت می‌شود —
+        نه با submit فرم تنظیمات — چون بررسی توکن سمت سرور دانی‌چت
+        انجام می‌شود و ممکن است چند ثانیه طول بکشد.
+
+        پاسخ اندپوینت لیست نرمال‌شده است: {items: [...]} که هر آیتم
+        platform، bot_username، bot_link، token_hint و last_error
+        دارد؛ امروز فقط «بله» در فهرست است ولی رابط برای
+        پیام‌رسان‌های بعدی هم آماده است.
+        ============================================
+        */
+        (function aiAgentBots() {
+            var $section = $('#ai-agent-bots-section');
+            if (!$section.length) return;
+
+            var nonce = $('#ai_agent_bots_nonce_field').val();
+            var $badge = $('#ai-agent-bots-badge');
+
+            function post(action, data, done, fail) {
+                $.post(ajaxurl, $.extend({ action: action, nonce: nonce }, data || {}))
+                    .done(function (response) {
+                        if (response && response.success) {
+                            done(response.data);
+                        } else {
+                            fail((response && response.data && response.data.message) || 'خطای ناشناخته.');
+                        }
+                    })
+                    .fail(function () {
+                        fail('ارتباط با سرور وردپرس برقرار نشد.');
+                    });
+            }
+
+            function paint(items) {
+                var connected = 0;
+
+                $section.find('.ai-agent-bot-card').each(function () {
+                    var $card = $(this);
+                    var platform = $card.data('platform');
+                    var bot = null;
+
+                    for (var i = 0; i < (items || []).length; i++) {
+                        if (items[i].platform === platform) { bot = items[i]; break; }
+                    }
+
+                    var $state = $card.find('.ai-agent-bot-state');
+                    var $username = $card.find('.ai-agent-bot-username');
+                    var $remove = $card.find('.ai-agent-bot-delete');
+                    var $tokenInput = $card.find('.ai-agent-bot-token');
+                    var $saveBtn = $card.find('.ai-agent-bot-save');
+
+                    if (!bot) {
+                        /*
+                        ربات متصل نیست: فیلدِ توکن و دکمه‌ی «وصل کردن ربات»
+                        نمایان می‌شوند تا کاربر بتواند توکنِ تازه‌ای وارد کند.
+                        دکمه‌ی «حذف ربات» مخفی می‌ماند چون چیزی برای حذف نیست.
+                        */
+                        $state.text('وصل نیست').removeClass('ai-agent-badge-ok ai-agent-badge-warn').addClass('ai-agent-badge-warn');
+                        $username.attr('hidden', true).empty();
+                        $remove.attr('hidden', true);
+                        $tokenInput.removeAttr('hidden').removeAttr('disabled');
+                        $saveBtn.removeAttr('hidden').removeAttr('disabled');
+                        return;
+                    }
+
+                    connected++;
+                    $remove.removeAttr('hidden');
+
+                    /*
+                    ربات متصل است: فیلدِ توکن و دکمه‌ی «وصل کردن ربات»
+                    مخفی و غیرفعال می‌شوند. کاربر برای واردکردنِ توکنِ
+                    جدید باید اول «حذف ربات» را بزند تا رباتِ قبلی
+                    قطع شود؛ این‌طوری تداخلِ دو توکن روی یک ربات یا
+                    هدررفتنِ وبهوکِ قبلی پیش نمی‌آید.
+                    */
+                    $tokenInput.attr('hidden', true).attr('disabled', 'disabled').val('');
+                    $saveBtn.attr('hidden', true).attr('disabled', 'disabled');
+
+                    if (bot.last_error) {
+                        // توکن درست بوده ولی وبهوک ثبت نشده. تفاوتش با «وصل
+                        // نیست» مهم است: کاربر نباید دوباره دنبال توکن بگردد.
+                        $state.text('نیاز به بررسی')
+                              .removeClass('ai-agent-badge-ok ai-agent-badge-warn').addClass('ai-agent-badge-warn');
+                        $card.find('.ai-agent-bot-status').text('سرور پیام‌رسان گفت: ' + bot.last_error);
+                    } else {
+                        $state.text('وصل است')
+                              .removeClass('ai-agent-badge-warn ai-agent-badge-ok').addClass('ai-agent-badge-ok');
+                    }
+
+                    var $line = $('<span></span>').text('آیدی ربات: ');
+                    if (bot.bot_link) {
+                        $line.append(
+                            $('<a target="_blank" rel="noopener" class="dc-ltr" lang="en"></a>')
+                                .attr('href', bot.bot_link).text('@' + (bot.bot_username || ''))
+                        );
+                    } else {
+                        $line.append($('<span class="dc-ltr" lang="en"></span>').text('@' + (bot.bot_username || '')));
+                    }
+                    if (bot.token_hint) {
+                        $line.append($('<span></span>').text(' — توکن ذخیره‌شده …' + bot.token_hint));
+                    }
+                    $username.empty().append($line).removeAttr('hidden');
+                });
+
+                if (connected === 0) {
+                    $badge.text('وصل نشده').removeClass('ai-agent-badge-ok').addClass('ai-agent-badge-warn');
+                } else {
+                    $badge.text(aiAgentFaDigits(connected) + ' ربات فعال')
+                          .removeClass('ai-agent-badge-warn').addClass('ai-agent-badge-ok');
+                }
+            }
+
+            function refresh() {
+                post('ai_agent_bots_list', {}, function (data) {
+                    paint(data.items || []);
+                }, function (message) {
+                    $badge.text('در دسترس نیست').removeClass('ai-agent-badge-ok');
+                    $section.find('.ai-agent-bot-status').first().text(message);
+                });
+            }
+
+            $section.on('click', '.ai-agent-bot-save', function () {
+                var $card = $(this).closest('.ai-agent-bot-card');
+                var $status = $card.find('.ai-agent-bot-status');
+                var $input = $card.find('.ai-agent-bot-token');
+                var token = $.trim($input.val());
+
+                if (!token) {
+                    $status.text('اول توکن ربات را بچسبان.');
+                    return;
+                }
+
+                $status.text('در حال بررسی توکن و اتصال ربات…');
+                post('ai_agent_bots_save', {
+                    platform: $card.data('platform'),
+                    token: token
+                }, function () {
+                    // توکن از فیلد پاک می‌شود تا روی صفحه‌ی باز نماند.
+                    $input.val('');
+                    $status.text('ربات وصل شد.');
+                    refresh();
+                }, function (message) {
+                    $status.text(message);
+                });
+            });
+
+            $section.on('click', '.ai-agent-bot-delete', function () {
+                var $card = $(this).closest('.ai-agent-bot-card');
+                if (!window.confirm('ربات این پیام‌رسان حذف شود؟ بعد از حذف دیگر به کسی جواب نمی‌دهد و دکمه‌ی «ادامه در بله» هم از ویجت می‌رود.')) {
+                    return;
+                }
+                var $status = $card.find('.ai-agent-bot-status');
+                $status.text('در حال حذف…');
+                post('ai_agent_bots_delete', { platform: $card.data('platform') }, function () {
+                    $status.text('ربات حذف شد.');
+                    refresh();
+                }, function (message) {
+                    $status.text(message);
+                });
+            });
+
+            refresh();
+        })();
+
+
         // راه‌اندازی ماژول جلسات
         aiAgentSessions.init();
     });

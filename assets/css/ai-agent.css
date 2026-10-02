@@ -2443,3 +2443,40 @@ weight is legible without changing the bubble geometry.
     display: flex;
     align-items: center;
 }
+
+/*
+کد شش‌رقمی ادامه‌ی گفت‌وگو در بله، داخل حباب پاسخ دستیار.
+
+چرا ظاهر جدا دارد: این عدد تنها چیزی است که کاربر باید از این
+پنجره با خودش ببرد و در ربات وارد کند؛ وسط یک پاراگراف گم شدنش
+یعنی یک مشتری از دست رفته. حاشیه‌چین و ارقام درشت و فاصله‌دار،
+کد را شبیه همان چیزی می‌کند که در پیام‌رسان‌ها هم دیده است.
+*/
+.ai-agent-transfer-code {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 10px 0;
+    padding: 10px 14px;
+    border: 1px dashed var(--ai-border);
+    border-radius: 10px;
+    background: var(--ai-surface-2);
+}
+
+.ai-agent-transfer-code span {
+    font-size: 12px;
+    color: var(--ai-text-soft);
+}
+
+.ai-agent-transfer-code strong {
+    font-size: 20px;
+    letter-spacing: 0.35em;
+    color: var(--ai-text);
+    font-weight: 700;
+}
+
+/* دکمه‌ی «رفتن به ربات» بعد از کد، فاصله‌ی بالایش از کد جدا می‌شود. */
+.ai-message-body .ai-agent-transfer-option {
+    margin-top: 4px;
+}

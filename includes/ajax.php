@@ -54,6 +54,24 @@ function ai_agent_chat() {
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
 
     /*
+    سقف کاراکتر متن پیام: طبق مستندات API (POST /chat/messages)
+    پیام نباید بیشتر از ۴۰۰۰ کاراکتر باشد؛ سرور بیشتر از آن را
+    رد می‌کند. اگر کاربر (یا ضبط صدا) متنی بلندتر فرستاد، آن را
+    کوتاه می‌کنیم تا سرور کل درخواست را رد نکند. سرور هم به همین
+    طول برش می‌دهد، پس رفتار نهایی یکی است.
+    */
+    $max_msg_chars = defined('AI_AGENT_MAX_CHAT_MESSAGE_CHARS') ? intval(AI_AGENT_MAX_CHAT_MESSAGE_CHARS) : 4000;
+    if ($max_msg_chars < 1) {
+        $max_msg_chars = 4000;
+    }
+    $msg_len = function_exists('mb_strlen') ? mb_strlen($message, 'UTF-8') : strlen($message);
+    if ($msg_len > $max_msg_chars) {
+        $message = function_exists('mb_substr')
+            ? mb_substr($message, 0, $max_msg_chars, 'UTF-8')
+            : substr($message, 0, $max_msg_chars);
+    }
+
+    /*
     توکن بازدیدکننده (visitor_id): رشته‌ی هگز ۱۶ تا ۶۴ کاراکتری که
     خود مرورگر می‌سازد و نگه می‌دارد. فقط برای ساخته‌شدن گفت‌وگوی
     تازه به کار می‌آید — سرور آن را شناسه‌ی همان گفت‌وگو می‌کند تا
@@ -293,6 +311,19 @@ function ai_agent_get_history_handler() {
     $session_status = (is_array($result) && isset($result['status'])) ? (string) $result['status'] : '';
     $last_message_role = (is_array($result) && isset($result['last_message_role'])) ? (string) $result['last_message_role'] : '';
 
+    /*
+    گفت‌وگویی که به بله منتقل شده، بعد از رفرش هم باید بسته بماند.
+    پرچم transferred از متادیتای آزاد جلسه می‌آید (مستندات:
+    session_metadata در پاسخ GET /chat/sessions/{id}/messages؛ هنگام
+    انتقال با PATCH /chat/sessions/{id}/metadata ثبت شده است).
+    قبل از بررسی وضعیت چک می‌شود چون وضعیتش ممکن است هنوز
+    pending_human باشد — کاربر منتظر پشتیبان است، فقط نه این‌جا.
+    */
+    $session_metadata = (is_array($result) && isset($result['session_metadata']) && is_array($result['session_metadata']))
+        ? $result['session_metadata']
+        : array();
+    $transferred = !empty($session_metadata['transferred']);
+
     // غنی‌سازی رفرنس‌های هر پیام با تصویر نگاره اصلی محصول
     // (دقیقاً همان کاری که هنگام استریم زنده روی رویداد references انجام می‌شود،
     // چون سرور تاریخچه فقط title/url برمی‌گرداند و image ندارد)
@@ -318,6 +349,7 @@ function ai_agent_get_history_handler() {
         'messages'          => $messages,
         'status'            => $session_status,
         'last_message_role' => $last_message_role,
+        'transferred'       => $transferred,
     ));
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
@@ -362,16 +394,86 @@ function ai_agent_visitor_sessions_handler()
         }
     }
 
-    // فقط همان چند فیلدی که کشو نشان می‌دهد به مرورگر می‌رود.
+    /*
+    فهرستِ session_id های ذخیره‌شده در کوکیِ همین مرورگر هم
+    فرستاده می‌شود (مثلاً گفت‌وگویی که هنوز visitor_id آن ثبت
+    نشده ولی session_id آن در کوکی هست). اگر سرور گفت‌وگویی را
+    برنگردانده ولی در کوکی هست، آن را به فهرست اضافه می‌کنیم
+    و enrich می‌کنیم تا عنوان و تعدادِ واقعی پیام نشان بدهد.
+    */
+    $raw_local = isset($_GET['local_sessions']) ? (string) $_GET['local_sessions'] : '';
+    $local_ids = array();
+    if ($raw_local !== '') {
+        foreach (explode(',', $raw_local) as $lid) {
+            $lid = trim(sanitize_text_field($lid));
+            if ($lid !== '' && ai_agent_is_valid_uuid($lid) && !in_array($lid, $local_ids, true)) {
+                $local_ids[] = $lid;
+            }
+        }
+    }
+
+    // اضافه‌کردنِ سشن‌های کوکی که در پاسخ سرور نبودند
+    $seen_ids = array();
+    foreach ($items as $item) {
+        if (is_array($item) && !empty($item['id'])) {
+            $seen_ids[] = (string) $item['id'];
+        }
+    }
+    foreach ($local_ids as $lid) {
+        if (!in_array($lid, $seen_ids, true)) {
+            $items[] = array('id' => $lid, 'title' => '', 'message_count' => 0);
+        }
+    }
+
+    /*
+    فقط همان چند فیلدی که کشو نشان می‌دهد به مرورگر می‌رود.
+    اگر سرور فیلدِ title یا message_count را برای یک جلسه نفرستاده
+    بود (یا خالی فرستاده بود)، از اندپوینتِ پیام‌های همان جلسه
+    (/chat/sessions/{id}/messages) آن را enrich می‌کنیم تا عنوانِ
+    واقعی (اولین پیام کاربر) و تعدادِ واقعی پیام‌ها نشان داده شود.
+    اگر سرور هم در پاسخِ my-sessions فیلدِ صحیح را فرستاده بود،
+    فراخوانیِ اضافه‌ای نمی‌زنیم تا fast-path بماند.
+    */
     $clean = array();
     foreach ($items as $item) {
         if (!is_array($item) || empty($item['id'])) {
             continue;
         }
+
+        $sid       = (string) $item['id'];
+        $title     = isset($item['title'])         ? (string) $item['title']         : '';
+        $msg_count = isset($item['message_count']) ? intval($item['message_count']) : 0;
+        $created   = isset($item['created_at'])    ? (string) $item['created_at']    : '';
+
+        // enrich فقط وقتی لازم است که title یا message_count نباشند
+        if ($title === '' || $msg_count === 0) {
+            $enriched = ai_agent_enrich_visitor_session($sid);
+            if ($enriched !== null) {
+                if ($title === '') {
+                    $title = $enriched['title'];
+                }
+                if ($msg_count === 0) {
+                    $msg_count = $enriched['message_count'];
+                }
+                if ($created === '' && $enriched['created_at'] !== '') {
+                    $created = $enriched['created_at'];
+                }
+            }
+        }
+
+        // اگر هنوز title پیدا نشد، یک عنوانِ معقولِ پیش‌فرض می‌سازیم
+        // که با تاریخ/زمان جلسه متفاوت باشد — نه اینکه همه‌ی گفت‌وگوها
+        // «گفت‌وگو» خوانده شوند.
+        if ($title === '') {
+            $title = $created !== ''
+                ? 'گفت‌وگو ' . ai_agent_format_jalali_datetime($created, false)
+                : 'گفت‌وگو';
+        }
+
         $clean[] = array(
-            'id'            => (string) $item['id'],
-            'title'         => isset($item['title']) ? (string) $item['title'] : '',
-            'message_count' => isset($item['message_count']) ? intval($item['message_count']) : 0,
+            'id'            => $sid,
+            'title'         => $title,
+            'message_count' => $msg_count,
         );
     }
 
@@ -379,6 +481,114 @@ function ai_agent_visitor_sessions_handler()
 }
 add_action('wp_ajax_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
 add_action('wp_ajax_nopriv_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
+
+/*
+============================================
+دریافت عنوان واقعی و تعداد پیام یک جلسه از اندپوینتِ messages
+
+این تابع برای تکمیلِ فهرستِ گفت‌وگوهای پیشین استفاده می‌شود: وقتی
+اندپوینتِ my-sessions فیلدِ title یا message_count را نفرستاده،
+از /chat/sessions/{id}/messages همان مقادیر را می‌گیریم. title از
+اولین پیامِ کاربر گرفته می‌شود (یا از last_message به‌عنوان fallback)
+تا عنوانِ هر گفت‌وگو واقعاً متفاوت از دیگری باشد.
+
+خروجی: array('title' => string, 'message_count' => int, 'created_at' => string)
+یا null در صورت خطا.
+============================================
+*/
+function ai_agent_enrich_visitor_session($session_id) {
+
+    if (empty($session_id) || !ai_agent_is_valid_uuid($session_id)) {
+        return null;
+    }
+
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        return null;
+    }
+
+    $url = 'https://api.dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 12,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return null;
+    }
+
+    if (wp_remote_retrieve_response_code($response) !== 200) {
+        return null;
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (!is_array($data)) {
+        return null;
+    }
+
+    $msg_count = isset($data['message_count']) ? intval($data['message_count']) : 0;
+    $created   = isset($data['created_at'])    ? (string) $data['created_at']    : '';
+
+    /*
+    اولویت‌یابی عنوان: اولین پیامِ کاربر بهترین عنوان است. اگر نبود،
+    last_message سرور، بعدش اولین پیامِ هر نقش. اگر هیچ‌کدام نبودند،
+    رشته‌ی خالی برمی‌گردد تا فراخوانی عنوانِ پیش‌فرض را بسازد.
+    */
+    $title = '';
+
+    $messages = isset($data['messages']) && is_array($data['messages']) ? $data['messages'] : array();
+    if (!empty($messages)) {
+        // اولین پیامِ کاربر
+        foreach ($messages as $m) {
+            if (is_array($m) && isset($m['role']) && $m['role'] === 'user' && !empty($m['content'])) {
+                $title = (string) $m['content'];
+                break;
+            }
+        }
+        // fallback: اولین پیام از هر نقش
+        if ($title === '') {
+            foreach ($messages as $m) {
+                if (is_array($m) && !empty($m['content'])) {
+                    $title = (string) $m['content'];
+                    break;
+                }
+            }
+        }
+    }
+
+    // fallback: last_message
+    if ($title === '' && isset($data['last_message']) && is_string($data['last_message']) && $data['last_message'] !== '') {
+        $title = (string) $data['last_message'];
+    }
+
+    // برشِ عنوان به ۶۰ کاراکتر (برای عرضِ کشو کافی است)
+    if ($title !== '') {
+        $title_len = function_exists('mb_strlen') ? mb_strlen($title, 'UTF-8') : strlen($title);
+        if ($title_len > 60) {
+            $title = function_exists('mb_substr')
+                ? mb_substr($title, 0, 60, 'UTF-8') . '…'
+                : substr($title, 0, 60) . '…';
+        }
+    }
+
+    /*
+    اگر message_count از سمت سرور نبود ولی messages بود، می‌توانیم
+    با شمارشِ آرایه‌ی messages تعدادِ واقعی را به دست بیاوریم.
+    */
+    if ($msg_count === 0 && !empty($messages)) {
+        $msg_count = count($messages);
+    }
+
+    return array(
+        'title'         => $title,
+        'message_count' => $msg_count,
+        'created_at'    => $created,
+    );
+}
 
 /*
 ============================================

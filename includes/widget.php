@@ -62,6 +62,23 @@ function ai_agent_widget(){
             <div class="ai-agent-header-title"><?php echo esc_html($org_name); ?></div>
 
             <div class="ai-agent-header-actions">
+                <?php
+                /*
+                ادامه‌ی گفت‌وگو در بله.
+
+                در HTML همیشه هست ولی تا وقتی سایت رباتی وصل نکرده باشد
+                مخفی می‌ماند — JS با پرسیدن از سرور (اندپوینت
+                ai_agent_transfer_options که خودش از
+                GET /chat/transfer-options می‌پرسد) تصمیم می‌گیرد.
+                دکمه‌ای که به هیچ رباتی نمی‌رسد، فقط یک بن‌بست است.
+
+                آیکون، خودِ نشان بله است و نه یک هواپیمای کاغذی عمومی:
+                کاربر باید از روی دکمه بفهمد قرار است کجا برود.
+                */ ?>
+                <button type="button" id="ai-agent-transfer" class="ai-agent-icon-btn" hidden
+                        title="ادامه در بله" aria-label="ادامه‌ی گفت‌وگو در بله">
+                    <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/bale.svg'); ?>" alt="" />
+                </button>
                 <button type="button" id="ai-agent-new-chat" class="ai-agent-icon-btn" title="گفت‌وگوی تازه" aria-label="گفت‌وگوی تازه">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                         <line x1="12" y1="5" x2="12" y2="19"/>
@@ -88,6 +105,27 @@ function ai_agent_widget(){
         همین مرورگر، با توکنی که خود مرورگر نگه می‌دارد.
         ============================================
         */ ?>
+        <?php
+        /*
+        دیالوگ تأیید انتقال به پیام‌رسان بله. متن و نشانی ربات را JS پر
+        می‌کند، چون تا وقتی از سرور نپرسیده‌ایم نمی‌دانیم رباتی متصل
+        هست یا نه (اندپوینت ai_agent_transfer_options).
+        */ ?>
+        <div id="ai-agent-transfer-dialog" class="ai-agent-modal" hidden>
+            <div class="ai-agent-modal-card" role="dialog" aria-modal="true" aria-labelledby="ai-agent-transfer-title">
+                <h3 id="ai-agent-transfer-title">
+                    <img class="ai-agent-bale-mark" src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/bale.svg'); ?>" alt="" />
+                    ادامه‌ی گفت‌وگو در بله
+                </h3>
+                <p id="ai-agent-transfer-text"></p>
+                <div id="ai-agent-transfer-options" class="ai-agent-transfer-options"></div>
+                <div class="ai-agent-modal-actions">
+                    <button type="button" id="ai-agent-transfer-cancel" class="ai-agent-modal-btn">بی‌خیال</button>
+                    <button type="button" id="ai-agent-transfer-confirm" class="ai-agent-modal-btn is-primary">بریم</button>
+                </div>
+            </div>
+        </div>
+
         <div id="ai-agent-drawer" class="ai-agent-drawer" hidden>
             <div class="ai-agent-drawer-head">
                 <span>گفت‌وگوهای پیشین</span>
@@ -134,12 +172,19 @@ function ai_agent_widget(){
 
                 <?php
                 /*
-                دکمه میکروفون (ورودی صوتی): با کلیک روی این دکمه، Web Speech API
-                فعال می‌شود و گفتار کاربر به زبان فارسی (fa-IR) در لحظه به متن
-                تبدیل شده و داخل #ai-agent-input نوشته می‌شود. این دکمه در
-                مرورگرها/دستگاه‌هایی که پشتیبانی نمی‌کنند خودکار مخفی می‌شود.
+                دکمه‌ی ضبط صدا، کنار سنجاق.
+
+                برخلاف نسخه‌های قبل که به Web Speech API مرورگر وابسته بود
+                و روی موبایل عمداً خاموش می‌ماند، حالا صدا با MediaRecorder
+                ضبط و برای تبدیل به متن به سرور دانی‌چت فرستاده می‌شود
+                (اندپوینت POST /speech/transcribe مستندات API)؛ پس این
+                دکمه روی موبایل هم کار می‌کند — همان‌جایی که بیشترین
+                کاربرِ ویس هست.
+
+                کلاس voice-not-supported را جاوااسکریپت فقط وقتی اضافه
+                می‌کند که مرورگر واقعاً MediaRecorder نداشته باشد.
                 */ ?>
-                <button id="ai-agent-voice" title="ورودی صوتی" type="button" aria-label="ورودی صوتی">
+                <button id="ai-agent-voice" title="ضبط پیام صوتی" type="button" aria-label="ضبط پیام صوتی">
                     <svg class="ai-voice-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -181,6 +226,18 @@ function ai_agent_widget(){
             کلیکِ این المان را trigger می‌کند تا پنجره‌ی Browse باز شود.
             */ ?>
             <input type="file" id="ai-agent-file-input" accept="image/*" multiple hidden />
+
+            <?php
+            /*
+            جای فیلد پیام، بعد از انتقال گفت‌وگو به بله.
+
+            فیلد فقط غیرفعال نمی‌شود؛ کلاً برداشته می‌شود و این نوار
+            جایش می‌نشیند. یک فیلد خاکستر‌شده هنوز دعوت به نوشتن است،
+            و پیامی که این‌جا نوشته شود دیگر هیچ‌کس نمی‌خواندش.
+            */ ?>
+            <div id="ai-agent-transferred-bar" class="ai-agent-transferred-bar" hidden>
+                <span>ادامه‌ی گفت‌وگو به بله منتقل شد. برای شروع گفت‌وگوی تازه، دکمه‌ی + بالا را بزنید.</span>
+            </div>
 
             <?php
             /*

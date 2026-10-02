@@ -132,7 +132,17 @@ function ai_agent_enqueue(){
         'theme_mode'       => $theme_mode,
         'session_cookie'   => AI_AGENT_SESSION_COOKIE,
         // حداکثر تعداد عکس‌های مجاز در هر پیام چت (سنجاق)
-        'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 4,
+        'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 10,
+        /*
+        nonce اندپوینت‌های تازه‌ی بازدیدکننده: تبدیل صدا به متن و
+        انتقال گفت‌وگو به بله.
+
+        استریم چت خودش nonce ندارد چون هر بازدیدکننده‌ای — از جمله
+        خارج‌شده از حساب — باید بتواند پیام بفرستد. اما «انتقال»
+        گفت‌وگوی جاری را می‌بندد و برایش کد صادر می‌کند، پس همان
+        محافظت ارزانِ CSRF را می‌گیرد.
+        */
+        'transfer_nonce'   => wp_create_nonce('ai_agent_chat_nonce_action'),
     )
 );
 

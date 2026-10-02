@@ -3,7 +3,7 @@
 Plugin Name: Dunichat
 Plugin URI: https://dunichat.ir
 Description: دستیار هوشمند دانیچت محصولی از دانیجت
-Version: 2.6.3
+Version: 2.6.5
 Requires at least: 6.0
 Requires PHP: 7.4
 Author: Dunijet
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 
 // Asset URLs are versioned with this, so a plugin update does not leave
 // browsers serving last release's CSS from cache.
-define('AI_AGENT_VERSION', '2.6.3');
+define('AI_AGENT_VERSION', '2.6.5');
 
 /*
 مقدار روشن‌شدن رنگ برند برای حالت تاریک (فقط برای پیش‌نمایش رنگ در
@@ -39,7 +39,9 @@ require_once AI_AGENT_PATH.'includes/settings.php';
 require_once AI_AGENT_PATH.'includes/sync.php';
 require_once AI_AGENT_PATH.'includes/enqueue.php';
 require_once AI_AGENT_PATH.'includes/api.php';
+require_once AI_AGENT_PATH.'includes/api-extras.php';
 require_once AI_AGENT_PATH.'includes/ajax.php';
+require_once AI_AGENT_PATH.'includes/ajax-extras.php';
 require_once AI_AGENT_PATH.'includes/widget.php';
 require_once AI_AGENT_PATH.'includes/updater.php';
 require_once AI_AGENT_PATH.'includes/scheduled-sync.php';
