@@ -53,6 +53,18 @@ function ai_agent_chat() {
     $message    = isset($_POST['message'])    ? sanitize_text_field($_POST['message'])    : '';
     $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
 
+    /*
+    توکن بازدیدکننده (visitor_id): رشته‌ی هگز ۱۶ تا ۶۴ کاراکتری که
+    خود مرورگر می‌سازد و نگه می‌دارد. فقط برای ساخته‌شدن گفت‌وگوی
+    تازه به کار می‌آید — سرور آن را شناسه‌ی همان گفت‌وگو می‌کند تا
+    بعداً فهرست «گفت‌وگوهای پیشین» همین مرورگر قابل گرفتن باشد.
+    مقدار نامعتبر اصلاً پاس داده نمی‌شود.
+    */
+    $visitor_id = isset($_POST['visitor_id']) ? strtolower(sanitize_text_field($_POST['visitor_id'])) : '';
+    if (!preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        $visitor_id = '';
+    }
+
     // ۴.۵) دریافت عکس‌های ارسالی کاربر (آرایه‌ای از data URL های base64)
     // هر آیتم باید با "data:image/" شروع شود تا فقط عکس پذیرفته باشد.
     // حداکثر AI_AGENT_MAX_CHAT_IMAGES عکس پذیرفته می‌شود (پیش‌فرض ۴).
@@ -143,29 +155,21 @@ function ai_agent_chat() {
         @flush();
     };
     // ۱۰) فراخوانی تابع استریم در api.php
-    // آرایه‌ی images (data URL های base64) به تابع استریم پاس داده می‌شود
-    // تا در بدنه‌ی JSON درخواست به /api/v1/chat/messages قرار گیرد.
-    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references, $images);
+    // آرایه‌ی images (data URL های base64) و توکن بازدیدکننده به تابع
+    // استریم پاس داده می‌شوند تا در بدنه‌ی JSON درخواست به /api/v1/chat/messages
+    // قرار گیرند (images و metadata.visitor_id).
+    $result = ai_agent_call_api_stream($message, $session_id, $on_chunk, null, $on_error, $on_escalate, $on_references, $images, $visitor_id);
     //DEBUG
     error_log('AI_AGENT_DEBUG result: ' . print_r($result, true));
     // ۱۱) در صورت موفقیت، ذخیره‌ی کامل پاسخ در دیتابیس و ارسال رویداد done
     if (isset($result['status']) && $result['status'] === 'success') {
-        // اگر API یک session_id جدید برگرداند، آن را در کوکی ذخیره و به JS ارسال مۋ‌کنیم
+        // اگر API یک session_id جدید برگرداند، آن را به JS می‌فرستیم تا در
+        // کوکیِ JSON ذخیره کند. کوکی دیگر سرور نوشته نمی‌شود چون مقدارش
+        // اکنون یک JSON با فهرستِ همه‌ی گفت‌وگوهاست و فقط کلاینت مالکش
+        // است. (نوشتنِ UUID تکی از سمت سرور، فهرستِ گفت‌وگوها را پاک
+        // می‌کرد.)
         if (!empty($result['session_id'])) {
             $session_id = $result['session_id'];
-            // ذخیره در کوکی مرورگر (عمر یک هفته)
-            if (!headers_sent()) {
-                setcookie(
-                    AI_AGENT_SESSION_COOKIE,
-                    $session_id,
-                    array(
-                        'expires'  => time() + AI_AGENT_SESSION_COOKIE_EXPIRE,
-                        'path'     => '/',
-                        'httponly' => false,
-                        'samesite' => 'Lax',
-                    )
-                );
-            }
             // ارسال session_id به JS عبر SSE تا در کوکی ذخیره شود
             ai_agent_sse_send(array(
                 'type'       => 'session_init',
@@ -213,35 +217,6 @@ add_action('wp_ajax_nopriv_ai_agent_chat', 'ai_agent_chat');
 function ai_agent_sse_send($data) {
     echo 'data: ' . wp_json_encode($data) . "\n\n";
 }
-
-/*
-============================================
-سرچ / لیست مدل‌های هوش مصنوعی برای پنل تنظیمات (فقط ادمین)
-============================================
-*/
-function ai_agent_search_models_handler() {
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array('message' => 'شما دسترسی کافی برای این عملیات را ندارید.'));
-    }
-
-    if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'ai_agent_models_nonce_action')) {
-        wp_send_json_error(array('message' => 'خطای امنیتی! اعتبار‌سنجی درخواست ناموفق بود.'));
-    }
-
-    $q     = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
-    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 10;
-    $limit = $limit > 0 ? $limit : 10;
-
-    $models = ai_agent_fetch_models($q, $limit);
-
-    if ($models === false) {
-        wp_send_json_error(array('message' => 'خطا در دریافت لیست مدل‌ها از سرور.'));
-    }
-
-    wp_send_json_success(array('models' => $models));
-}
-add_action('wp_ajax_ai_agent_search_models', 'ai_agent_search_models_handler');
 
 /*
 ============================================
@@ -347,6 +322,63 @@ function ai_agent_get_history_handler() {
 }
 add_action('wp_ajax_ai_agent_get_history', 'ai_agent_get_history_handler');
 add_action('wp_ajax_nopriv_ai_agent_get_history', 'ai_agent_get_history_handler');
+
+/*
+============================================
+هندلر AJAX: فهرست گفت‌وگوهای پیشینِ همین بازدیدکننده
+
+کلید API هرگز به مرورگر نمی‌رسد؛ درخواست از این‌جا با کلید سایت به
+سرور زده می‌شود و فقط عنوان و تعداد پیام هر گفت‌وگو برمی‌گردد.
+
+نانس ندارد و برای کاربر مهمان هم باز است، چون بازدیدکننده‌ی یک
+فروشگاه لاگین نکرده. چیزی که دسترسی را محدود می‌کند خودِ توکن
+است: بدون آن، این اندپوینت چیزی برنمی‌گرداند.
+============================================
+*/
+function ai_agent_visitor_sessions_handler()
+{
+    $visitor_id = isset($_GET['visitor_id']) ? strtolower(sanitize_text_field($_GET['visitor_id'])) : '';
+    if (!preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        wp_send_json_success(array('items' => array()));
+    }
+
+    $result = ai_agent_fetch_visitor_sessions($visitor_id, 20);
+
+    /*
+    ساختارِ پاسخ سرور با چند شکل ممکن پردازش می‌شود تا هیچ‌وقت یک
+    فهرستِ واقعی به‌خاطر تفاوت شکلِ پاسخ، خالی نمایش داده نشود:
+        - { "items": [...] }        شکل مورد انتظار فعلی
+        - { "results": [...] }      شکل صفحه‌بندیِ مرسوم (DRF)
+        - [ {...}, {...} ]          آرایه‌ی ساده از جلسات
+    */
+    $items = array();
+    if (is_array($result)) {
+        if (isset($result['items']) && is_array($result['items'])) {
+            $items = $result['items'];
+        } elseif (isset($result['results']) && is_array($result['results'])) {
+            $items = $result['results'];
+        } elseif (wp_is_numeric_array($result)) {
+            $items = $result;
+        }
+    }
+
+    // فقط همان چند فیلدی که کشو نشان می‌دهد به مرورگر می‌رود.
+    $clean = array();
+    foreach ($items as $item) {
+        if (!is_array($item) || empty($item['id'])) {
+            continue;
+        }
+        $clean[] = array(
+            'id'            => (string) $item['id'],
+            'title'         => isset($item['title']) ? (string) $item['title'] : '',
+            'message_count' => isset($item['message_count']) ? intval($item['message_count']) : 0,
+        );
+    }
+
+    wp_send_json_success(array('items' => $clean));
+}
+add_action('wp_ajax_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
+add_action('wp_ajax_nopriv_ai_agent_visitor_sessions', 'ai_agent_visitor_sessions_handler');
 
 /*
 ============================================
@@ -585,7 +617,7 @@ add_action('wp_ajax_ai_agent_session_close', 'ai_agent_session_close_handler');
 اندپوینت بالادستی:
     POST /api/v1/chat/sessions/{session_id}/return-to-bot
     هدرها: X-API-Key, session-id
-    بدنه: {"additionalProp1": {}}
+    بدنه: ندارد (طبق API جدید)
 
 پس از فراخوانی موفق، جلسه به وضعیت bot بازمی‌گردد و کاربر از این پس
 پاسخ‌های خودکار ربات را دریافت می‌کند. این هندلر از پنل تاریخچه چت‌ها

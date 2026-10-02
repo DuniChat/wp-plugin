@@ -4,20 +4,49 @@ if (!defined('ABSPATH')) exit;
 
 function ai_agent_get_settings(){
     $defaults = array(
-        'model'               => 'tencent/hy3:free',
         'color'               => '#F4865B',
-        // ====== رنگ دستیار (دو رنگ مستقل برای حالت لایت و دارک) ======
-        // color_light: رنگ ویجت وقتی چت در حالت روشن (Light) است
-        // color_dark : رنگ ویجت وقتی چت در حالت تاریک (Dark) است
+        /*
+        ====== رنگ دستیار ======
+        color_light: رنگ پرایمری ویجت — روی دکمه‌ی شناور، هدر و دکمه‌ی
+        ارسال می‌نشیند و موقع نصب از رنگ اصلی خودِ سایت خوانده می‌شود.
+
+        color_dark: رنگ همان عناصر در حالت تاریک. به‌صورت پیش‌فرض از
+        color_light با ضریب AI_AGENT_DARK_LIFT ساخته می‌شود (حالت
+        خودکار)؛ کاربر می‌تواند در صفحه‌ی تنظیمات با پالت یا کد هگز
+        دلخواه، آن را به‌صورت دستی عوض کند (color_dark_custom = 1).
+        */
         'color_light'         => '#F4865B',
         'color_dark'          => '#F4865B',
+        // آیا کاربر به‌صورت دستی رنگ تاریک را عوض کرده (1) یا هنوز روی
+        // پیشنهاد خودکار است (0). در حالتِ auto، با هر تغییرِ رنگِ روشن،
+        // رنگِ تاریک هم از همان فرمولِ auto ساخته می‌شود.
+        'color_dark_custom'   => '0',
+
+        'sync_schedule'       => 'every_3_days', // manual | daily | every_3_days | weekly
+        'sync_hour'           => 0,             // ساعت اجرای خودکار (۰ = نیمه‌شب به وقت سایت)
+
+        /*
+        ============================================
+        تم چت — از این‌جا کنترل می‌شود، نه از داخل ویجت
+
+        آیکون ماه/خورشید داخل هدر چت حذف شد. تم دیگر انتخابِ
+        بازدیدکننده نیست:
+          - theme_mode = auto  : از تم خود سایت/سیستم پیروی می‌کند
+          - theme_mode = light : همیشه روشن
+          - theme_mode = dark  : همیشه تاریک
+
+        و رنگ پس‌زمینه‌ی صفحه‌ی چت در هر دو حالت این‌جا قابل تغییر است.
+        این سه فیلد صرفاً ظاهری‌اند و مستقیماً توسط ویجت خوانده می‌شوند.
+        ============================================
+        */
+        'theme_mode'          => 'auto',    // auto | light | dark
+        'chat_bg_light'       => '#FAF9F5',
+        'chat_bg_dark'        => '#1F1E1D',
         'timeout'             => 15,
-        'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها
-        'system_prompt'       => '',      // پرامت سیستم (از API همگام‌سازی خوانده می‌شود)
+        'sync_types'          => array(), // فیلد آرایه‌ای برای چک‌باکس‌ها (تنظیم محلی — سینک کدام نوع محتوا)
         'api_key'             => '',      // کلید API کاربر برای احراز هویت با سرور همگام‌سازی
-        'daily_message_limit' => 0,       // حداکثر پیام روزانه (قابل ویرایش کاربر و ارسال به سرور)
-        'allowed_statuses'    => array(), // وضعیت‌های مجاز برای هر نوع محتوا (از سرور همگام‌سازی)
-        'sync_images'         => false,   // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (allow-image / deny-image)
+        'daily_message_limit' => 0,       // حداکثر پیام روزانه (فقط‌خواندنی از سرور — در پنل دانیچَت تنظیم می‌شود)
+        'sync_images'         => false,   // آیا تصاویر محتوا هنگام سینک ارسال شوند؟ (تنظیم محلی)
 
         /*
         ============================================
@@ -98,20 +127,27 @@ function ai_agent_sanitize_settings($input){
     $old    = get_option('ai_agent_settings', array());
     $output = array();
 
-    // چون لیست مدل‌ها به‌صورت پویا از API خارجی خوانده می‌شود، آرایه ثابتی برای اعتبارسنجی وجود ندارد
-    $output['model'] = (isset($input['model']) && trim($input['model']) !== '') ? sanitize_text_field($input['model']) : 'tencent/hy3:free';
-
     /*
     ============================================
-    رنگ دستیار — دو رنگ مستقل برای حالت لایت و دارک
+    رنگ دستیار — یک رنگ پرایمری + رنگ دارکِ (auto یا custom)
 
-    color_light: رنگ ویجت در حالت روشن (Light)
-    color_dark : رنگ ویجت در حالت تاریک (Dark)
+    color_light: رنگ پرایمری ویجت (دکمه‌ی شناور، هدر، دکمه‌ی ارسال).
+    انتخاب رنگ هیچ اجباری‌ای ندارد: کاربر می‌تواند رنگ سایتش را بزند، یا
+    از پالت آماده یکی بردارد، یا کد هگز دستی بنویسد، یا با کلیک روی
+    دایره‌ی رنگ، رنگ دلخواهش را همان‌جا بسازد.
 
     اگر کاربر رنگی را پاک کند (خالی بفرستد)، مقدار قبلی ذخیره‌شده
     حفظ می‌شود؛ و اگر مقدار قبلی هم نبود، رنگ پیش‌فرض برند اعمال می‌شود.
     کلید قدیمی color نیز برای سازگاری با نسخه‌های قبلی معتبر می‌ماند
     و همیشه با مقدار color_light همگام نگه داشته می‌شود.
+
+    color_dark از فرم دریافت می‌شود. اگر کاربر رنگ تاریک را دستی عوض
+    نکرده (color_dark_custom = 0) یا مقدار خالی/نامعتبر فرستاده، حالت
+    خودکار فعال است و مقدار از color_light با ضریب AI_AGENT_DARK_LIFT
+    ساخته می‌شود. اگر کاربر رنگ تاریک را دستی عوض کرده (color_dark_custom
+    = 1) و مقدار معتبر است، همان مقدار ذخیره می‌شود. این‌طوری منطقِ
+    قدیمی (ساختِ خودکارِ رنگ دارک از رنگ روشن) کاملاً حفظ می‌شود و
+    در عین حال امکانِ سفارشی‌سازیِ رنگ دارک هم فراهم می‌شود.
     ============================================
     */
     $color_light = isset($input['color_light']) ? sanitize_hex_color($input['color_light']) : '';
@@ -120,29 +156,88 @@ function ai_agent_sanitize_settings($input){
     }
     $output['color_light'] = $color_light;
 
-    $color_dark = isset($input['color_dark']) ? sanitize_hex_color($input['color_dark']) : '';
-    if (!$color_dark) {
-        $color_dark = (isset($old['color_dark']) && sanitize_hex_color($old['color_dark'])) ? sanitize_hex_color($old['color_dark']) : '#F4865B';
-    }
-    $output['color_dark'] = $color_dark;
+    // رنگ حالت تاریک: یا از ورودی کاربر، یا از همان فرمولِ auto
+    $auto_dark = function_exists('ai_agent_lighten_hex')
+        ? ai_agent_lighten_hex($color_light, AI_AGENT_DARK_LIFT)
+        : $color_light;
 
-    // کلید قدیمی color برای سازگاری (معادل رنگ حالت روشن)
+    $color_dark_input = isset($input['color_dark']) ? sanitize_hex_color($input['color_dark']) : '';
+    $color_dark_custom = isset($input['color_dark_custom']) ? (string) $input['color_dark_custom'] : '0';
+
+    if ($color_dark_custom === '1' && $color_dark_input && strtolower($color_dark_input) !== strtolower($auto_dark)) {
+        // کاربر به‌صورت دستی یک رنگ تاریکِ متفاوت از پیشنهادِ خودکار انتخاب کرده
+        $output['color_dark'] = $color_dark_input;
+        $output['color_dark_custom'] = '1';
+    } else {
+        // حالت خودکار: از همان فرمولِ auto استفاده می‌شود
+        $output['color_dark'] = $auto_dark;
+        $output['color_dark_custom'] = '0';
+    }
+
+    // کلید قدیمی color برای سازگاری (معادل رنگ پرایمری)
+
+    /*
+    تم چت: فقط سه مقدار مجاز است؛ هر چیز دیگری به auto برمی‌گردد.
+    رنگ پس‌زمینه‌ی چت هم فقط hex معتبر؛ در نبود مقدار معتبر، پیش‌فرض گرم.
+    */
+    $theme_mode = isset($input['theme_mode']) ? sanitize_text_field($input['theme_mode']) : 'auto';
+    $output['theme_mode'] = in_array($theme_mode, array('auto', 'light', 'dark'), true) ? $theme_mode : 'auto';
+
+    $bg_light = isset($input['chat_bg_light']) ? sanitize_hex_color($input['chat_bg_light']) : '';
+    $output['chat_bg_light'] = $bg_light ? $bg_light : '#FAF9F5';
+
+    $bg_dark = isset($input['chat_bg_dark']) ? sanitize_hex_color($input['chat_bg_dark']) : '';
+    $output['chat_bg_dark'] = $bg_dark ? $bg_dark : '#1F1E1D';
+
     $output['color'] = $color_light;
 
     $timeout = isset($input['timeout']) ? intval($input['timeout']) : 15;
     $output['timeout'] = $timeout > 0 ? $timeout : 15;
 
-    // پاکسازی آرایه چک‌باکس‌های سینک
+    // پاکسازی آرایه چک‌باکس‌های سینک (تنظیم محلی)
     $output['sync_types'] = (isset($input['sync_types']) && is_array($input['sync_types'])) ? array_map('sanitize_text_field', $input['sync_types']) : array();
 
-    // پاکسازی پرامت سیستم (متن چندخطی)
-    $output['system_prompt'] = isset($input['system_prompt']) ? sanitize_textarea_field($input['system_prompt']) : '';
+    /*
+    ============================================
+    همگام‌سازی خودکار — ریتم و ساعت اجرا
+
+    ریتم فقط چهار مقدار شناخته‌شده دارد؛ مقدار نامعتبر به مقدار قبلی
+    (یا پیش‌فرض هر سه روز) برمی‌گردد. ساعتِ اجرا هم بین ۰ تا ۲۳ کلمپ
+    می‌شود. خودِ زمان‌بند (WP-Cron) بعد از ذخیره‌ی تنظیمات، با اکشن
+    update_option_ai_agent_settings خودش را با این مقادیر هم‌راستا
+    می‌کند.
+    ============================================
+    */
+    $allowed_schedules = array('daily', 'every_3_days', 'weekly', 'manual');
+    $schedule = isset($input['sync_schedule']) ? sanitize_text_field($input['sync_schedule']) : '';
+    if (!in_array($schedule, $allowed_schedules, true)) {
+        $schedule = (isset($old['sync_schedule']) && in_array($old['sync_schedule'], $allowed_schedules, true))
+            ? $old['sync_schedule']
+            : 'every_3_days';
+    }
+    $output['sync_schedule'] = $schedule;
+
+    $sync_hour = isset($input['sync_hour']) ? intval(ai_agent_en_digits($input['sync_hour'])) : 0;
+    $output['sync_hour'] = min(23, max(0, $sync_hour));
 
     // پاکسازی API Key (کلید احراز هویت کاربر با سرور همگام‌سازی)
     $output['api_key'] = isset($input['api_key']) ? sanitize_text_field($input['api_key']) : '';
 
-    // daily_message_limit: اکنون به‌صورت numeric updown قابل ویرایش توسط کاربر است
-    // مقدار واردشده توسط کاربر اعمال می‌شود؛ در صورت نبود، مقدار قبلی حفظ می‌گردد
+    /*
+    پرچم «حذف کامل توکن» (api_key_delete):
+    دکمه‌ی حذف توکن در پنل این فیلد مخفی را ۱ می‌کند. حذفِ واقعیِ
+    کلیدِ رمزنگاری‌شده در فیلتر pre_update_option_ai_agent_settings
+    (تابع ai_agent_persist_api_key_on_save) انجام می‌شود؛ این‌جا فقط
+    پرچم معتبر عبور داده می‌شود. حذف فقط وقتی معتبر است که فیلدِ
+    توکن هم خالی باشد (اگر کاربر توکن جدیدی همزمان وارد کرده باشد،
+    توکن جدید جایگزین می‌شود و پرچم بی‌اثر است).
+    */
+    $api_key_delete = isset($input['api_key_delete']) ? (string) $input['api_key_delete'] : '0';
+    $output['api_key_delete'] = ($api_key_delete === '1' && $output['api_key'] === '') ? '1' : '0';
+
+    // daily_message_limit: مقدار واردشده توسط کاربر اعمال می‌شود؛ در صورت
+    // نبود، مقدار قبلی حفظ می‌گردد. (این مقدار فقط محلی است؛ سقف نهایی
+    // روزانه در پنل دانیچَت تنظیم می‌شود و از سرور خوانده می‌شود.)
     $daily_limit = isset($input['daily_message_limit']) ? intval($input['daily_message_limit']) : null;
     if ($daily_limit === null) {
         $output['daily_message_limit'] = isset($old['daily_message_limit']) ? intval($old['daily_message_limit']) : 0;
@@ -150,11 +245,8 @@ function ai_agent_sanitize_settings($input){
         $output['daily_message_limit'] = max(0, $daily_limit);
     }
 
-    // sync_images: چک‌باکس «سینک کردن تصاویر» — اگر تیک خورده باشد true
+    // sync_images: چک‌باکس «سینک کردن تصاویر» — اگر تیک خورده باشد true (تنظیم محلی)
     $output['sync_images'] = !empty($input['sync_images']);
-
-    // allowed_statuses همچنان تنها از سرور همگام‌سازی پر می‌شود (این‌جا فقط حفظ مقدار قبلی)
-    $output['allowed_statuses']    = isset($old['allowed_statuses']) && is_array($old['allowed_statuses']) ? $old['allowed_statuses'] : array();
 
     /*
     ============================================
@@ -218,11 +310,26 @@ function ai_agent_persist_api_key_on_save($value, $old_value, $option){
 
     $raw_api_key = isset($value['api_key']) ? trim((string) $value['api_key']) : '';
 
+    /*
+    درخواست حذف کامل توکن: پرچم api_key_delete = 1 (که سانایتیزر
+    فقط وقتی آن را معتبر نگه می‌دارد که فیلد توکن خالی باشد) یعنی
+    کاربر روی «حذف توکن» زده و تأیید کرده است. در این حالت کلید
+    رمزنگاری‌شده از wp_options به‌طور کامل پاک می‌شود و بعد از ذخیره،
+    بج وضعیت توکن «ثبت نشده» را نشان می‌دهد.
+    */
+    $wants_key_delete = (isset($value['api_key_delete']) && $value['api_key_delete'] === '1');
+
     if ($raw_api_key !== '') {
         // کاربر کلید جدید وارد کرده → نسخه‌ی رمزنگاری‌شده را ذخیره کن
         ai_agent_save_api_key($raw_api_key);
+    } elseif ($wants_key_delete) {
+        // درخواست حذف کامل: کلید رمزنگاری‌شده از دیتابیس پاک می‌شود
+        ai_agent_delete_api_key();
     }
-    // اگر خالی بود، هیچ کاری نمی‌کنیم تا کلید قبلی حفظ شود
+    // اگر خالی بود و پرچم حذف هم نبود، هیچ کاری نمی‌کنیم تا کلید قبلی حفظ شود
+
+    // پرچم حذف، تنظیمات واقعی سایت نیست و نباید در wp_options بماند
+    unset($value['api_key_delete']);
 
     return $value;
 }
@@ -246,9 +353,10 @@ add_filter('pre_update_option_ai_agent_settings', 'ai_agent_persist_api_key_on_s
        - خطای ارتباطی / کد HTTP غیر 200
        - پاسخ شامل کلید detail (خطای سرور، مثل کلید API نامعتبر)
        - پاسخ فاقد هیچ‌کدام از کلیدهای مورد انتظار
-  ۴) در صورت موفقیت، مقادیر دریافتی (selected_model, system_prompt,
-     allowed_content_types, allowed_statuses, daily_message_limit)
-     روی گزینه‌ی ai_agent_settings اعمال و ذخیره می‌شوند.
+  ۴) در صورت موفقیت، مقادیر دریافتی (daily_message_limit) روی گزینه‌ی
+     ai_agent_settings اعمال و ذخیره می‌شوند. سایر فیلدهای پاسخ
+     (selected_model, starter_questions, organization_name, asr_enabled,
+     tts_enabled) فقط‌خواندنی هستند و در پنل دانیچَت مدیریت می‌شوند.
 
 خروجی: همیشه یک آرایه با کلیدهای:
     status  => success | skipped | error
@@ -303,13 +411,17 @@ function ai_agent_sync_settings_from_server(){
         );
     }
 
-    // ۵. بررسی وجود حداقل یکی از کلیدهای مورد انتظار در پاسخ
+    // ۵. بررسی وجود حداقل یکی از کلیدهای مورد انتظار در پاسخ جدید
+    //    پاسخ GET /sync/settings فقط‌خواندنی است و شامل این فیلدهاست:
+    //    selected_model, daily_message_limit, starter_questions,
+    //    organization_name, asr_enabled, tts_enabled
     $has_expected = (
         isset($remote['selected_model']) ||
-        isset($remote['system_prompt']) ||
-        isset($remote['allowed_content_types']) ||
-        isset($remote['allowed_statuses']) ||
-        isset($remote['daily_message_limit'])
+        isset($remote['daily_message_limit']) ||
+        isset($remote['starter_questions']) ||
+        isset($remote['organization_name']) ||
+        isset($remote['asr_enabled']) ||
+        isset($remote['tts_enabled'])
     );
 
     if (!$has_expected) {
@@ -321,62 +433,24 @@ function ai_agent_sync_settings_from_server(){
     }
 
     // ۶. اعمال مقادیر دریافتی روی تنظیمات محلی
+    //    تنها daily_message_limit از سرور خوانده و روی تنظیمات محلی اعمال
+    //    می‌شود. model و system_prompt دیگر بخشی از افزونه نیستند (در پنل
+    //    دانیچَت مدیریت می‌شوند). sync_types و sync_images نیز از این پس
+    //    تنظیماتی صرفاً محلی هستند و از سرور بازنویسی نمی‌شوند.
     $settings = ai_agent_get_settings();
 
-    if (isset($remote['selected_model']) && is_string($remote['selected_model']) && $remote['selected_model'] !== '') {
-        $settings['model'] = $remote['selected_model'];
-    }
-    if (isset($remote['system_prompt']) && is_string($remote['system_prompt'])) {
-        $settings['system_prompt'] = $remote['system_prompt'];
-    }
-    if (isset($remote['allowed_content_types']) && is_array($remote['allowed_content_types'])) {
-        $settings['sync_types'] = ai_agent_map_content_types($remote['allowed_content_types']);
-    }
     if (isset($remote['daily_message_limit'])) {
         $settings['daily_message_limit'] = intval($remote['daily_message_limit']);
     }
-    if (isset($remote['allowed_statuses']) && is_array($remote['allowed_statuses'])) {
-        $settings['allowed_statuses'] = $remote['allowed_statuses'];
-    }
 
-    /*
-    ============================================
-    Parse کردن مقدار sync_images از allowed_statuses دریافتی از سرور:
-    اگر در هر کلیدِ allowed_statuses مقدار 'allow-image' وجود داشته باشد،
-    یعنی کاربر قبلاً تیک سینک تصاویر را زده → true؛ در غیر این صورت false.
-    این مقدار در بارگذاری اولیه‌ی صفحه‌ی تنظیمات، state چک‌باکس را تعیین می‌کند.
-    ============================================
-    */
-    $settings['sync_images'] = false;
-    if (isset($remote['allowed_statuses']) && is_array($remote['allowed_statuses'])) {
-        foreach ($remote['allowed_statuses'] as $key => $statuses) {
-            if (is_array($statuses) && in_array('allow-image', $statuses, true)) {
-                $settings['sync_images'] = true;
-                break;
-            }
-            // پشتیبانی از حالتی که مقدار به‌جای آرایه، مستقیم string باشد
-            if (is_string($statuses) && $statuses === 'allow-image') {
-                $settings['sync_images'] = true;
-                break;
-            }
-        }
-    }
-
-    // ۷. ذخیره در دیتابیس؛ چون این مقدار از سرور می‌آید (نه فرم کاربر):
-    //    الف) اکشن update_option_ai_agent_settings موقتاً قطع می‌شود تا این
-    //        ذخیره‌سازی داخلی باعث اجرای دوباره‌ی چرخه‌ی PATCH+GET نشود.
-    //    ب) فیلتر sanitize_option مربوط به فرم (ai_agent_sanitize_settings)
-    //        نیز موقتاً قطع می‌شود؛ چون آن تابع مخصوص ورودی فرم است و
-    //        مقادیر daily_message_limit / allowed_statuses را همیشه از
-    //        مقدار قبلی (old) بازمی‌گرداند و مقادیر تازه‌ی سرور را نادیده
-    //        می‌گیرد.
-    remove_action('update_option_ai_agent_settings', 'ai_agent_after_settings_saved', 10);
+    // ۷. ذخیره در دیتابیس؛ چون این مقدار از سرور می‌آید (نه فرم کاربر)،
+    //    فیلتر sanitize_option مربوط به فرم موقتاً قطع می‌شود تا مقادیر
+    //    تازه‌ی سرور دست‌خوش اعتبارسنجیِ مخصوصِ فرم نشود.
     remove_filter('sanitize_option_ai_agent_settings', 'ai_agent_sanitize_settings');
 
     update_option('ai_agent_settings', $settings);
 
     add_filter('sanitize_option_ai_agent_settings', 'ai_agent_sanitize_settings');
-    add_action('update_option_ai_agent_settings', 'ai_agent_after_settings_saved', 10, 2);
 
     $in_progress = false;
 
@@ -386,78 +460,6 @@ function ai_agent_sync_settings_from_server(){
         'data'    => $settings,
     );
 }
-
-/*
-============================================
-اجرا بلافاصله پس از ذخیره‌ی تنظیمات توسط کاربر (کلیک روی
-دکمه‌ی «ذخیره تنظیمات افزونه»)
-
-روند کار:
-  ۱) مقادیری که کاربر همین الان ذخیره کرده (مدل، پرامت سیستم،
-     منابع محتوای مجاز و ...) با متد PATCH به سرور ارسال می‌شوند.
-  ۲) صرف‌نظر از نتیجه‌ی PATCH، بلافاصله تابع واحد
-     ai_agent_sync_settings_from_server() برای بازخوانی (GET)
-     مقادیر نهایی از سرور فراخوانی می‌شود (سرور ممکن است مقادیر
-     ارسالی را اصلاح/نرمال‌سازی کرده باشد).
-  ۳) نتیجه‌ی نهایی در transient ذخیره می‌شود تا در بارگذاری بعدی
-     صفحه‌ی تنظیمات یک‌بار نمایش داده شود.
-============================================
-*/
-function ai_agent_after_settings_saved($old_value, $value){
-
-    $api_key = ai_agent_get_api_key();
-
-    // اگر API Key خالی بود، نه PATCH و نه GET زده نمی‌شود
-    if (empty($api_key)) {
-        set_transient('ai_agent_sync_result', array(
-            'status'  => 'skipped',
-            'message' => 'API Key خالی است؛ اندپوینت همگام‌سازی فراخوانی نشد. لطفاً کلید معتبر وارد کرده و مجدد ذخیره کنید.',
-        ), 60);
-        return;
-    }
-
-    /*
-    ============================================
-    ساخت بدنه‌ی PATCH برای /api/v1/sync/settings.
-
-    نکته‌ی مهم: مقدار sync_images (تیک سینک تصاویر) در قالب کلید 'image'
-    داخل allowed_statuses به سرور ارسال می‌شود:
-        - تیک خورده  → allowed_statuses['image'] = ['allow-image']
-        - تیک نخورده → allowed_statuses['image'] = ['deny-image']
-    این کلید در بارگذاری بعدی (GET) توسط ai_agent_sync_settings_from_server
-    خوانده شده و state چک‌باکس را تعیین می‌کند.
-
-    سایر کلیدهای allowed_statuses که از سرور دریافت شده‌اند حفظ می‌شوند.
-    ============================================
-    */
-    $existing_allowed_statuses = (!empty($value['allowed_statuses']) && is_array($value['allowed_statuses']))
-        ? $value['allowed_statuses']
-        : array();
-
-    // حذف کلید قدیمی 'image' اگر وجود داشت تا با مقدار تازه جایگزین شود
-    unset($existing_allowed_statuses['image']);
-    $image_value = !empty($value['sync_images']) ? 'allow-image' : 'deny-image';
-    $existing_allowed_statuses['image'] = array($image_value);
-
-    // ۱. ارسال (PATCH) مقادیر تازه ذخیره‌شده‌ی کاربر به سرور
-    $push_payload = array(
-        'selected_model'        => isset($value['model']) ? (string) $value['model'] : '',
-        'system_prompt'         => isset($value['system_prompt']) ? (string) $value['system_prompt'] : '',
-        'allowed_content_types' => ai_agent_unmap_content_types(isset($value['sync_types']) ? $value['sync_types'] : array()),
-        'allowed_statuses'      => $existing_allowed_statuses,
-        'daily_message_limit'   => isset($value['daily_message_limit']) ? intval($value['daily_message_limit']) : 0,
-    );
-
-    ai_agent_push_sync_settings($push_payload);
-    // نتیجه‌ی خام PATCH عمداً بررسی نمی‌شود؛ در قدم بعد با GET،
-    // مقادیر واقعی و نهایی سرور خوانده و روی افزونه اعمال می‌شود.
-
-    // ۲. بازخوانی مقادیر نهایی از سرور با همان تابع واحد GET
-    $result = ai_agent_sync_settings_from_server();
-
-    set_transient('ai_agent_sync_result', $result, 60);
-}
-add_action('update_option_ai_agent_settings', 'ai_agent_after_settings_saved', 10, 2);
 
 /*
 ============================================
@@ -529,13 +531,24 @@ function ai_agent_add_menu(){
 }
 add_action('admin_menu', 'ai_agent_add_menu');
 
+/*
+==========================================================================
+صفحه‌ی تنظیمات — طراحی جدید (مبتنی بر دیزاین‌سیستم daniChat admin)
+
+نکته‌ی منطق: همه‌ی عملیات‌ها مثل قبل با همان اندپوینت‌ها و همان
+فرم options.php انجام می‌شوند. تنظیمات «خودکار» ذخیره نمی‌شوند؛
+کاربر با دکمه‌ی «ذخیره تنظیمات» (انتهای فرم) ثبت می‌کند.
+==========================================================================
+*/
 function ai_agent_settings_page(){
     if (!current_user_can('manage_options')) return;
 
     $settings = ai_agent_get_settings();
+
     $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : 'ai-agent-settings';
-    // اگر کاربر از زیرمنوی «تاریخچه چت‌ها» وارد شده باشد، تب پیش‌فرض history است
+    // اگر کاربر از زیرمنوی «تاریخچه چت‌ها» وارد شده باشد، نمای پیش‌فرض history است
     $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : (($current_page === 'ai-agent-settings-history') ? 'history' : 'general');
+    $initial_view = ($current_tab === 'history') ? 'history' : 'settings';
 
     /*
     ============================================
@@ -543,48 +556,86 @@ function ai_agent_settings_page(){
     ai_agent_sync_settings_from_server()، در دو حالت:
 
     الف) بعد از کلیک روی «ذخیره تنظیمات افزونه»:
-       وردپرس گزینه‌ی ai_agent_settings را ذخیره می‌کند، اکشن
-       update_option_ai_agent_settings اجرا می‌شود (تابع
-       ai_agent_after_settings_saved) که داخل خودش یک‌بار
-       PATCH و سپس یک‌بار همین تابع واحد GET را صدا می‌زند و
-       نتیجه را در transient می‌گذارد. اینجا فقط transient
-       خوانده و برای نمایش استفاده می‌شود (بدون کال مجدد).
+       transient ai_agent_sync_result خوانده و پاک می‌شود.
 
-    ب) بار اول که کاربر صفحه‌ی تنظیمات را باز می‌کند (بدون اینکه
-       از فرم ذخیره ریدایرکت شده باشد): همین‌جا مستقیماً همان
-       تابع واحد فراخوانی می‌شود تا آخرین مقادیر از سرور خوانده
-       شود.
+    ب) بار اول که کاربر صفحه را باز می‌کند: همان تابع واحد مستقیماً
+       فراخوانی می‌شود تا آخرین مقادیر از سرور خوانده شود.
 
-    در هر دو حالت، $settings از خروجی همان یک تابع واحد پر می‌شود.
+    برخلاف طراحی قدیمی، نتیجه به‌صورت بنر قرمز/سبز بالای صفحه نمایش
+    داده نمی‌شود؛ وضعیت توکن داخل بخش «توکن سایت» نشان داده می‌شود
+    و خطاها هم همان‌جا به‌صورت یک یادداشت آرام می‌نشینند.
     ============================================
     */
-    $sync_notice = '';
+    $token_note      = '';
+    $token_note_kind = 'info';
 
-    if ($current_tab === 'general') {
+    $save_result = get_transient('ai_agent_sync_result');
+    if ($save_result !== false) {
+        delete_transient('ai_agent_sync_result');
+    } else {
+        $save_result = ai_agent_sync_settings_from_server();
+    }
 
-        $save_result = get_transient('ai_agent_sync_result');
-
-        if ($save_result !== false) {
-            // حالت «الف»: نتیجه‌ی حاصل از ذخیره‌ی تنظیمات؛ فقط یک‌بار نمایش داده می‌شود
-            delete_transient('ai_agent_sync_result');
-        } else {
-            // حالت «ب»: باز شدن عادی صفحه؛ همان تابع واحد مستقیماً فراخوانی می‌شود
-            $save_result = ai_agent_sync_settings_from_server();
-        }
-
+    if (is_array($save_result) && isset($save_result['status'])) {
         if ($save_result['status'] === 'success') {
-            $settings     = $save_result['data'];
-            $sync_notice  = '<div class="ai-agent-notice ai-agent-notice-success"><p>آخرین مقادیر با موفقیت از سرور همگام‌سازی دریافت شد.</p></div>';
-        } elseif ($save_result['status'] === 'skipped') {
-            $sync_notice = '<div class="ai-agent-notice ai-agent-notice-warning"><p>' . esc_html($save_result['message']) . '</p></div>';
-        } else { // error
-            $sync_notice = '<div class="ai-agent-notice ai-agent-notice-error"><p>خطا در همگام‌سازی: ' . esc_html($save_result['message']) . '</p></div>';
+            $settings = $save_result['data'];
+        } elseif ($save_result['status'] === 'error' && !empty($save_result['message'])) {
+            $token_note      = $save_result['message'];
+            $token_note_kind = 'error';
         }
     }
+
+    // وضعیت توکن بر اساس نتیجه‌ی واقعی سرور (نه فقط «رشته‌ای ذخیره شده یا نه»)
+    $has_api_key = !empty(ai_agent_get_api_key());
+    $token_state = 'missing';
+    if (is_array($save_result) && isset($save_result['status'])) {
+        if ($save_result['status'] === 'success') {
+            $token_state = 'connected';
+        } elseif ($save_result['status'] === 'error') {
+            $token_state = $has_api_key ? 'invalid' : 'missing';
+        } else { // skipped — کلیدی ثبت نشده؛ حالت عادی نصب تازه
+            $token_state = 'missing';
+        }
+    } elseif ($has_api_key) {
+        $token_state = 'invalid';
+    }
+
+    $sync_types  = isset($settings['sync_types']) && is_array($settings['sync_types']) ? $settings['sync_types'] : array();
+    $site_colors = function_exists('ai_agent_get_site_colors') ? ai_agent_get_site_colors() : array();
+
+    $color_light = isset($settings['color_light']) ? $settings['color_light'] : '#F4865B';
+    /*
+    رنگ حالت تاریک در زمانِ رندرِ صفحه‌ی تنظیمات: اگر کاربر به‌صورت
+    دستی رنگ تاریک را عوض کرده (color_dark_custom = 1)، همان مقدار
+    ذخیره‌شده نشان داده می‌شود. در غیر این‌صورت، از همان فرمولِ auto
+    ساخته می‌شود تا چیزی که کاربر در پیش‌نمایش می‌بیند با چیزی که روی
+    سایت می‌نشیند یکی باشد.
+    */
+    $color_dark_custom_render = isset($settings['color_dark_custom']) ? (string) $settings['color_dark_custom'] : '0';
+    $saved_color_dark_render  = isset($settings['color_dark']) ? sanitize_hex_color($settings['color_dark']) : '';
+    if ($color_dark_custom_render === '1' && $saved_color_dark_render) {
+        $color_dark = $saved_color_dark_render;
+    } else {
+        $color_dark = function_exists('ai_agent_lighten_hex')
+            ? ai_agent_lighten_hex($color_light, AI_AGENT_DARK_LIFT)
+            : $color_light;
+    }
+
+    $theme_mode    = isset($settings['theme_mode']) ? $settings['theme_mode'] : 'auto';
+    $chat_bg_light = isset($settings['chat_bg_light']) ? $settings['chat_bg_light'] : '#FAF9F5';
+    $chat_bg_dark  = isset($settings['chat_bg_dark']) ? $settings['chat_bg_dark'] : '#1F1E1D';
+
+    // آخرین زمان‌های سینک (همان گزینه‌هایی که سینک موقع اتمام می‌نویسد)
+    $last_sync_time     = get_option('ai_agent_last_sync_time', '');
+    $last_sync_all_time = get_option('ai_agent_last_sync_all_time', '');
+
+    // آخرین اجرای زمان‌بندی‌شده (WP-Cron) برای نمایش در آمار صفحه
+    $last_scheduled = function_exists('ai_agent_get_last_scheduled_sync')
+        ? ai_agent_get_last_scheduled_sync()
+        : null;
     ?>
     <div class="ai-agent-app" dir="rtl">
 
-        <!-- ====== Top App Bar ====== -->
         <header class="ai-agent-topbar">
             <div class="ai-agent-topbar-brand">
                 <div class="ai-agent-brand-mark" aria-hidden="true">
@@ -592,567 +643,727 @@ function ai_agent_settings_page(){
                 </div>
                 <div class="ai-agent-brand-text">
                     <h1>دانیچَت</h1>
-                    <span>پنل مدیریت دستیار هوش مصنوعی</span>
+                    <span>پنل دستیار هوشمند سایت</span>
                 </div>
             </div>
             <div class="ai-agent-topbar-tools">
-                <!-- موجودی کیف پول (سمت چپ بالا) -->
-                <div class="ai-agent-wallet-card">
-                    <div class="ai-agent-wallet-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 1-1 1v0a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/>
-                        </svg>
-                    </div>
-                    <div class="ai-agent-wallet-info">
-                        <span class="ai-agent-wallet-label">موجودی کیف پول</span>
-                        <span id="ai-agent-wallet-balance-value" class="ai-agent-wallet-amount">—</span>
-                    </div>
-                    <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="ai-agent-sync-icon-btn" aria-label="به‌روزرسانی موجودی" title="به‌روزرسانی موجودی">
-                        <svg class="ai-agent-sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="ai-agent-wallet-inline">
+                    <span>موجودی کیف‌پول</span>
+                    <strong id="ai-agent-wallet-balance-value" class="ai-agent-wallet-amount">—</strong>
+                    <span id="ai-agent-wallet-balance-status" class="ai-agent-wallet-status"></span>
+                    <button type="button" id="ai-agent-wallet-balance-refresh-btn" class="ai-agent-wallet-refresh" aria-label="به‌روزرسانی موجودی" title="به‌روزرسانی موجودی">
+                        <svg class="ai-agent-sync-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                             <path d="M3 3v5h5"/>
                             <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
                             <path d="M16 16h5v5"/>
                         </svg>
                     </button>
-                    <span id="ai-agent-wallet-balance-status" class="ai-agent-wallet-status"></span>
                     <?php wp_nonce_field('ai_agent_wallet_balance_nonce_action', 'ai_agent_wallet_balance_nonce_field'); ?>
                 </div>
+                <a class="ai-agent-text-btn" href="https://dunichat.ir/dashboard/wallet" target="_blank" rel="noopener">شارژ کیف‌پول</a>
             </div>
         </header>
 
-        <!-- ====== Tabs (تب تاریخچه چت‌ها اول آمده است) ====== -->
-        <nav class="ai-agent-tabs">
-            <a href="?page=ai-agent-settings&tab=history" class="ai-agent-tab <?php echo $current_tab === 'history' ? 'is-active' : ''; ?>">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                تاریخچه چت‌ها
-            </a>
-            <a href="?page=ai-agent-settings&tab=general" class="ai-agent-tab <?php echo $current_tab === 'general' ? 'is-active' : ''; ?>">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-                تنظیمات افزونه
-            </a>
+        <?php
+        /*
+        دو نما، یک آدرس. کلیک روی هرکدام فقط کلاس is-active را جابه‌جا
+        می‌کند؛ هیچ رفت‌وبرگشتی به سرور نیست. اگر از زیرمنوی «تاریخچه
+        چت‌ها» یا با tab=history آمده باشیم، نمای گفت‌وگوها از اول باز است.
+        */ ?>
+        <nav class="ai-agent-tabs" role="tablist">
+            <button type="button" class="ai-agent-tab<?php echo $initial_view === 'history' ? ' is-active' : ''; ?>" data-view="history" role="tab" aria-selected="<?php echo $initial_view === 'history' ? 'true' : 'false'; ?>">پشتیبانی و پیام‌ها</button>
+            <button type="button" class="ai-agent-tab<?php echo $initial_view === 'settings' ? ' is-active' : ''; ?>" data-view="settings" role="tab" aria-selected="<?php echo $initial_view === 'settings' ? 'true' : 'false'; ?>">تنظیمات پلاگین</button>
         </nav>
 
-        <!-- ====== Tab Content ====== -->
-        <main class="ai-agent-content">
-            <?php if ($current_tab === 'general') :
-                echo $sync_notice;
-            ?>
-                <form method="post" action="options.php">
-                    <?php settings_fields('ai_agent_settings_group'); ?>
+        <!-- ================= نمای تنظیمات ================= -->
+        <div class="ai-agent-view<?php echo $initial_view === 'settings' ? ' is-active' : ''; ?>" data-view-panel="settings">
+        <form method="post" action="options.php">
+            <?php settings_fields('ai_agent_settings_group'); ?>
 
-                    <!-- ====== API Key ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-                                کلید API
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <div class="ai-agent-field-row">
-                                <label for="ai_agent_api_key" class="ai-agent-field-label">API Key</label>
-                                <div class="ai-agent-input-group">
-                                    <input type="password" name="ai_agent_settings[api_key]" id="ai_agent_api_key" value="<?php echo esc_attr($settings['api_key']); ?>" class="ai-agent-input" autocomplete="off" />
-                                    <button type="button" id="ai-agent-toggle-api-key">نمایش</button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
+            <div class="ai-agent-sheet">
 
-                    <!-- ====== AI Model (Combobox) ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                مدل هوش مصنوعی
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <div class="ai-agent-field-row">
-                                <label for="ai_agent_model_search" class="ai-agent-field-label">انتخاب مدل</label>
-                                <div class="ai-agent-combobox" id="ai-agent-combobox">
-                                    <div class="ai-agent-combobox-control">
-                                        <span class="ai-agent-combobox-icon" aria-hidden="true">
-                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                                        </span>
-                                        <input type="text" id="ai_agent_model_search" autocomplete="off" placeholder="جستجو یا انتخاب مدل..." value="<?php echo esc_attr($settings['model']); ?>" class="ai-agent-combobox-input" />
-                                        <button type="button" class="ai-agent-combobox-toggle" id="ai-agent-combobox-toggle" aria-label="نمایش لیست مدل‌ها">
-                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="ai_agent_settings[model]" id="ai_agent_model" value="<?php echo esc_attr($settings['model']); ?>" />
-                                    <?php wp_nonce_field('ai_agent_models_nonce_action', 'ai_agent_models_nonce_field'); ?>
-                                    <div id="ai-agent-models-list" class="ai-agent-combobox-list" role="listbox"></div>
-                                    <div class="ai-agent-combobox-foot">مدل فعلی: <code id="ai-agent-model-current"><?php echo esc_html($settings['model']); ?></code></div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- ====== System Prompt ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-                                پرامت سیستم
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <div class="ai-agent-field-row">
-                                <label for="ai_agent_system_prompt" class="ai-agent-field-label">System Prompt</label>
-                                <textarea name="ai_agent_settings[system_prompt]" id="ai_agent_system_prompt" rows="5" class="ai-agent-textarea" placeholder="مثال: You are a helpful customer support assistant."><?php echo esc_textarea($settings['system_prompt']); ?></textarea>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- ====== Appearance (Dual Colors + Timeout) ====== -->
-                    <section class="ai-agent-card ai-agent-grid-2">
+                <!-- ---------- توکن سایت ---------- -->
+                <section class="ai-agent-section">
+                    <div class="ai-agent-section-head">
+                        <h2>توکن سایت</h2>
+                        <?php if ($token_state === 'connected') : ?>
+                            <span class="ai-agent-badge ai-agent-badge-ok">متصل</span>
+                        <?php elseif ($token_state === 'invalid') : ?>
+                            <span class="ai-agent-badge ai-agent-badge-warn">کلید تأیید نشد</span>
+                        <?php else : ?>
+                            <span class="ai-agent-badge ai-agent-badge-warn">ثبت نشده</span>
+                        <?php endif; ?>
+                    </div>
+                    <p class="ai-agent-section-intro">
+                        توکن رو از پنل دانیچَت بردار و همین‌جا بچسبون. ثبت‌نام کن، سایتت رو
+                        اضافه کن، توکنش رو کپی کن — بعد «ذخیره تنظیمات» رو بزن.
+                    </p>
+                    <div class="ai-agent-btn-row">
                         <?php
                         /*
-                        رنگ دستیار — دو رنگ مستقل دریافت می‌شود:
-                          - color_light: رنگ ویجت در حالت روشن (Light)
-                          - color_dark : رنگ ویجت در حالت تاریک (Dark)
-                        هنگام نمایش به بازدیدکننده، هر حالتی که فعال باشد
-                        از رنگ همان حالت استفاده می‌شود (دکمه شناور، هدر،
-                        حباب پیام کاربر و رنگ فوکِس فیلد متن).
+                        مقدار ذخیره‌شده هیچ‌وقت در HTML چاپ نمی‌شود — نه حتی به‌صورت
+                        password. فیلد همیشه خالی باز می‌شود و خالی ماندنش یعنی
+                        «توکن را عوض نکن» (کلید قبلی دست‌نخورده باقی می‌ماند).
+
+                        ذخیره‌ی توکن هم مثل بقیه‌ی تنظیمات فقط با دکمه‌ی
+                        «ذخیره تنظیمات» انتهای فرم انجام می‌شود.
+
+                        از این نسخه:
+                        - دکمه‌ی چشم داخل خود فیلد (سمت راست) توکن را نمایش/
+                          مخفی می‌کند.
+                        - دکمه‌ی «حذف توکن» کنار فیلد است؛ با تأیید کاربر،
+                          پرچم api_key_delete فعال می‌شود و بعد از «ذخیره
+                          تنظیمات» کلید ذخیره‌شده در دیتابیس هم به‌طور کامل
+                          پاک می‌شود.
+                        - متن توکن چپ‌چین و LTR است (کلاس dc-ltr + lang="en").
                         */ ?>
-                        <div class="ai-agent-card-cell">
-                            <header class="ai-agent-card-header">
-                                <h2>
-                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-                                    رنگ دستیار
-                                </h2>
-                            </header>
-                            <div class="ai-agent-card-body">
-                                <div class="ai-agent-field-row">
-                                    <label for="ai_agent_color_light" class="ai-agent-field-label">
-                                        <span class="ai-agent-color-dot ai-agent-color-dot-light" aria-hidden="true"></span>
-                                        رنگ در حالت روشن (Light)
-                                    </label>
-                                    <input type="text" name="ai_agent_settings[color_light]" id="ai_agent_color_light" value="<?php echo esc_attr($settings['color_light']); ?>" class="ai-agent-color-field" />
-                                </div>
-                                <div class="ai-agent-field-row ai-agent-mt">
-                                    <label for="ai_agent_color_dark" class="ai-agent-field-label">
-                                        <span class="ai-agent-color-dot ai-agent-color-dot-dark" aria-hidden="true"></span>
-                                        رنگ در حالت تاریک (Dark)
-                                    </label>
-                                    <input type="text" name="ai_agent_settings[color_dark]" id="ai_agent_color_dark" value="<?php echo esc_attr($settings['color_dark']); ?>" class="ai-agent-color-field" />
-                                </div>
-                                <p class="ai-agent-field-hint">وقتی چت در حالت روشن یا تاریک نمایش داده می‌شود، رنگ همان حالت روی دکمه شناور، هدر، حباب پیام کاربر و فوکِس فیلد متن اعمال می‌گردد.</p>
-                            </div>
+                        <div class="ai-agent-token-wrap">
+                            <input type="password" id="ai_agent_api_key" name="ai_agent_settings[api_key]"
+                                   value="" class="ai-agent-input ai-agent-input-sm dc-ltr" lang="en"
+                                   autocomplete="off" placeholder="sk_live_..." />
+                            <button type="button" id="ai-agent-token-eye" class="ai-agent-token-eye"
+                                    aria-label="نمایش توکن" title="نمایش توکن">
+                                <svg class="ai-agent-token-eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                <svg class="ai-agent-token-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            </button>
                         </div>
-                        <div class="ai-agent-card-cell">
-                            <header class="ai-agent-card-header">
-                                <h2>
-                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                    مدت پاسخ‌گویی
-                                </h2>
-                            </header>
-                            <div class="ai-agent-card-body">
-                                <div class="ai-agent-number-input">
-                                    <input type="number" min="1" step="1" name="ai_agent_settings[timeout]" id="ai_agent_timeout" value="<?php echo esc_attr($settings['timeout']); ?>" />
-                                    <span class="ai-agent-number-suffix">ثانیه</span>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
+                        <button type="button" id="ai-agent-token-delete" class="ai-agent-btn ai-agent-btn-danger"
+                                title="حذف کامل توکن ذخیره‌شده پس از ذخیره تنظیمات">
+                            حذف توکن
+                        </button>
+                        <a class="ai-agent-btn" href="https://dunichat.ir/login" target="_blank" rel="noopener">دریافت توکن از دانیچَت</a>
+                        <?php /* پرچم حذف توکن: با کلیک روی «حذف توکن» ۱ می‌شود؛ اگر کاربر پیش از ذخیره توکن جدیدی تایپ کند دوباره صفر می‌شود. */ ?>
+                        <input type="hidden" id="ai_agent_api_key_delete" name="ai_agent_settings[api_key_delete]" value="0" />
+                    </div>
+                    <?php if ($token_note !== '') : ?>
+                        <p class="ai-agent-note ai-agent-note-<?php echo esc_attr($token_note_kind); ?>"><?php echo esc_html($token_note); ?></p>
+                    <?php endif; ?>
+                </section>
 
-                    <!-- ====== Widget Button Position (per device) ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                                موقعیت آیکون افزونه
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <?php
-                            /*
-                            انتخاب دستگاه (موبایل / تبلت / دسکتاپ):
-                            سه آیکون کوچک در بالا نمایش داده می‌شود؛ با کلیک روی هر
-                            آیکون، تنظیمات همان دستگاه (سمت قرارگیری + جابجایی عمودی)
-                            نشان داده می‌شود و کاربر می‌تواند برای هر دستگاه مقادیری
-                            کاملاً متفاوت و مستقل تعیین کند.
+                <!-- ---------- رنگ دستیار ---------- -->
+                <section class="ai-agent-section">
+                    <h2>رنگ دستیار</h2>
+                    <p class="ai-agent-section-intro">
+                        این رنگ روی دکمه‌ی شناور، هدر و دکمه‌ی ارسال می‌نشینه. موقع نصب از
+                        رنگ اصلی خود‌سایتت خونده شده — هر وقت خواستی عوضش کن. رنگ حالت
+                        تاریک رو خودمون از همین رنگ می‌سازیم.
+                    </p>
 
-                            نکته: هر سه پنل همیشه در DOM باقی می‌مانند (فقط با CSS
-                            مخفی/نمایش می‌شوند) تا مقادیر هر سه دستگاه هنگام ذخیره‌ی
-                            فرم ارسال شوند.
-                            */ ?>
-                            <div class="ai-agent-field-row">
-                                <label class="ai-agent-field-label">انتخاب دستگاه</label>
-                                <div class="ai-agent-device-tabs" id="ai-agent-device-tabs" role="tablist">
-                                    <button type="button" class="ai-agent-device-tab is-active" data-device="mobile" role="tab" aria-selected="true" title="تنظیمات موبایل">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                                        <span class="ai-agent-device-tab-label">موبایل</span>
+                    <span class="ai-agent-label">رنگ پرایمری چت‌بات</span>
+
+                    <?php if (!empty($site_colors)) : ?>
+                        <div style="margin-top:12px;margin-bottom:16px">
+                            <div class="ai-agent-sublabel">رنگ‌های سایت خودت (وردپرس<?php echo (did_action('elementor/loaded') || defined('ELEMENTOR_VERSION')) ? ' / المنتور' : ''; ?>)</div>
+                            <div class="ai-agent-site-colors">
+                                <?php foreach ($site_colors as $site_color) :
+                                    $on = (strtoupper($site_color['hex']) === strtoupper($color_light)); ?>
+                                    <button type="button" class="ai-agent-site-color-btn<?php echo $on ? ' is-active' : ''; ?>"
+                                            data-hex="<?php echo esc_attr($site_color['hex']); ?>">
+                                        <span class="ai-agent-site-color-dot" style="background:<?php echo esc_attr($site_color['hex']); ?>" aria-hidden="true"></span>
+                                        <span class="ai-agent-site-color-text">
+                                            <span class="ai-agent-site-color-name"><?php echo esc_html($site_color['label']); ?></span>
+                                            <span class="ai-agent-site-color-hex dc-ltr" lang="en"><?php echo esc_html(strtoupper($site_color['hex'])); ?></span>
+                                        </span>
                                     </button>
-                                    <button type="button" class="ai-agent-device-tab" data-device="tablet" role="tab" aria-selected="false" title="تنظیمات تبلت">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                                        <span class="ai-agent-device-tab-label">تبلت</span>
-                                    </button>
-                                    <button type="button" class="ai-agent-device-tab" data-device="desktop" role="tab" aria-selected="false" title="تنظیمات دسکتاپ">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                                        <span class="ai-agent-device-tab-label">دسکتاپ</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <?php
-                            $ai_agent_devices = array(
-                                'mobile'  => 'موبایل',
-                                'tablet'  => 'تبلت',
-                                'desktop' => 'دسکتاپ',
-                            );
-                            foreach ($ai_agent_devices as $ai_agent_device => $ai_agent_device_label) :
-                                $ai_agent_side_key   = 'button_position_side_' . $ai_agent_device;
-                                $ai_agent_offset_key = 'button_position_offset_y_' . $ai_agent_device;
-                            ?>
-                            <div class="ai-agent-device-panel<?php echo $ai_agent_device === 'mobile' ? ' is-active' : ''; ?>" data-device-panel="<?php echo esc_attr($ai_agent_device); ?>">
-                                <!-- سمت قرارگیری (چپ / راست) — مخصوص همین دستگاه -->
-                                <div class="ai-agent-field-row ai-agent-mt">
-                                    <label class="ai-agent-field-label">سمت قرارگیری — <?php echo esc_html($ai_agent_device_label); ?></label>
-                                    <div class="ai-agent-checkbox-grid ai-agent-position-grid">
-                                        <label class="ai-agent-check-card ai-agent-position-option">
-                                            <input type="radio" name="ai_agent_settings[<?php echo esc_attr($ai_agent_side_key); ?>]" value="right" <?php checked($settings[$ai_agent_side_key], 'right'); ?>>
-                                            <span class="ai-agent-check-card-body">
-                                                <span class="ai-agent-check-card-title">راست</span>
-                                                <span class="ai-agent-check-card-sub">Right Side</span>
-                                            </span>
-                                        </label>
-                                        <label class="ai-agent-check-card ai-agent-position-option">
-                                            <input type="radio" name="ai_agent_settings[<?php echo esc_attr($ai_agent_side_key); ?>]" value="left" <?php checked($settings[$ai_agent_side_key], 'left'); ?>>
-                                            <span class="ai-agent-check-card-body">
-                                                <span class="ai-agent-check-card-title">چپ</span>
-                                                <span class="ai-agent-check-card-sub">Left Side</span>
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <!-- جابجایی عمودی به پیکسل — مخصوص همین دستگاه -->
-                                <div class="ai-agent-field-row ai-agent-mt">
-                                    <label for="ai_agent_<?php echo esc_attr($ai_agent_offset_key); ?>" class="ai-agent-field-label">جابجایی عمودی — <?php echo esc_html($ai_agent_device_label); ?></label>
-                                    <div class="ai-agent-number-input">
-                                        <input type="number" step="1" name="ai_agent_settings[<?php echo esc_attr($ai_agent_offset_key); ?>]" id="ai_agent_<?php echo esc_attr($ai_agent_offset_key); ?>" value="<?php echo esc_attr(intval($settings[$ai_agent_offset_key])); ?>" />
-                                        <span class="ai-agent-number-suffix">پیکسل (مثبت: بالا، منفی: پایین)</span>
-                                    </div>
-                                </div>
-
-                                <?php if ($ai_agent_device === 'mobile') : ?>
-                                <p class="ai-agent-field-hint">بازه‌ی موبایل: عرض صفحه تا ۷۶۸ پیکسل. در موبایل پنجره‌ی چت تمام‌صفحه است و این تنظیمات فقط روی دکمه‌ی شناور اعمال می‌شود.</p>
-                                <?php elseif ($ai_agent_device === 'tablet') : ?>
-                                <p class="ai-agent-field-hint">بازه‌ی تبلت: عرض صفحه بین ۷۶۹ تا ۱۰۲۴ پیکسل.</p>
-                                <?php else : ?>
-                                <p class="ai-agent-field-hint">بازه‌ی دسکتاپ: عرض صفحه از ۱۰۲۵ پیکسل به بالا.</p>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-
-                    <!-- ====== Data Sources ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                                منابع داده جهت همگام‌سازی
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <div class="ai-agent-checkbox-grid">
-                                <label class="ai-agent-check-card">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="posts" <?php checked(in_array('posts', $settings['sync_types'])); ?>>
-                                    <span class="ai-agent-check-card-body">
-                                        <span class="ai-agent-check-card-title">نوشته‌ها</span>
-                                        <span class="ai-agent-check-card-sub">Posts</span>
-                                    </span>
-                                </label>
-                                <label class="ai-agent-check-card">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="pages" <?php checked(in_array('pages', $settings['sync_types'])); ?>>
-                                    <span class="ai-agent-check-card-body">
-                                        <span class="ai-agent-check-card-title">برگه‌ها</span>
-                                        <span class="ai-agent-check-card-sub">Pages</span>
-                                    </span>
-                                </label>
-                                <label class="ai-agent-check-card">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="products" <?php checked(in_array('products', $settings['sync_types'])); ?>>
-                                    <span class="ai-agent-check-card-body">
-                                        <span class="ai-agent-check-card-title">محصولات فروشگاه</span>
-                                        <span class="ai-agent-check-card-sub">WooCommerce Products</span>
-                                    </span>
-                                </label>
-                                <label class="ai-agent-check-card">
-                                    <input type="checkbox" name="ai_agent_settings[sync_types][]" value="product_cats" <?php checked(in_array('product_cats', $settings['sync_types'])); ?>>
-                                    <span class="ai-agent-check-card-body">
-                                        <span class="ai-agent-check-card-title">دسته‌بندی محصولات</span>
-                                        <span class="ai-agent-check-card-sub">Product Categories</span>
-                                    </span>
-                                </label>
-                                <label class="ai-agent-check-card ai-agent-check-card-wide">
-                                    <input type="checkbox" name="ai_agent_settings[sync_images]" value="1" id="ai_agent_sync_images" <?php checked(!empty($settings['sync_images'])); ?>>
-                                    <span class="ai-agent-check-card-body">
-                                        <span class="ai-agent-check-card-title">سینک تصاویر</span>
-                                        <span class="ai-agent-check-card-sub">ارسال تصاویر محتوا هنگام همگام‌سازی</span>
-                                    </span>
-                                </label>
-                            </div>
-                            <div class="ai-agent-field-row ai-agent-mt">
-                                <label for="ai_agent_daily_message_limit" class="ai-agent-field-label">حداکثر پیام روزانه</label>
-                                <div class="ai-agent-number-input">
-                                    <input type="number" min="0" step="1" name="ai_agent_settings[daily_message_limit]" id="ai_agent_daily_message_limit" value="<?php echo esc_attr(intval($settings['daily_message_limit'])); ?>" class="small-text" />
-                                    <span class="ai-agent-number-suffix">پیام / روز </span>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <?php if (!empty($settings['allowed_statuses'])) : ?>
-                    <!-- ====== Server Info (read-only) ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2" ry="2"/><rect x="2" y="13" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg>
-                                اطلاعات دریافتی از سرور
-                            </h2>
-                            <span class="ai-agent-badge ai-agent-badge-muted">فقط‌خواندنی</span>
-                        </header>
-                        <div class="ai-agent-card-body">
-                            <ul class="ai-agent-status-list">
-                                <?php foreach ($settings['allowed_statuses'] as $type => $statuses) :
-                                    if (!is_array($statuses)) continue;
-                                ?>
-                                    <li><code><?php echo esc_html($type); ?></code><span><?php echo esc_html(implode('، ', $statuses)); ?></span></li>
                                 <?php endforeach; ?>
-                            </ul>
+                            </div>
                         </div>
-                    </section>
                     <?php endif; ?>
 
-                    <!-- ====== Job Status + Sync Operations (chart on LEFT) ====== -->
-                    <section class="ai-agent-card">
-                        <header class="ai-agent-card-header">
-                            <h2>
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                                استعلام وضعیت و عملیات همگام‌سازی
-                            </h2>
-                        </header>
-                        <div class="ai-agent-card-body ai-agent-sync-layout">
+                    <div style="margin-bottom:16px">
+                        <div class="ai-agent-sublabel">یا از پالت آماده</div>
+                        <div class="ai-agent-swatches" data-swatch-group="color_light">
+                            <?php foreach (array('#C96442', '#F4865B', '#1F1E1D', '#7C5CFF', '#2563EB', '#0EA5E9', '#16A34A', '#D97706', '#DC2626') as $hex) :
+                                $on = (strtoupper($hex) === strtoupper($color_light)); ?>
+                                <button type="button" class="ai-agent-swatch<?php echo $on ? ' is-active' : ''; ?>"
+                                        style="background:<?php echo esc_attr($hex); ?>"
+                                        data-hex="<?php echo esc_attr($hex); ?>"
+                                        title="<?php echo esc_attr($hex); ?>" aria-label="<?php echo esc_attr($hex); ?>"></button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
 
-                            <!-- RIGHT column: controls & status -->
-                            <div class="ai-agent-sync-actions">
+                    <div class="ai-agent-inline-end">
+                        <div class="ai-agent-field-group">
+                            <label class="ai-agent-sublabel" for="ai_agent_color_light" style="margin:0">کد رنگ دلخواه</label>
+                            <div class="ai-agent-inline" style="gap:8px">
+                                <?php
+                                /*
+                                دایره‌ی رنگ: کلیک روی آن پالتِ ساخت رنگ مرورگر را باز
+                                می‌کند تا کاربر بدون بلد بودن کد هگز، بتواند همان‌جا
+                                رنگ دلخواهش را بسازد. خودِ input[type=color] بیرونِ
+                                دید است و فقط دایره دیده می‌شود.
+                                */ ?>
+                                <button type="button" class="ai-agent-color-dot ai-agent-color-dot-btn" id="ai-agent-color-light-dot"
+                                        style="background:<?php echo esc_attr($color_light); ?>"
+                                        title="ساخت رنگ دلخواه" aria-label="ساخت رنگ دلخواه"></button>
+                                <input type="color" id="ai-agent-color-picker" class="ai-agent-color-picker-input"
+                                       value="<?php echo esc_attr($color_light); ?>" aria-label="ساخت رنگ دلخواه" tabindex="-1" />
+                                <input type="text" class="ai-agent-input ai-agent-input-hex ai-agent-color-field dc-ltr" lang="en"
+                                       id="ai_agent_color_light" name="ai_agent_settings[color_light]"
+                                       value="<?php echo esc_attr(strtoupper($color_light)); ?>" placeholder="#F4865B" />
+                            </div>
+                        </div>
+                    </div>
 
-                                <div class="ai-agent-sync-block">
-                                    <div class="ai-agent-sync-block-title">بازخوانی تنظیمات</div>
-                                    <div class="ai-agent-sync-block-actions">
-                                        <button type="button" id="ai-agent-reload-settings-btn" class="ai-agent-btn ai-agent-btn-primary">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                                            بارگذاری از سرور
-                                        </button>
-                                        <span id="ai-agent-reload-settings-status" class="ai-agent-status-text"></span>
-                                        <?php wp_nonce_field('ai_agent_reload_settings_nonce_action', 'ai_agent_reload_settings_nonce_field'); ?>
-                                    </div>
+                    <?php
+                    /*
+                    ============================================
+                    انتخاب رنگ حالت تاریک — با حفظِ رفتار خودکار
+
+                    منطقِ قدیمی حفظ می‌شود: وقتی رنگِ روشن انتخاب می‌شود،
+                    رنگِ تاریک به‌صورت خودکار از همان (با ضریب AI_AGENT_DARK_LIFT)
+                    ساخته می‌شود. این رنگ به‌عنوان «پیشنهاد خودکار» به کاربر
+                    نشان داده می‌شود.
+
+                    حالا کاربر می‌تواند این پیشنهاد را بپذیرد (به‌طور پیش‌فرض
+                    پذیرفته شده) یا با یکی از راه‌های زیر آن را تغییر دهد:
+                      - پالت آماده
+                      - دایره‌ی رنگ (پالت ساخت رنگ مرورگر)
+                      - کد هگز دستی
+
+                    یک فیلد مخفی color_dark_custom نشان می‌دهد آیا کاربر رنگ
+                    را دستی عوض کرده یا هنوز روی پیشنهاد خودکار است. وقتی روی
+                    خودکار است، با هر تغییرِ رنگِ روشن، رنگِ تاریک هم به‌صورت
+                    خودکار به‌روز می‌شود.
+                    ============================================
+                    */
+                    $color_dark_custom = isset($settings['color_dark_custom']) ? (string) $settings['color_dark_custom'] : '0';
+                    $color_dark_value  = isset($settings['color_dark']) ? $settings['color_dark'] : $color_dark;
+                    // اگر رنگ تاریک ذخیره‌شده با پیشنهاد خودکارِ فعلی یکی باشد،
+                    // حالت auto در نظر گرفته می‌شود.
+                    $auto_dark_check = function_exists('ai_agent_lighten_hex')
+                        ? strtoupper(ai_agent_lighten_hex($color_light, AI_AGENT_DARK_LIFT))
+                        : strtoupper($color_light);
+                    if (strtoupper($color_dark_value) === $auto_dark_check) {
+                        $color_dark_custom = '0';
+                    }
+                    ?>
+                    <div class="ai-agent-dark-color-group" style="margin-top:24px">
+                        <div class="ai-agent-dark-suggestion-row">
+                            <span class="ai-agent-sublabel" style="margin:0; flex:0 0 auto;">پیشنهاد خودکار:</span>
+                            <span class="ai-agent-color-dot ai-agent-color-dot-sm" id="ai-agent-dark-suggestion-dot"
+                                  style="background:<?php echo esc_attr($color_dark); ?>" aria-hidden="true"></span>
+                            <span id="ai-agent-dark-suggestion-value" class="dc-ltr" lang="en"><?php echo esc_html(strtoupper($color_dark)); ?></span>
+                            <button type="button" id="ai-agent-dark-use-suggestion" class="ai-agent-text-link" title="استفاده از این پیشنهاد برای رنگ حالت تاریک">
+                                استفاده از این پیشنهاد
+                            </button>
+                        </div>
+
+                        <div style="margin-bottom:16px">
+                            <div class="ai-agent-sublabel">پالت آماده برای حالت تاریک</div>
+                            <div class="ai-agent-swatches" data-swatch-group="color_dark">
+                                <?php foreach (array('#F0A68A', '#FFB088', '#9D8AFF', '#60A5FA', '#38BDF8', '#4ADE80', '#FBBF24', '#F87171', '#F4865B') as $hex) :
+                                    $on = (strtoupper($hex) === strtoupper($color_dark_value)); ?>
+                                    <button type="button" class="ai-agent-swatch<?php echo $on ? ' is-active' : ''; ?>"
+                                            style="background:<?php echo esc_attr($hex); ?>"
+                                            data-hex="<?php echo esc_attr($hex); ?>"
+                                            title="<?php echo esc_attr($hex); ?>"
+                                            aria-label="<?php echo esc_attr($hex); ?>"></button>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+
+                        <div class="ai-agent-inline" style="gap:8px">
+                            <?php /* دایره‌ی رنگ برای حالت تاریک: کلیک روی آن پالتِ ساخت رنگ مرورگر را باز می‌کند. */ ?>
+                            <button type="button" class="ai-agent-color-dot ai-agent-color-dot-btn" id="ai-agent-color-dark-dot-btn"
+                                    style="background:<?php echo esc_attr($color_dark_value); ?>"
+                                    title="ساخت رنگ دلخواه برای حالت تاریک"
+                                    aria-label="ساخت رنگ دلخواه برای حالت تاریک"></button>
+                            <input type="color" id="ai-agent-color-dark-picker" class="ai-agent-color-picker-input"
+                                   value="<?php echo esc_attr($color_dark_value); ?>"
+                                   aria-label="ساخت رنگ دلخواه برای حالت تاریک" tabindex="-1" />
+                            <input type="text" class="ai-agent-input ai-agent-input-hex ai-agent-color-field dc-ltr" lang="en"
+                                   id="ai_agent_color_dark" name="ai_agent_settings[color_dark]"
+                                   value="<?php echo esc_attr(strtoupper($color_dark_value)); ?>"
+                                   placeholder="<?php echo esc_attr(strtoupper($color_dark)); ?>" />
+                        </div>
+
+                        <?php /* فیلد مخفی: آیا کاربر رنگ تاریک را دستی عوض کرده (1) یا هنوز روی پیشنهاد خودکار است (0) */ ?>
+                        <input type="hidden" id="ai_agent_color_dark_custom" name="ai_agent_settings[color_dark_custom]"
+                               value="<?php echo esc_attr($color_dark_custom); ?>" />
+                    </div>
+                </section>
+
+                <!-- ---------- تم صفحه‌ی چت ---------- -->
+                <section class="ai-agent-section">
+                    <h2>تم صفحه‌ی چت</h2>
+                    <p class="ai-agent-section-intro">
+                        در حالت «هماهنگ با سایت»، افزونه تم قالب رو تشخیص می‌ده و اگه
+                        بازدیدکننده کلید شب/روزِ سایت رو بزنه، چت هم با همون عوض می‌شه.
+                    </p>
+                    <?php ai_agent_render_segmented('theme_mode', array(
+                        'auto'  => array('هماهنگ با سایت', 'حالت پیش‌فرض'),
+                        'light' => array('همیشه روشن', 'بدون توجه به سایت'),
+                        'dark'  => array('همیشه تاریک', 'بدون توجه به سایت'),
+                    ), $theme_mode, 'حالت نمایش چت'); ?>
+
+                    <div class="ai-agent-grid" style="margin-top:24px">
+                        <div>
+                            <div class="ai-agent-label" style="margin-bottom:12px">پس‌زمینه‌ی چت در حالت روشن</div>
+                            <?php ai_agent_render_swatches('chat_bg_light',
+                                array('#FAF9F5', '#FFFFFF', '#F5F5F4', '#F1F5F9', '#FDF6F3', '#F7F7F2'),
+                                $chat_bg_light); ?>
+                        </div>
+                        <div>
+                            <div class="ai-agent-label" style="margin-bottom:12px">پس‌زمینه‌ی چت در حالت تاریک</div>
+                            <?php ai_agent_render_swatches('chat_bg_dark',
+                                array('#1F1E1D', '#000000', '#18181B', '#0F172A', '#221E1C', '#2A2724'),
+                                $chat_bg_dark); ?>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ---------- مدت پاسخ‌گویی ---------- -->
+                <section class="ai-agent-section">
+                    <h2>مدت پاسخ‌گویی</h2>
+                    <div class="ai-agent-field-row" style="margin-top:16px">
+                        <label class="ai-agent-label" for="ai_agent_timeout">حداکثر زمان انتظار برای پاسخ</label>
+                        <div class="ai-agent-inline">
+                            <input type="number" min="1" step="1" class="ai-agent-input ai-agent-input-num dc-ltr" lang="en"
+                                   name="ai_agent_settings[timeout]" id="ai_agent_timeout"
+                                   value="<?php echo esc_attr($settings['timeout']); ?>" />
+                            <span class="ai-agent-unit">ثانیه</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ---------- موقعیت آیکون افزونه ---------- -->
+                <section class="ai-agent-section">
+                    <h2>موقعیت آیکون افزونه</h2>
+                    <div class="ai-agent-segmented" id="ai-agent-device-tabs" role="tablist" style="margin-top:16px">
+                        <?php foreach (array('mobile' => 'موبایل', 'tablet' => 'تبلت', 'desktop' => 'دسکتاپ') as $device => $device_label) : ?>
+                            <button type="button" class="ai-agent-segment ai-agent-device-tab<?php echo $device === 'mobile' ? ' is-active' : ''; ?>"
+                                    data-device="<?php echo esc_attr($device); ?>" role="tab"
+                                    aria-selected="<?php echo $device === 'mobile' ? 'true' : 'false'; ?>">
+                                <span class="ai-agent-segment-title"><?php echo esc_html($device_label); ?></span>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <?php
+                    /*
+                    انتخاب موقعیت با ماکت تعاملی: کاربر دکمه‌ی شناور را روی
+                    ماکتِ هر دستگاه می‌کشد (یا با کیبورد جابه‌جا می‌کند) و
+                    مقدار نهایی در دو input مخفی با همان نام‌های قبلی
+                    (button_position_side_{device} / button_position_offset_y_{device})
+                    نگه داشته می‌شود؛ یعنی منطق ذخیره‌سازی و اعمال موقعیت
+                    روی سایت دقیقاً همان است که بود.
+                    */
+                    $device_hints = array(
+                        'mobile'  => 'عرض صفحه تا ۷۶۸ پیکسل. در موبایل پنجره‌ی چت تمام‌صفحه است و این تنظیم فقط روی دکمه‌ی شناور اثر دارد.',
+                        'tablet'  => 'عرض صفحه بین ۷۶۹ تا ۱۰۲۴ پیکسل.',
+                        'desktop' => 'عرض صفحه از ۱۰۲۵ پیکسل به بالا.',
+                    );
+                    foreach (array('mobile', 'tablet', 'desktop') as $device) :
+                        $side_key   = 'button_position_side_' . $device;
+                        $offset_key = 'button_position_offset_y_' . $device;
+                        $side       = isset($settings[$side_key]) ? $settings[$side_key] : 'right';
+                        $offset     = isset($settings[$offset_key]) ? intval($settings[$offset_key]) : 0;
+                    ?>
+                        <div class="ai-agent-device-panel<?php echo $device === 'mobile' ? ' is-active' : ''; ?>" data-device-panel="<?php echo esc_attr($device); ?>">
+                            <input type="hidden" name="ai_agent_settings[<?php echo esc_attr($side_key); ?>]"
+                                   id="ai_agent_<?php echo esc_attr($side_key); ?>"
+                                   data-position-side="<?php echo esc_attr($device); ?>"
+                                   value="<?php echo esc_attr($side); ?>" />
+                            <input type="hidden" name="ai_agent_settings[<?php echo esc_attr($offset_key); ?>]"
+                                   id="ai_agent_<?php echo esc_attr($offset_key); ?>"
+                                   data-position-offset="<?php echo esc_attr($device); ?>"
+                                   value="<?php echo esc_attr($offset); ?>" />
+
+                            <div class="ai-agent-stage-wrap">
+                                <div class="ai-agent-stage ai-agent-stage-<?php echo esc_attr($device); ?>"
+                                     data-stage="<?php echo esc_attr($device); ?>"
+                                     data-side="<?php echo esc_attr($side); ?>"
+                                     data-offset="<?php echo esc_attr($offset); ?>">
+                                    <span class="ai-agent-stage-line"></span>
+                                    <span class="ai-agent-stage-line ai-agent-stage-line-short"></span>
+                                    <span class="ai-agent-stage-line"></span>
+                                    <span class="ai-agent-stage-line ai-agent-stage-line-shorter"></span>
+                                    <button type="button" class="ai-agent-stage-handle" aria-label="جابه‌جایی دکمه‌ی شناور">
+                                        <img src="<?php echo esc_url(AI_AGENT_URL . 'assets/images/favicon46x46.png'); ?>" alt="" />
+                                    </button>
                                 </div>
+                                <p class="ai-agent-stage-readout" data-stage-readout="<?php echo esc_attr($device); ?>"></p>
+                            </div>
+                            <p class="ai-agent-hint" style="text-align:center"><?php echo esc_html($device_hints[$device]); ?></p>
+                        </div>
+                    <?php endforeach; ?>
+                </section>
 
-                                <div class="ai-agent-sync-block">
-                                    <div class="ai-agent-sync-block-title">آخرین همگام‌سازی</div>
-                                    <?php
-                                        $last_sync_time = ai_agent_get_last_sync_time();
-                                        $last_sync_all_time = ai_agent_get_last_sync_all_time();
-                                    ?>
-                                    <div class="ai-agent-last-sync-grid">
-                                        <div class="ai-agent-last-sync-item">
-                                            <span class="ai-agent-last-sync-label">سینک افزایشی</span>
-                                            <span class="ai-agent-last-sync-value"><?php echo !empty($last_sync_time) ? esc_html($last_sync_time) : '<span class="ai-agent-muted-placeholder">ثبت نشده</span>'; ?></span>
-                                        </div>
-                                        <div class="ai-agent-last-sync-item">
-                                            <span class="ai-agent-last-sync-label">سینک کامل</span>
-                                            <span class="ai-agent-last-sync-value"><?php echo !empty($last_sync_all_time) ? esc_html($last_sync_all_time) : '<span class="ai-agent-muted-placeholder">ثبت نشده</span>'; ?></span>
-                                        </div>
-                                    </div>
+                <!-- ---------- منابع داده ---------- -->
+                <section class="ai-agent-section">
+                    <h2>منابع داده جهت همگام‌سازی</h2>
+                    <div class="ai-agent-tiles" style="margin-top:16px">
+                        <?php
+                        $sources = array(
+                            'posts'         => array('نوشته‌ها', 'Posts'),
+                            'pages'         => array('برگه‌ها', 'Pages'),
+                            'products'      => array('محصولات فروشگاه', 'WooCommerce Products'),
+                            'product_cats'  => array('دسته‌بندی محصولات', 'Product Categories'),
+                        );
+                        foreach ($sources as $source => $meta) :
+                            $on = in_array($source, $sync_types, true); ?>
+                            <label class="ai-agent-tile<?php echo $on ? ' is-active' : ''; ?>">
+                                <input type="checkbox" name="ai_agent_settings[sync_types][]" value="<?php echo esc_attr($source); ?>" <?php checked($on); ?> />
+                                <span class="ai-agent-tile-box" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                </span>
+                                <span class="ai-agent-tile-text">
+                                    <span class="ai-agent-tile-title"><?php echo esc_html($meta[0]); ?></span>
+                                    <span class="ai-agent-tile-sub dc-ltr" lang="en"><?php echo esc_html($meta[1]); ?></span>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                        <?php $images_on = !empty($settings['sync_images']); ?>
+                        <label class="ai-agent-tile<?php echo $images_on ? ' is-active' : ''; ?>">
+                            <input type="checkbox" name="ai_agent_settings[sync_images]" value="1" <?php checked($images_on); ?> />
+                            <span class="ai-agent-tile-box" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </span>
+                            <span class="ai-agent-tile-text">
+                                <span class="ai-agent-tile-title">سینک تصاویر</span>
+                                <span class="ai-agent-tile-sub">ارسال تصاویر هنگام همگام‌سازی</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div style="margin-top:24px">
+                        <div class="ai-agent-label" style="margin-bottom:6px">همگام‌سازی خودکار محتوا چت‌بات هوشمند</div>
+                        <p class="ai-agent-hint" style="margin-bottom:12px">
+                            برای اینکه چت‌بات همیشه آپدیت بمونه: هر بار محصولی یا مقاله‌ای در سایت
+                            تغییر دادی، می‌تونی دستی «به‌روزرسانی محتوا» رو بزنی — یا همین
+                            زمان‌بندی رو روشن بگذاری تا خودکار انجام بشه.
+                        </p>
+                        <?php ai_agent_render_segmented('sync_schedule', array(
+                            'daily'        => 'روزانه',
+                            'every_3_days' => 'هر سه روز',
+                            'weekly'       => 'هفتگی',
+                            'manual'       => 'فقط دستی',
+                        ), isset($settings['sync_schedule']) ? $settings['sync_schedule'] : 'every_3_days', 'همگام‌سازی خودکار'); ?>
+                        <input type="hidden" name="ai_agent_settings[sync_hour]" value="0" />
+                        <p class="ai-agent-hint" style="margin-top:12px">
+                            هر شب ساعت ۱۲ خودکار به‌روزرسانی می‌شه. اگه همین حالا می‌خوای،
+                            دکمه‌ی «به‌روزرسانی محتوا» رو بزن.
+                        </p>
+                    </div>
+
+                    <div class="ai-agent-field-row" style="margin-top:24px">
+                        <label class="ai-agent-label" for="ai_agent_daily_message_limit">حداکثر پیام روزانه</label>
+                        <div class="ai-agent-inline">
+                            <input type="number" class="ai-agent-input ai-agent-input-num dc-ltr" lang="en" min="0"
+                                   id="ai_agent_daily_message_limit" name="ai_agent_settings[daily_message_limit]"
+                                   value="<?php echo esc_attr($settings['daily_message_limit']); ?>" />
+                            <span class="ai-agent-unit">پیام در روز</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ---------- استعلام وضعیت و عملیات همگام‌سازی ---------- -->
+                <section class="ai-agent-section">
+                    <h2>استعلام وضعیت و عملیات همگام‌سازی</h2>
+                    <p class="ai-agent-section-intro">
+                        محتوای تازه یا تغییرکرده‌ی سایت رو برای دستیار می‌فرسته. هر بار محصول
+                        یا نوشته‌ی جدید گذاشتی، دکمه‌ی «همگام‌سازی اطلاعات» رو بزن. «سینک تمامی
+                        محتوا» همه‌چیز رو از نو پردازش می‌کنه و هزینه‌بره.
+                    </p>
+
+                    <div class="ai-agent-sync-grid">
+
+                        <!-- ستون راست: عملیات -->
+                        <div class="ai-agent-sync-actions">
+
+                            <div class="ai-agent-sync-block">
+                                <div class="ai-agent-sync-block-title">بازخوانی تنظیمات</div>
+                                <div class="ai-agent-btn-row">
+                                    <button type="button" id="ai-agent-reload-settings-btn" class="ai-agent-btn">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                                        بارگذاری از سرور
+                                    </button>
+                                    <span id="ai-agent-reload-settings-status" class="ai-agent-status-text"></span>
+                                    <?php wp_nonce_field('ai_agent_reload_settings_nonce_action', 'ai_agent_reload_settings_nonce_field'); ?>
                                 </div>
-
-                                <div class="ai-agent-sync-block">
-                                    <div class="ai-agent-sync-block-title">عملیات نهایی داده‌ها</div>
-                                    <div class="ai-agent-sync-block-actions">
-                                        <button type="button" id="ai-agent-sync-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-blue">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                                            همگام‌سازی اطلاعات
-                                        </button>
-                                        <span id="ai-agent-sync-status" class="ai-agent-status-text"></span>
-                                        <?php wp_nonce_field('ai_agent_sync_nonce_action', 'ai_agent_sync_nonce_field'); ?>
-                                    </div>
-                                    <div class="ai-agent-sync-block-actions ai-agent-mt">
-                                        <button type="button" id="ai-agent-sync-all-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-red">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
-                                            سینک تمامی محتوا
-                                        </button>
-                                        <span id="ai-agent-sync-all-status" class="ai-agent-status-text"></span>
-                                        <?php wp_nonce_field('ai_agent_sync_all_nonce_action', 'ai_agent_sync_all_nonce_field'); ?>
-                                    </div>
-                                </div>
-
                             </div>
 
-                            <!-- LEFT column: chart + status query button -->
-                            <div class="ai-agent-sync-chart">
-                                <div class="ai-agent-chart-wrap">
-                                    <canvas id="ai-agent-status-chart" height="220"></canvas>
+                            <div class="ai-agent-sync-block">
+                                <div class="ai-agent-sync-block-title">آخرین همگام‌سازی</div>
+                                <div class="ai-agent-stat-grid">
+                                    <div class="ai-agent-stat ai-agent-last-sync-item" data-sync-slot="last">
+                                        <span class="ai-agent-stat-label">سینک افزایشی</span>
+                                        <span class="ai-agent-stat-value ai-agent-last-sync-value<?php echo empty($last_sync_time) ? ' is-empty' : ''; ?>"><?php
+                                            echo !empty($last_sync_time) ? esc_html(ai_agent_format_jalali_datetime($last_sync_time)) : 'ثبت نشده';
+                                        ?></span>
+                                    </div>
+                                    <div class="ai-agent-stat ai-agent-last-sync-item" data-sync-slot="all">
+                                        <span class="ai-agent-stat-label">سینک کامل</span>
+                                        <span class="ai-agent-stat-value ai-agent-last-sync-value<?php echo empty($last_sync_all_time) ? ' is-empty' : ''; ?>"><?php
+                                            echo !empty($last_sync_all_time) ? esc_html(ai_agent_format_jalali_datetime($last_sync_all_time)) : 'ثبت نشده';
+                                        ?></span>
+                                    </div>
+                                    <div class="ai-agent-stat">
+                                        <span class="ai-agent-stat-label">آخرین اجرای خودکار</span>
+                                        <span class="ai-agent-stat-value<?php echo empty($last_scheduled['time']) ? ' is-empty' : ''; ?>"><?php
+                                            echo !empty($last_scheduled['time']) ? esc_html(ai_agent_format_jalali_datetime($last_scheduled['time'])) : 'هنوز اجرا نشده';
+                                        ?></span>
+                                    </div>
                                 </div>
-                                <button type="button" id="ai-agent-check-status-btn" class="ai-agent-btn ai-agent-btn-outline ai-agent-btn-purple">
+                            </div>
+
+                            <div class="ai-agent-sync-block">
+                                <div class="ai-agent-sync-block-title">عملیات نهایی داده‌ها</div>
+                                <div class="ai-agent-btn-row">
+                                    <button type="button" id="ai-agent-sync-btn" class="ai-agent-btn ai-agent-btn-primary">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                        همگام‌سازی اطلاعات
+                                    </button>
+                                    <span id="ai-agent-sync-status" class="ai-agent-status-text"></span>
+                                    <?php wp_nonce_field('ai_agent_sync_nonce_action', 'ai_agent_sync_nonce_field'); ?>
+                                </div>
+                                <div class="ai-agent-btn-row" style="margin-top:10px">
+                                    <button type="button" id="ai-agent-sync-all-btn" class="ai-agent-btn ai-agent-btn-danger-outline">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                                        سینک تمامی محتوا
+                                    </button>
+                                    <span id="ai-agent-sync-all-status" class="ai-agent-status-text"></span>
+                                    <?php wp_nonce_field('ai_agent_sync_all_nonce_action', 'ai_agent_sync_all_nonce_field'); ?>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- ستون چپ: نمودار وضعیت + استعلام -->
+                        <div class="ai-agent-sync-chart">
+                            <div class="ai-agent-chart-wrap">
+                                <canvas id="ai-agent-status-chart" height="220"></canvas>
+                            </div>
+                            <div class="ai-agent-btn-row" style="margin-top:10px">
+                                <button type="button" id="ai-agent-check-status-btn" class="ai-agent-btn">
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                                     استعلام وضعیت
                                 </button>
                                 <span id="ai-agent-check-status-status" class="ai-agent-status-text"></span>
                                 <?php wp_nonce_field('ai_agent_sync_status_nonce_action', 'ai_agent_sync_status_nonce_field'); ?>
                             </div>
-
-                        </div>
-                    </section>
-
-                    <div class="ai-agent-form-actions">
-                        <?php submit_button('ذخیره تنظیمات افزونه'); ?>
-                    </div>
-                </form>
-
-            <?php elseif ($current_tab === 'history') : ?>
-                <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
-
-                <section class="ai-agent-card">
-                    <header class="ai-agent-card-header">
-                        <h2>
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            تاریخچه جلسات چت
-                        </h2>
-                    </header>
-                    <div class="ai-agent-card-body">
-
-                        <!-- فیلترهای وضعیت — دکمه «همه» اول می‌آید تا در چیدمان RTL
-                             سمت راست‌ترین مورد باشد. هر دکمه شامل یک badge قرمز کوچک
-                             بالای خود است که تعداد جلسات در آن وضعیت را نشان می‌دهد. -->
-                        <div class="ai-agent-status-filters" id="ai-agent-status-filters">
-                            <button type="button" class="ai-agent-filter-btn is-active" data-status="">
-                                <span class="ai-agent-filter-count" data-count-status="">0</span>
-                                همه
-                            </button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="closed">
-                                <span class="ai-agent-filter-count" data-count-status="closed">0</span>
-                                بسته‌شده
-                            </button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="human">
-                                <span class="ai-agent-filter-count" data-count-status="human">0</span>
-                                پشتیبان
-                            </button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="pending_human">
-                                <span class="ai-agent-filter-count" data-count-status="pending_human">0</span>
-                                در انتظار پشتیبان
-                            </button>
-                            <button type="button" class="ai-agent-filter-btn" data-status="bot">
-                                <span class="ai-agent-filter-count" data-count-status="bot">0</span>
-                                ربات
-                            </button>
-                        </div>
-
-                        <!-- نوار ابزار بالا -->
-                        <div class="ai-agent-sessions-toolbar">
-                            <div class="ai-agent-sessions-page-size">
-                                <label for="ai-agent-sessions-per-page">نمایش در صفحه:</label>
-                                <select id="ai-agent-sessions-per-page">
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
-                                </select>
-                            </div>
-                            <div class="ai-agent-sessions-page-nav">
-                                <span id="ai-agent-sessions-page-info" class="ai-agent-muted-small"></span>
-                                <button type="button" id="ai-agent-sessions-prev-btn" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه قبلی">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                                </button>
-                                <button type="button" id="ai-agent-sessions-next-btn" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه بعدی">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                </button>
-                            </div>
-                            <div class="ai-agent-sessions-total">
-                                <span id="ai-agent-sessions-total-info" class="ai-agent-muted-small"></span>
-                            </div>
-                        </div>
-
-                        <!-- وضعیت بارگذاری -->
-                        <div id="ai-agent-sessions-loading" class="ai-agent-sessions-loading" style="display:none;">در حال بارگذاری...</div>
-                        <div id="ai-agent-sessions-error" class="ai-agent-sessions-error" style="display:none;"></div>
-
-                        <!-- لیست آکاردئونی جلسات -->
-                        <div id="ai-agent-sessions-list" class="ai-agent-sessions-list"></div>
-
-                        <!-- نوار ابزار پایین -->
-                        <div class="ai-agent-sessions-toolbar ai-agent-sessions-toolbar-bottom">
-                            <div class="ai-agent-sessions-page-size">
-                                <label for="ai-agent-sessions-per-page-bottom">نمایش در صفحه:</label>
-                                <select id="ai-agent-sessions-per-page-bottom">
-                                    <option value="5">5</option>
-                                    <option value="10" selected>10</option>
-                                    <option value="20">20</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
-                                </select>
-                            </div>
-                            <div class="ai-agent-sessions-page-nav">
-                                <button type="button" id="ai-agent-sessions-prev-btn-bottom" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه قبلی">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                                </button>
-                                <button type="button" id="ai-agent-sessions-next-btn-bottom" class="ai-agent-btn ai-agent-btn-ghost ai-agent-btn-icon" disabled aria-label="صفحه بعدی">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                </button>
-                            </div>
                         </div>
 
                     </div>
                 </section>
 
-            <?php endif; ?>
-        </main>
+            </div>
+
+            <!-- ---------- نوار ذخیره ---------- -->
+            <?php
+            /*
+            تنظیمات خودکار ذخیره نمی‌شوند. همه‌ی فیلدهای این فرم فقط با
+            کلیک روی دکمه‌ی «ذخیره تنظیمات» ثبت می‌شوند (ارسال فرم به
+            options.php — همان مسیر استاندارد وردپرس).
+            */ ?>
+            <div class="ai-agent-savebar">
+                <div class="ai-agent-savebar-inner">
+                    <span class="ai-agent-savebar-hint">تغییرات فقط با کلیک روی «ذخیره تنظیمات» اعمال می‌شوند.</span>
+                    <button type="submit" class="ai-agent-btn ai-agent-btn-primary ai-agent-savebar-btn">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        ذخیره تنظیمات
+                    </button>
+                </div>
+            </div>
+        </form>
+        </div>
+
+        <!-- ================= نمای گفت‌وگوها ================= -->
+        <div class="ai-agent-view<?php echo $initial_view === 'history' ? ' is-active' : ''; ?>" data-view-panel="history">
+            <?php wp_nonce_field('ai_agent_chat_sessions_nonce_action', 'ai_agent_chat_sessions_nonce_field'); ?>
+            <div class="ai-agent-sheet">
+                <section class="ai-agent-section">
+                    <h2>گفت‌وگوها و پشتیبانی</h2>
+                    <p class="ai-agent-section-intro">
+                        هر گفت‌وگویی که بازدیدکننده‌ها با دستیار داشته‌اند این‌جاست. اگر کسی
+                        پشتیبان انسانی خواسته، با برچسب «در انتظار پشتیبان» بالا می‌آید و
+                        می‌توانی همان‌جا جوابش را بدهی.
+                    </p>
+
+                    <div class="ai-agent-filters" id="ai-agent-status-filters">
+                        <button type="button" class="ai-agent-filter-btn is-active" data-status="">
+                            همه <span class="ai-agent-filter-count" hidden data-count-status="">0</span>
+                        </button>
+                        <button type="button" class="ai-agent-filter-btn" data-status="pending_human">
+                            در انتظار پشتیبان <span class="ai-agent-filter-count" hidden data-count-status="pending_human">0</span>
+                        </button>
+                        <button type="button" class="ai-agent-filter-btn" data-status="human">
+                            پشتیبان <span class="ai-agent-filter-count" hidden data-count-status="human">0</span>
+                        </button>
+                        <button type="button" class="ai-agent-filter-btn" data-status="bot">
+                            ربات <span class="ai-agent-filter-count" hidden data-count-status="bot">0</span>
+                        </button>
+                        <button type="button" class="ai-agent-filter-btn" data-status="closed">
+                            بسته‌شده <span class="ai-agent-filter-count" hidden data-count-status="closed">0</span>
+                        </button>
+                    </div>
+
+                    <div class="ai-agent-sessions-toolbar">
+                        <div class="ai-agent-sessions-page-size">
+                            <label for="ai-agent-sessions-per-page">نمایش در صفحه:</label>
+                            <select id="ai-agent-sessions-per-page">
+                                <option value="5">۵</option>
+                                <option value="10" selected>۱۰</option>
+                                <option value="20">۲۰</option>
+                                <option value="50">۵۰</option>
+                                <option value="100">۱۰۰</option>
+                            </select>
+                        </div>
+                        <span id="ai-agent-sessions-page-info"></span>
+                        <div class="ai-agent-sessions-page-nav">
+                            <span id="ai-agent-sessions-total-info"></span>
+                            <button type="button" id="ai-agent-sessions-prev-btn" class="ai-agent-page-btn" disabled aria-label="صفحه قبلی">‹</button>
+                            <button type="button" id="ai-agent-sessions-next-btn" class="ai-agent-page-btn" disabled aria-label="صفحه بعدی">›</button>
+                        </div>
+                    </div>
+
+                    <div id="ai-agent-sessions-loading" class="ai-agent-sessions-loading" style="display:none;">در حال بارگذاری...</div>
+                    <div id="ai-agent-sessions-error" class="ai-agent-sessions-error" style="display:none;"></div>
+                    <?php
+                    /*
+                    فهرست تا وقتی این نما باز نشده گرفته نمی‌شود، پس جای
+                    خالی‌اش نباید یک شکاف بی‌توضیح باشد. اگر توکنی هم ثبت
+                    نشده، اصلاً گفت‌وگویی وجود ندارد که بیاید.
+                    */ ?>
+                    <div id="ai-agent-sessions-list" class="ai-agent-sessions-list">
+                        <div class="ai-agent-empty"><?php
+                            echo $has_api_key
+                                ? 'در حال آماده‌سازی فهرست گفت‌وگوها…'
+                                : 'کلید API خودتون رو وارد و ذخیره کنین تا گفت‌وگوها این‌جا بیاد.';
+                        ?></div>
+                    </div>
+
+                    <div class="ai-agent-sessions-toolbar">
+                        <div class="ai-agent-sessions-page-size">
+                            <label for="ai-agent-sessions-per-page-bottom">نمایش در صفحه:</label>
+                            <select id="ai-agent-sessions-per-page-bottom">
+                                <option value="5">۵</option>
+                                <option value="10" selected>۱۰</option>
+                                <option value="20">۲۰</option>
+                                <option value="50">۵۰</option>
+                                <option value="100">۱۰۰</option>
+                            </select>
+                        </div>
+                        <div class="ai-agent-sessions-page-nav">
+                            <button type="button" id="ai-agent-sessions-prev-btn-bottom" class="ai-agent-page-btn" disabled aria-label="صفحه قبلی">‹</button>
+                            <button type="button" id="ai-agent-sessions-next-btn-bottom" class="ai-agent-page-btn" disabled aria-label="صفحه بعدی">›</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
     </div>
     <?php
 }
 
 /*
 ==========================================================================
-بارگذاری استایل/اسکریپت صفحه‌ی تنظیمات — اکنون هم برای صفحه‌ی اصلی
-(ai-agent-settings) و هم برای زیرمنوی تاریخچه چت‌ها
-(ai-agent-settings-history) اجرا می‌شود تا استایل‌های جدید روی هر دو
-صفحه اعمال گردند.
+گزینه‌های ثابتِ صفحه‌ی تنظیمات — توابع کمکی رندر (از طراحی جدید)
+==========================================================================
+*/
+
+/**
+ * یک گروه دکمه‌ی رادیویی (سگمنت).
+ *
+ * $options: value => [title, sub]  — sub اختیاری است.
+ */
+function ai_agent_render_segmented($name, $options, $current, $aria_label = ''){
+    ?>
+    <div class="ai-agent-segmented" role="radiogroup"<?php echo $aria_label ? ' aria-label="' . esc_attr($aria_label) . '"' : ''; ?>>
+        <?php foreach ($options as $value => $meta) :
+            $title = is_array($meta) ? $meta[0] : $meta;
+            $sub   = (is_array($meta) && isset($meta[1])) ? $meta[1] : '';
+            $on    = ((string) $current === (string) $value);
+        ?>
+            <label class="ai-agent-segment<?php echo $on ? ' is-active' : ''; ?>">
+                <input type="radio" name="ai_agent_settings[<?php echo esc_attr($name); ?>]"
+                       value="<?php echo esc_attr($value); ?>" <?php checked($on); ?> />
+                <span class="ai-agent-segment-title"><?php echo esc_html($title); ?></span>
+                <?php if ($sub !== '') : ?>
+                    <span class="ai-agent-segment-sub"><?php echo esc_html($sub); ?></span>
+                <?php endif; ?>
+            </label>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+/** یک ردیف سوییچ رنگ گرد. مقدار انتخاب‌شده در یک input مخفی می‌نشیند. */
+function ai_agent_render_swatches($name, $palette, $current){
+    $current = strtoupper((string) $current);
+    ?>
+    <div class="ai-agent-swatches" data-swatch-group="<?php echo esc_attr($name); ?>">
+        <?php foreach ($palette as $hex) :
+            $on = (strtoupper($hex) === $current);
+        ?>
+            <button type="button"
+                    class="ai-agent-swatch<?php echo $on ? ' is-active' : ''; ?>"
+                    style="background:<?php echo esc_attr($hex); ?>"
+                    data-hex="<?php echo esc_attr($hex); ?>"
+                    title="<?php echo esc_attr(strtoupper($hex)); ?>"
+                    aria-label="<?php echo esc_attr(strtoupper($hex)); ?>"></button>
+        <?php endforeach; ?>
+    </div>
+    <input type="hidden" name="ai_agent_settings[<?php echo esc_attr($name); ?>]"
+           id="ai_agent_<?php echo esc_attr($name); ?>"
+           value="<?php echo esc_attr($current); ?>" />
+    <?php
+}
+
+/*
+==========================================================================
+بارگذاری استایل/اسکریپت صفحه‌ی تنظیمات — برای صفحه‌ی اصلی
+(ai-agent-settings) و زیرمنوی تاریخچه چت‌ها (ai-agent-settings-history)
+
+- دیزاین‌سیستم جدید: dunichat-admin.css + لایه‌ی مکمل برای بخش‌هایی
+  که از نسخه‌ی قبلی حفظ شده‌اند (کمبوباکس مدل، لیست وضعیت سرور،
+  نمودار دایره‌ای وضعیت و نوار ذخیره)
+- Chart.js برای نمودار دایره‌ای «استعلام وضعیت» لازم است.
 ==========================================================================
 */
 function ai_agent_admin_enqueue($hook){
     $page = isset($_GET['page']) ? $_GET['page'] : '';
     if (!in_array($page, array('ai-agent-settings', 'ai-agent-settings-history'), true)) return;
 
-    wp_enqueue_style('wp-color-picker');
-    wp_enqueue_script('wp-color-picker');
-    wp_enqueue_script('ai-agent-chartjs', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', array(), '4.4.0', true);
-
-    // استایل اختصاصی صفحه‌ی تنظیمات (قبلاً inline بود، اکنون فایل مجزا)
     wp_enqueue_style(
-        'ai-agent-settings-css',
-        AI_AGENT_URL . 'assets/css/SettingsStyles.css',
-        array('wp-color-picker'),
-        null
+        'ai-agent-admin-css',
+        AI_AGENT_URL . 'assets/css/dunichat-admin.css',
+        array(),
+        AI_AGENT_VERSION
     );
 
-    // اسکریپت اختصاصی صفحه‌ی تنظیمات (قبلاً inline بود، اکنون فایل مجزا)
-    // وابسته به jquery, wp-color-picker و Chart.js تا قبل از اجرا بارگذاری شده باشند
+    wp_enqueue_style(
+        'ai-agent-admin-compat-css',
+        AI_AGENT_URL . 'assets/css/dunichat-admin-compat.css',
+        array('ai-agent-admin-css'),
+        AI_AGENT_VERSION
+    );
+
+    wp_enqueue_script('ai-agent-chartjs', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', array(), '4.4.0', true);
+
     wp_enqueue_script(
         'ai-agent-settings-js',
         AI_AGENT_URL . 'assets/js/settings.js',
-        array('jquery', 'wp-color-picker', 'ai-agent-chartjs'),
-        null,
+        array('jquery', 'ai-agent-chartjs'),
+        AI_AGENT_VERSION,
         true
     );
+
+    /*
+    ضریب روشن‌کردن رنگ برند برای پیش‌نمایش رنگ حالت تاریک در صفحه.
+    */
+    wp_localize_script('ai-agent-settings-js', 'aiAgentAdmin', array(
+        'darkLift' => AI_AGENT_DARK_LIFT,
+    ));
 }
 add_action('admin_enqueue_scripts', 'ai_agent_admin_enqueue');

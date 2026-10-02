@@ -310,12 +310,44 @@ session_id از پاسخ API دریافت و توسط ajax.php در کوکی ذ�
 function ai_agent_get_or_set_session_id() {
 
     /*
-    این تابع اکنون فقط مقدار کوکی را می‌خواند.
-    session_id از پاسخ API دریافت و توسط ajax.php در کوکی ذخیره می‌شود.
+    کوکیِ ai_agent_session_id از نسخه‌ی ۲.۶.۲ به بعد یک JSON است:
+
+        {"sessions":["uuid-1",...],"current":"uuid-2","ts":1698230000000}
+
+    این تابع فقط current را برمی‌گرداند. اگر کوکی هنوز یک UUID تکی
+    بود (نصب قدیمی)، همان UUID معتبر برمی‌گردد تا چیزی از دست نرود.
     */
 
     if (isset($_COOKIE[AI_AGENT_SESSION_COOKIE])) {
-        $session_id = sanitize_text_field($_COOKIE[AI_AGENT_SESSION_COOKIE]);
+        $raw = is_string($_COOKIE[AI_AGENT_SESSION_COOKIE]) ? stripslashes($_COOKIE[AI_AGENT_SESSION_COOKIE]) : '';
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+
+        // حالت JSON جدید
+        if (substr($raw, 0, 1) === '{') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $current = isset($decoded['current']) ? sanitize_text_field($decoded['current']) : '';
+                if (ai_agent_is_valid_uuid($current)) {
+                    return $current;
+                }
+                // اگر current معتبر نبود، آخرین sessions را برمی‌داریم
+                $sessions = isset($decoded['sessions']) && is_array($decoded['sessions']) ? $decoded['sessions'] : array();
+                foreach (array_reverse($sessions) as $sid) {
+                    $sid = sanitize_text_field($sid);
+                    if (ai_agent_is_valid_uuid($sid)) {
+                        return $sid;
+                    }
+                }
+                return '';
+            }
+            // JSON خراب؛ می‌افتیم روی تفسیر UUID تکی
+        }
+
+        // حالت UUID تکی قدیمی
+        $session_id = sanitize_text_field($raw);
         if (!empty($session_id) && ai_agent_is_valid_uuid($session_id)) {
             return $session_id;
         }

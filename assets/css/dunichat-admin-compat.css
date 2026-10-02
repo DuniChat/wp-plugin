@@ -1,0 +1,184 @@
+/*
+==========================================================================
+دانیچَت — لایه‌ی مکمل استایل صفحه‌ی مدیریت (compat)
+
+دیزاین‌سیستم اصلی در dunichat-admin.css است. این فایل فقط استایل
+بخش‌هایی را اضافه می‌کند که از نسخه‌ی قبلی افزونه حفظ شده‌اند و در
+دیزاین‌سیستم جدید معادل ندارند:
+
+  - کمبوباکس انتخاب مدل هوش مصنوعی
+  - لیست «اطلاعات دریافتی از سرور»
+  - چیدمان بخش همگام‌سازی + قاب نمودار دایره‌ای وضعیت
+  - نوار ذخیره‌ی تنظیمات (ذخیره فقط با دکمه، نه خودکار)
+  - دکمه‌ی رفرش موجودی کیف‌پول
+  - صفحه‌ی زیرمنوی «تاریخچه چت‌ها» (body class جدا دارد)
+
+همه‌ی مقادیر از توکن‌های --dc-* همان دیزاین‌سیستم می‌آیند.
+==========================================================================
+*/
+
+/* ----------------------------------------------------------------------
+   صفحه‌ی زیرمنوی تاریخچه چت‌ها — همان پس‌زمینه و پدینگ صفحه‌ی اصلی
+   ---------------------------------------------------------------------- */
+body.dunichat_page_ai-agent-settings-history #wpcontent,
+body.dunichat_page_ai-agent-settings-history #wpbody-content { padding-left: 0; }
+body.dunichat_page_ai-agent-settings-history #wpbody-content { padding-bottom: 0; }
+body.dunichat_page_ai-agent-settings-history #wpwrap { background: var(--dc-bg, #F3F1EC); }
+body.dunichat_page_ai-agent-settings-history #wpfooter { display: none; }
+body.dunichat_page_ai-agent-settings-history .notice,
+body.dunichat_page_ai-agent-settings-history div.updated,
+body.dunichat_page_ai-agent-settings-history div.error {
+    max-width: 1120px;
+    margin: 16px auto 0;
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-right-width: 4px;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: none;
+    font-family: 'Vazirmatn DC', 'Vazirmatn', Tahoma, sans-serif;
+    font-size: 13px;
+}
+
+/* ----------------------------------------------------------------------
+   ردیف فیلد عمومی (label + کنترل)
+   ---------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ----------------------------------------------------------------------
+   بخش همگام‌سازی: چیدمان دو ستونی + قاب نمودار
+   ---------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-sync-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    margin-top: 16px;
+    align-items: start;
+}
+
+@media (max-width: 860px) {
+    .ai-agent-app .ai-agent-sync-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.ai-agent-app .ai-agent-sync-actions,
+.ai-agent-app .ai-agent-sync-chart {
+    background: var(--dc-sunken, #FAF9F5);
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-radius: var(--dc-radius-card, 16px);
+    padding: 16px;
+}
+
+.ai-agent-app .ai-agent-sync-block + .ai-agent-sync-block {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--dc-divider, #EFECE5);
+}
+
+.ai-agent-app .ai-agent-sync-block-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--dc-text, #1F1E1D);
+    margin-bottom: 10px;
+}
+
+.ai-agent-app .ai-agent-sync-chart .ai-agent-chart-wrap {
+    background: var(--dc-surface, #FFFFFF);
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-radius: var(--dc-radius, 10px);
+    padding: 12px;
+    max-width: 360px;
+    margin: 0 auto;
+}
+
+.ai-agent-app .ai-agent-sync-chart canvas { width: 100% !important; }
+
+/* ----------------------------------------------------------------------
+   نوار ذخیره‌ی تنظیمات — ذخیره فقط با دکمه
+   ---------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-savebar {
+    position: sticky;
+    bottom: 12px;
+    z-index: 40;
+    margin-top: 20px;
+}
+
+.ai-agent-app .ai-agent-savebar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--dc-surface, #FFFFFF);
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-radius: var(--dc-radius-card, 16px);
+    box-shadow: 0 10px 30px rgba(31, 30, 29, .14);
+    padding: 12px 16px;
+}
+
+.ai-agent-app .ai-agent-savebar-hint {
+    font-size: 12px;
+    color: var(--dc-text-soft, #6B6862);
+}
+
+.ai-agent-app .ai-agent-savebar-btn {
+    flex-shrink: 0;
+    min-width: 170px;
+    justify-content: center;
+}
+
+@media (max-width: 640px) {
+    .ai-agent-app .ai-agent-savebar-inner {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+}
+
+/* ----------------------------------------------------------------------
+   دکمه‌ی رفرش موجودی کیف‌پول (آیکون چرخان هنگام بارگذاری)
+   ---------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-wallet-refresh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--dc-line, #E7E4DD);
+    border-radius: 50%;
+    background: var(--dc-surface, #FFFFFF);
+    color: var(--dc-text-soft, #6B6862);
+    cursor: pointer;
+    align-self: center;
+    transition: color .15s ease, border-color .15s ease;
+}
+
+.ai-agent-app .ai-agent-wallet-refresh:hover {
+    color: var(--dc-primary, #C96442);
+    border-color: var(--dc-primary, #C96442);
+}
+
+.ai-agent-app .ai-agent-wallet-refresh.is-loading .ai-agent-sync-icon {
+    animation: dc-spin 1s linear infinite;
+}
+
+.ai-agent-app .ai-agent-wallet-refresh.is-loading {
+    pointer-events: none;
+    opacity: .7;
+}
+
+@keyframes dc-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* ----------------------------------------------------------------------
+   حالت لودینگ دکمه‌ها (آیکون داخل دکمه می‌چرخد)
+   ---------------------------------------------------------------------- */
+.ai-agent-app .ai-agent-btn.is-loading .ai-agent-btn-icon,
+.ai-agent-app .ai-agent-btn.is-loading svg:first-child {
+    animation: dc-spin 1s linear infinite;
+}

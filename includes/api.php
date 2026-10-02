@@ -17,12 +17,13 @@ if (!defined('ABSPATH')) {
 
 و بدنه‌ی زیر را ارسال می‌کند:
     {
-        "message":       <پرامپت کاربر>,
-        "model":         <مدل انتخابی از تنظیمات>,
-        "system_prompt": <پرامت سیستم از تنظیمات>,
-        "stream":        true,
-        "visitor_id":    <UUID ذخیره‌شده در کوکی مرورگر>
+        "message": <پرامپت کاربر>,
+        "stream":  true,
+        "images":  [<data URL base64>, ...]   // فقط همراه عکس
     }
+
+نکته: مدل زبانی و پرامت سیستم دیگر در درخواست فرستاده نمی‌شوند؛
+سرور آن‌ها را از تنظیمات سایت (پنل دانیچَت) می‌خواند.
 
 پاسخ API به‌صورت چانک‌های متوالی است که هر کدام یک JSON با کلید content
 هستند، مانند:
@@ -53,7 +54,7 @@ if (!defined('ABSPATH')) {
     escalate_conversation_id  : شناسه‌ی گفتگو در سیستم پشتیبان (در صورت escalate)
 ============================================
 */
-function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null, $images = array()) {
+function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_done = null, $on_error = null, $on_escalate = null, $on_references = null, $images = array(), $visitor_id = '') {
 
     $settings = ai_agent_get_settings();
     $api_key  = ai_agent_get_api_key();
@@ -75,22 +76,19 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
     /*
     ساخت بدنه‌ی درخواست طبق مستندات اندپوینت /api/v1/chat/messages:
         {
-            "message":       <پرامپت کاربر>,
-            "model":         <مدل انتخابی>,
-            "system_prompt": <پرامت سیستم>,
-            "stream":        true,
-            "images":        [<data URL base64>, ...]
+            "message": <پرامپت کاربر>,
+            "stream":  true,
+            "images":  [<data URL base64>, ...]
         }
 
-    آرایه‌ی images فقط زمانی به بدنه اضافه می‌شود که حداقل یک عکس
-    از سمت کلاینت ارسال شده باشد. هر آیتم یک data URL کامل
-    (مثلاً "data:image/png;base64,xxxx") است.
+    مدل و پرامت سیستم عمداً فرستاده نمی‌شوند؛ سرور آن‌ها را از
+    تنظیمات سایت می‌خواند. آرایه‌ی images فقط زمانی به بدنه اضافه
+    می‌شود که حداقل یک عکس از سمت کلاینت ارسال شده باشد. هر آیتم
+    یک data URL کامل (مثلاً "data:image/png;base64,xxxx") است.
     */
     $body_args = array(
-        'message'       => $message,
-        'model'         => isset($settings['model']) ? $settings['model'] : '',
-        'system_prompt' => isset($settings['system_prompt']) ? $settings['system_prompt'] : '',
-        'stream'        => true,
+        'message' => $message,
+        'stream'  => true,
     );
 
     if (!empty($images) && is_array($images)) {
@@ -104,6 +102,16 @@ function ai_agent_call_api_stream($message, $session_id, $on_chunk = null, $on_d
         if (!empty($clean_images)) {
             $body_args['images'] = array_values($clean_images);
         }
+    }
+
+    /*
+    توکن بازدیدکننده. فقط هنگام ساخته‌شدن یک گفت‌وگوی تازه به کار می‌آید:
+    سرور آن را شناسه‌ی همان گفت‌وگو می‌کند تا بعداً بشود فهرست
+    «گفت‌وگوهای پیشین» همین مرورگر را گرفت. اگر مقدارش شکل درستی
+    نداشت اصلاً فرستاده نمی‌شود و گفت‌وگو مثل قبل ناشناس ساخته می‌شود.
+    */
+    if (is_string($visitor_id) && preg_match('/^[0-9a-f]{16,64}$/', $visitor_id)) {
+        $body_args['metadata'] = array('visitor_id' => $visitor_id);
     }
 
     $body = wp_json_encode($body_args);
@@ -353,68 +361,21 @@ $parser_line = function($line) use (
 
 /*
 ============================================
-واکشی لیست مدل‌های هوش مصنوعی از سرور اختصاصی
-اگر $query خالی باشد، بدون پارامتر q کال می‌زند (طبق درخواست)
-============================================
-*/
-function ai_agent_fetch_models($query = '', $limit = 10) {
-
-    $args = array();
-
-    if (!empty($query)) {
-        $args['q'] = $query;
-    }
-    if (!empty($limit)) {
-        $args['limit'] = intval($limit);
-    }
-
-    $base_url = 'https://api.dunichat.ir/api/v1/models';
-    $url = !empty($args) ? $base_url . '?' . http_build_query($args) : $base_url;
-
-    $response = wp_remote_get($url, array(
-        'timeout' => 15,
-    ));
-
-    if (is_wp_error($response)) {
-        return false;
-    }
-
-    $code = wp_remote_retrieve_response_code($response);
-    if ($code !== 200) {
-        return false;
-    }
-
-    $body = wp_remote_retrieve_body($response);
-    $data = json_decode($body, true);
-
-    if (!is_array($data)) {
-        return false;
-    }
-
-    // بسته به ساختار واقعی پاسخ API، لیست مدل‌ها ممکن است داخل یکی از این کلیدها باشد
-    if (isset($data['models']) && is_array($data['models'])) {
-        return $data['models'];
-    }
-    if (isset($data['data']) && is_array($data['data'])) {
-        return $data['data'];
-    }
-
-    // اگر خود پاسخ مستقیماً یک آرایه از مدل‌هاست
-    return $data;
-}
-
-/*
-============================================
 واکشی تنظیمات همگام‌سازی از سرور اختصاصی
 اندپوینت: GET https://api.dunichat.ir/api/v1/sync/settings
 
 این تابع در هر بار باز شدن صفحه‌ی تنظیمات افزونه فراخوانی می‌شود
-و مقادیر فعلی مدل انتخاب‌شده، پرامت سیستم و منابع مجاز را از سرور
-می‌گیرد. API Key به‌صورت رمزشده در دیتابیس (wp_options) نگهداری
-می‌شود و در این‌جا رمزگشایی شده و در هدر X-API-Key ارسال می‌شود.
+و مقادیر فعلی تنظیمات سایت (مدل انتخاب‌شده، سقف پیام روزانه،
+سؤال‌های پیشنهادی، نام سازمان و وضعیت ASR/TTS) را از سرور
+می‌گیرد. این اندپوینت فقط‌خواندنی است؛ افزونه دیگر تنظیماتی به
+سرور ارسال نمی‌کند. API Key به‌صورت رمزشده در دیتابیس
+(wp_options) نگهداری می‌شود و در این‌جا رمزگشایی شده و در هدر
+X-API-Key ارسال می‌شود.
 
 خروجی:
-- آرایه‌ی تنظیمات در صورت موفقیت (شامل selected_model, system_prompt, allowed_content_types, ...)
+- آرایه‌ی تنظیمات در صورت موفقیت (شامل selected_model,
+  daily_message_limit, starter_questions, organization_name,
+  asr_enabled, tts_enabled)
 - false در صورت خطا یا نبود API Key
 ============================================
 */
@@ -525,132 +486,6 @@ function ai_agent_fetch_wallet_balance() {
 
 /*
 ============================================
-ارسال (PATCH) مقادیر تنظیمات به سرور همگام‌سازی
-اندپوینت: PATCH https://api.dunichat.ir/api/v1/sync/settings
-
-این تابع زمانی فراخوانی می‌شود که کاربر روی دکمه‌ی «ذخیره تنظیمات
-افزونه» کلیک کرده و می‌خواهیم مقادیر جدید (مدل انتخابی، پرامت
-سیستم، منابع محتوای مجاز، وضعیت‌های مجاز و سقف پیام روزانه) را
-به سرور اختصاصی اطلاع دهیم. کلید API از دیتابیس رمزگشایی و در
-هدر X-API-Key ارسال می‌شود.
-
-ورودی: آرایه‌ای با کلیدهای مطابق بدنه‌ی درخواست PATCH:
-    selected_model, system_prompt, allowed_content_types,
-    allowed_statuses, daily_message_limit
-
-خروجی:
-- آرایه‌ی پاسخ سرور (decode شده) در صورت موفقیت
-- false در صورت نبود API Key یا بروز خطای ارتباطی / کد HTTP غیر 200
-============================================
-*/
-function ai_agent_push_sync_settings($payload) {
-
-    $api_key = ai_agent_get_api_key();
-
-    if (empty($api_key)) {
-        return false;
-    }
-
-    $url = 'https://api.dunichat.ir/api/v1/sync/settings';
-
-    $response = wp_remote_request($url, array(
-        'method'  => 'PATCH',
-        'timeout' => 15,
-        'headers' => array(
-            'X-API-Key'    => $api_key,
-            'Accept'       => 'application/json',
-            'Content-Type' => 'application/json; charset=utf-8',
-        ),
-        'body' => wp_json_encode($payload),
-    ));
-
-    if (is_wp_error($response)) {
-        return false;
-    }
-
-    $code = wp_remote_retrieve_response_code($response);
-    if ($code < 200 || $code >= 300) {
-        return false;
-    }
-
-    $body = wp_remote_retrieve_body($response);
-    $data = json_decode($body, true);
-
-    return is_array($data) ? $data : true;
-}
-
-/*
-============================================
-نگاشت معکوس: تبدیل کلیدهای داخلی افزونه (posts, pages, ...)
-به برچسب‌های متنی مورد انتظار API جهت ارسال در بدنه‌ی PATCH
-(معکوس تابع ai_agent_map_content_types)
-============================================
-*/
-function ai_agent_unmap_content_types($internal_types) {
-
-    if (!is_array($internal_types)) {
-        return array();
-    }
-
-    $map = array(
-        'posts'        => 'post',
-        'pages'        => 'page',
-        'products'     => 'product',
-        'product_cats' => 'list',
-    );
-
-    $result = array();
-
-    foreach ($internal_types as $type) {
-        if (isset($map[$type])) {
-            $result[] = $map[$type];
-        }
-    }
-
-    return array_values(array_unique($result));
-}
-
-/*
-============================================
-نگاشت مقادیر allowed_content_types دریافتی از API به کلیدهای داخلی افزونه
-
-API ممکن است این مقادیر متنی را برگرداند:
-- "Posts"                 → posts
-- "Pages"                 → pages
-- "WooCommerce Products"  → products
-- "Product Categories"    → product_cats
-
-همچنین اگر خود API مستقیماً کلیدهای داخلی (posts, pages, products, product_cats)
-را برگرداند نیز پشتیبانی می‌شود.
-
-خروجی: آرایه‌ای از کلیدهای داخلی سازگار با sync_types
-============================================
-*/
-function ai_agent_map_content_types($api_types) {
-
-    if (!is_array($api_types)) {
-        return array();
-    }
-
-    $map = array(
-        'post'    => 'posts',
-        'page'    => 'pages',
-        'product' => 'products',
-        'list'    => 'product_cats',
-    );
-
-    $result = array();
-
-    foreach ($api_types as $type) {
-        if (isset($map[$type])) {
-            $result[] = $map[$type];
-        }
-    }
-
-    return array_values(array_unique($result));
-}
-/*
-============================================
 واکشی تاریخچه‌ی پیام‌های یک session از سرور
 اندپوینت: GET https://api.dunichat.ir/api/v1/chat/sessions/{session_id}/messages
 
@@ -676,15 +511,58 @@ function ai_agent_map_content_types($api_types) {
         ]
     }
 
-برای حفظ سازگاری با کدهای قدیمی که آرایه‌ای از پیام‌ها را انتظار دارند،
-این تابع فقط آرایه‌ی messages را برمی‌گرداند. فیلد image_keys هر پیام
-دقیقاً همان‌طور که از سمت API آمده حفظ می‌شود تا سمت کلاینت بتواند
-عکس‌های مربوط به هر پیام را به‌صورت lazy بارگذاری کند.
+/*
+============================================
+فهرست گفت‌وگوهای پیشینِ یک بازدیدکننده
+اندپوینت: GET https://api.dunichat.ir/api/v1/chat/my-sessions
 
-خروجی: آرایه‌ای از پیام‌ها (هر کدام شامل id, role, content, references, image_keys, created_at)
-در صورت موفقیت، یا false در صورت خطا/نبود API Key
+کشوی «گفت‌وگوهای پیشین» داخل ویجت از این تابع تغذیه می‌شود. توکن
+بازدیدکننده را مرورگر نگه می‌دارد و از طریق admin-ajax به این‌جا
+می‌رسد؛ کلید API هرگز به مرورگر نمی‌رود.
+
+خروجی: آرایه‌ی پاسخ سرور، یا false در صورت نبود کلید / خطای ارتباطی.
 ============================================
 */
+function ai_agent_fetch_visitor_sessions($visitor_id, $limit = 20) {
+
+    $api_key = ai_agent_get_api_key();
+    if (empty($api_key)) {
+        return false;
+    }
+
+    if (!preg_match('/^[0-9a-f]{16,64}$/', (string) $visitor_id)) {
+        return false;
+    }
+
+    $url = add_query_arg(
+        array(
+            'visitor_id' => $visitor_id,
+            'limit'      => max(1, min(50, intval($limit))),
+        ),
+        'https://api.dunichat.ir/api/v1/chat/my-sessions'
+    );
+
+    $response = wp_remote_get($url, array(
+        'timeout' => 15,
+        'headers' => array(
+            'X-API-Key' => $api_key,
+            'Accept'    => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return false;
+    }
+
+    if (wp_remote_retrieve_response_code($response) !== 200) {
+        return false;
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+
+    return is_array($data) ? $data : false;
+}
+
 function ai_agent_fetch_chat_history($session_id) {
 
     $api_key = ai_agent_get_api_key();
@@ -1068,9 +946,8 @@ function ai_agent_push_sync_content($items) {
         );
     }
 
-    // 2.b پاکسازی هر آیتم (همون منطق قبلی)
+    // 2.b پاکسازی هر آیتم
     $allowed_content_types = array('post', 'page', 'product', 'list');
-    $allowed_statuses      = array('publish', 'draft', 'pending', 'private', 'future');
     $clean_items = array();
     $skipped_count = 0;
 
@@ -1087,14 +964,13 @@ function ai_agent_push_sync_content($items) {
         $title   = isset($item['title'])   ? (string) $item['title']   : '';
         $content = isset($item['content']) ? (string) $item['content'] : '';
         $url     = isset($item['url'])     ? (string) $item['url']     : '';
-        $status  = isset($item['status'])  ? (string) $item['status']  : 'publish';
 
-        // استخراج عکس‌ها (حداکثر ۴ عکس)؛ رشته‌های خالی و غیررشته‌ای فیلتر می‌شوند
+        // استخراج عکس‌ها (حداکثر ۱۰ عکس طبق سقف API جدید)؛ رشته‌های خالی و غیررشته‌ای فیلتر می‌شوند
         $images = array();
         if (isset($item['images']) && is_array($item['images'])) {
             foreach ($item['images'] as $img) {
-                if (count($images) >= 4) {
-                    break; // سقف ۴ عکس طبق قرارداد API
+                if (count($images) >= 10) {
+                    break; // سقف ۱۰ عکس طبق قرارداد API
                 }
                 if (is_string($img) && trim($img) !== '') {
                     $images[] = $img;
@@ -1102,9 +978,6 @@ function ai_agent_push_sync_content($items) {
             }
         }
 
-        if (!in_array($status, $allowed_statuses, true)) {
-            $status = 'publish';
-        }
         if (trim($title) === '') {
             $title = 'بدون عنوان';
         }
@@ -1121,7 +994,6 @@ function ai_agent_push_sync_content($items) {
             'title'        => $title,
             'content'      => $content,
             'url'          => $url,
-            'status'       => $status,
             'images'       => $images,
         );
     }
@@ -1914,10 +1786,10 @@ function ai_agent_fetch_session_messages($session_id, $include_system = true, $p
 
     $url = 'https://api.dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/messages';
 
+    // طبق API جدید، تنها پارامتر query مجاز include_system است؛
+    // صفحه‌بندی سمت کلاینت انجام می‌شود (سرور همه‌ی پیام‌ها را برمی‌گرداند).
     $query_params = array(
         'include_system' => $include_system ? 'true' : 'false',
-        'page'      => max(1, intval($page)),
-        'page_size' => max(1, intval($page_size)),
     );
 
     $url .= '?' . http_build_query($query_params);
@@ -2201,11 +2073,7 @@ function ai_agent_close_session($session_id) {
     X-API-Key  : کلید API کاربر (رمزگشایی‌شده از دیتابیس)
     session-id : شناسه‌ی جلسه (همان UUID که در مسیر URL هم قرار دارد)
 
-بدنه:
-    {"additionalProp1": {}}
-(بدنه‌ی ثابت — سرور فقط وجود بدنه را بررسی می‌کند و محتوای آن
-برای این اندپوینت اهمیتی ندارد؛ بنابراین دقیقاً همین مقدار ارسال
-می‌شود تا با مستندات API هماهنگ بماند.)
+بدنه: ندارد (طبق API جدید، این اندپوینت بدنه‌ای نمی‌پذیرد).
 
 این تابع از پنل تاریخچه چت‌ها برای جلسات «در انتظار پشتیبان»
 یا «پشتیبان» فراخوانی می‌شود تا پشتیبان بتواند در هر لحظه گفتگو
@@ -2231,11 +2099,7 @@ function ai_agent_return_session_to_bot($session_id) {
 
     $url = 'https://api.dunichat.ir/api/v1/chat/sessions/' . rawurlencode($session_id) . '/return-to-bot';
 
-    // بدنه‌ی ثابت مطابق مستندات API: {"additionalProp1": {}}
-    // از wp_json_encode با stdClass خالی استفاده می‌کنیم تا {} (و نه [])
-    // برای کلید additionalProp1 تولید شود.
-    $body = wp_json_encode(array('additionalProp1' => new stdClass()), JSON_UNESCAPED_UNICODE);
-
+    // طبق API جدید، این اندپوینت بدنه‌ای ندارد.
     $response = wp_remote_post($url, array(
         'timeout'     => 20,
         'redirection' => 0,
@@ -2244,9 +2108,7 @@ function ai_agent_return_session_to_bot($session_id) {
             'X-API-Key'    => $api_key,
             'session-id'   => $session_id,
             'Accept'       => 'application/json',
-            'Content-Type' => 'application/json; charset=utf-8',
         ),
-        'body' => $body,
     ));
 
     if (is_wp_error($response)) {

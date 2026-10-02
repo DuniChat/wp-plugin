@@ -49,16 +49,23 @@ function ai_agent_enqueue(){
 
     $settings = ai_agent_get_settings();
 
+    /*
+    نسخه‌ی افزونه به‌عنوان query string به هر دو فایل اضافه می‌شود
+    (نه null، نه خالی) تا وقتی افزونه به‌روزرسانی می‌شود، مرورگرها و
+    کش‌های میانی (CDN، پراکسی) مجبور به گرفتن نسخه‌ی تازه‌ی فایل شوند.
+    */
     wp_enqueue_style(
         'ai-agent-css',
-        AI_AGENT_URL.'assets/css/ai-agent.css'
+        AI_AGENT_URL.'assets/css/ai-agent.css',
+        array(),
+        AI_AGENT_VERSION
     );
 
     wp_enqueue_script(
         'ai-agent-js',
         AI_AGENT_URL.'assets/js/ai-agent.js',
         array('jquery'),
-        null,
+        AI_AGENT_VERSION,
         true
     );
 
@@ -72,20 +79,43 @@ function ai_agent_enqueue(){
 
     هر دو رنگ به‌صورت متغیر CSS روی #ai-agent تزریق می‌شوند و
     متغیر --ai-agent-theme-color بر اساس data-theme (که توسط JS
-    هنگام تغییر حالت شب/روز ست می‌شود) به یکی از این دو رنگ
-    اشاره می‌کند. بنابراین:
-      - دکمه‌ی شناور، هدر و حباب پیام کاربر از رنگ همان حالت پیروی می‌کنند
-      - رنگ فوکِس (selected) فیلد متن #ai-agent-input نیز از همین
-        رنگ پیروی می‌کند (به‌جای آبی ثابت قبلی)
+    بر اساس تنظیمات تم و تم خود سایت ست می‌شود) به یکی از این دو
+    رنگ اشاره می‌کند.
 
     دو متغیر -rgb نیز برای ساخت سایه‌های شفاف rgba(...) لازم‌اند.
     ============================================
     */
     $color_light = ai_agent_resolve_theme_color($settings, 'light');
-    $color_dark  = ai_agent_resolve_theme_color($settings, 'dark');
+    /*
+    رنگ حالت تاریک: اگر کاربر در صفحه‌ی تنظیمات به‌صورت دستی رنگِ
+    متفاوتی برای حالت تاریک انتخاب کرده (color_dark_custom = 1)، همان
+    مقدار ذخیره‌شده استفاده می‌شود. در غیر این‌صورت، از همان فرمولِ
+    قدیمی (ساختِ خودکار از رنگِ روشن با ضریب AI_AGENT_DARK_LIFT) استفاده
+    می‌شود تا منطقِ پیشین کاملاً حفظ شود.
+    */
+    $color_dark_custom = isset($settings['color_dark_custom']) ? (string) $settings['color_dark_custom'] : '0';
+    $saved_color_dark   = isset($settings['color_dark']) ? sanitize_hex_color($settings['color_dark']) : '';
+    if ($color_dark_custom === '1' && $saved_color_dark) {
+        $color_dark = $saved_color_dark;
+    } else {
+        $color_dark = function_exists('ai_agent_lighten_hex')
+            ? ai_agent_lighten_hex($color_light, AI_AGENT_DARK_LIFT)
+            : ai_agent_resolve_theme_color($settings, 'dark');
+    }
 
     $rgb_light = ai_agent_hex_to_rgb($color_light);
     $rgb_dark  = ai_agent_hex_to_rgb($color_dark);
+
+    /*
+    حالت تم چت از تنظیمات افزونه:
+      auto  → از تم خود سایت پیروی می‌کند
+      light → همیشه روشن
+      dark  → همیشه تاریک
+    */
+    $theme_mode = isset($settings['theme_mode']) ? $settings['theme_mode'] : 'auto';
+    if (!in_array($theme_mode, array('auto', 'light', 'dark'), true)) {
+        $theme_mode = 'auto';
+    }
 
     wp_localize_script(
     'ai-agent-js',
@@ -97,6 +127,9 @@ function ai_agent_enqueue(){
         'color'            => $color_light,
         'color_light'      => $color_light,
         'color_dark'       => $color_dark,
+        // تم دیگر داخل ویجت انتخاب نمی‌شود؛ این مقدار تعیین می‌کند که از
+        // سایت پیروی کند یا روی یکی از دو حالت قفل باشد.
+        'theme_mode'       => $theme_mode,
         'session_cookie'   => AI_AGENT_SESSION_COOKIE,
         // حداکثر تعداد عکس‌های مجاز در هر پیام چت (سنجاق)
         'max_images'       => defined('AI_AGENT_MAX_CHAT_IMAGES') ? AI_AGENT_MAX_CHAT_IMAGES : 4,
@@ -265,14 +298,17 @@ function ai_agent_enqueue(){
             --ai-agent-theme-color: var(--ai-agent-color-light);
             --ai-agent-theme-color-rgb: var(--ai-agent-color-light-rgb);
         }
-        /* عناصر رنگی ویجت از رنگِ همان حالت پیروی می‌کنند */
+        /*
+        عناصر رنگی ویجت از رنگِ همان حالت پیروی می‌کنند — دکمه‌ی شناور،
+        هدر و دکمه‌ی ارسال. حباب پیام کاربر عمداً این‌جا نیست: رنگ برند
+        روی یک بلوکِ پررنگ کنار متنِ خودِ کاربر می‌نشست و سنگین‌ترین چیز
+        روی صفحه می‌شد؛ رنگ خنثی‌اش (--ai-bubble در ai-agent.css) دست‌نخورده
+        می‌ماند.
+        */
         #ai-agent-button {
             background: var(--ai-agent-theme-color, {$color_light});
         }
         #ai-agent-header {
-            background: var(--ai-agent-theme-color, {$color_light});
-        }
-        .user-message {
             background: var(--ai-agent-theme-color, {$color_light});
         }
         {$position_css}

@@ -166,48 +166,83 @@ function ai_agent_check_sync_status_handler() {
   ۷) بازگرداندن نتیجه‌ی دقیق به فرانت‌اند (تعداد جدید/حذف‌شده)
 ================================================================
 */
-function ai_agent_sync_data_handler() {
+/*
+================================================================
+هسته‌ی همگام‌سازی افزایشی
 
-    // ۱. بررسی دسترسی
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array(
-            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
-        ));
+قبلاً این کد مستقیماً داخل هندلر AJAX بود و هر مسیر خروجی با
+wp_send_json تمام می‌شد؛ یعنی فقط با کلیک کاربر قابل اجرا بود. حالا
+همان منطق یک تابع معمولی است که آرایه برمی‌گرداند، تا هم دکمه‌ی
+«به‌روزرسانی محتوا» و هم زمان‌بندی خودکار (WP-Cron) از یک مسیر
+استفاده کنند. منطق سینک دست‌نخورده است.
+
+خروجی: array('success' => bool, 'data' => array(...))
+================================================================
+*/
+/*
+================================================================
+تازه‌کردن وضعیت پردازش آیتم‌ها از روی سرور
+
+job_id های ذخیره‌شده را دسته‌ای استعلام می‌کند و ستون status جدول
+synced_items را به‌روز می‌کند. خروجی: تعداد ردیف‌های تغییرکرده
+(در صورت خطا صفر). این تابع هیچ خروجی JSON نمی‌دهد تا هم از هندلر
+AJAX و هم از سینک زمان‌بندی‌شده قابل استفاده باشد.
+================================================================
+*/
+function ai_agent_refresh_synced_statuses() {
+    $job_ids = ai_agent_get_all_synced_job_ids();
+    if (empty($job_ids)) {
+        return 0;
     }
 
-    // ۲. بررسی nonce
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_nonce_action')) {
-        wp_send_json_error(array(
-            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
-        ));
+    $result = ai_agent_fetch_sync_status_batch($job_ids);
+    if (!isset($result['status']) || $result['status'] !== 'success'
+        || empty($result['results']) || !is_array($result['results'])) {
+        return 0;
     }
 
-    // ۳. بررسی API Key
+    $updated_count = 0;
+    foreach ($result['results'] as $r) {
+        if (!is_array($r) || empty($r['job_id']) || empty($r['status'])) {
+            continue;
+        }
+        $updated = ai_agent_update_synced_status_by_job_id($r['job_id'], $r['status']);
+        if ($updated !== false && $updated > 0) {
+            $updated_count++;
+        }
+    }
+
+    return $updated_count;
+}
+
+function ai_agent_run_incremental_sync() {
+
+    // ۱. بررسی API Key
     $api_key = ai_agent_get_api_key();
     if (empty($api_key)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'API Key تنظیم نشده است. لطفاً در صفحه‌ی تنظیمات کلید معتبر وارد کنید.'
         ));
     }
 
-    // ۴. بررسی انتخاب نوع‌های محتوا توسط کاربر
+    // ۲. بررسی انتخاب نوع‌های محتوا توسط کاربر
     $settings = ai_agent_get_settings();
     $sync_types = isset($settings['sync_types']) ? $settings['sync_types'] : array();
 
     if (empty($sync_types)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'لطفاً ابتدا حداقل یک منبع داده را تیک زده و ذخیره کنید.'
         ));
     }
 
-    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by allowed_statuses['image'] = allow-image|deny-image)
+    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by the local sync_images setting)
     $sync_images_enabled = !empty($settings['sync_images']);
 
-    // ۵. جمع‌آوری تمام محتوای فعلی مطابق با تیک‌های کاربر
+    // ۳. جمع‌آوری تمام محتوای فعلی مطابق با تیک‌های کاربر
     $current_items = ai_agent_collect_sync_items($sync_types);
 
     if (empty($current_items)) {
-        wp_send_json_error(array(
+        return array('success' => false, 'data' => array(
             'message' => 'هیچ داده‌ای متناسب با فیلترهای انتخابی شما یافت نشد.'
         ));
     }
@@ -216,7 +251,7 @@ function ai_agent_sync_data_handler() {
     ============================================
     اگر تیک «سینک تصاویر» نخورده باشد، عکس‌ها را از آیتم‌ها حذف می‌کنیم
     تا فقط محتوای متنی به سرور ارسال شود. این رفتار با مقدار
-    allow-image / deny-image در allowed_statuses مطابقت دارد.
+    تنظیم محلی sync_images این رفتار را کنترل می‌کند.
     ============================================
     */
     if (!$sync_images_enabled) {
@@ -226,7 +261,11 @@ function ai_agent_sync_data_handler() {
         unset($item_ref);
     }
 
-    // ۶. دریافت نقشه‌ی آی‌دی‌های سینک‌شده از دیتابیس
+    /*
+    ============================================
+    ۶. دریافت نقشه‌ی آی‌دی‌های سینک‌شده از دیتابیس
+    ============================================
+    */
     $synced_map = ai_agent_get_synced_items_map();
 
     /*
@@ -238,10 +277,17 @@ function ai_agent_sync_data_handler() {
     پیدا کرده و به‌جای موجود (existing) به‌عنوان «نیازمند ارسال مجدد» به
     new_items اضافه می‌کنیم تا دوباره به /sync/content ارسال شوند.
 
-    کلیدهای failed_keys به‌فرمت "content_type::source_id" هستند تا جستجو
-    در حلقه‌ی تفکیک O(1) باشد.
+    پیش از خواندن ناموفق‌ها، وضعیت کارهای در جریان را یک‌بار از سرور
+    تازه می‌کنیم. تا پیش از این، ستون status فقط وقتی به‌روز می‌شد که
+    مدیر دکمه‌ی «بررسی وضعیت» را می‌زد؛ یعنی سینکِ خودکارِ زمان‌بندی‌شده
+    هیچ‌وقت نمی‌فهمید چیزی در سرور ناموفق شده و آن مورد برای همیشه
+    ایندکس‌نشده می‌ماند. حالا هر سینک، ناموفق‌های واقعی را می‌بیند.
+
+    اگر این استعلام خطا بدهد، سینک متوقف نمی‌شود: بدترین حالت این است
+    که این دور، ناموفق‌ها دوباره فرستاده نشوند و دور بعد فرستاده شوند.
     ============================================
     */
+    ai_agent_refresh_synced_statuses();
     $failed_rows = ai_agent_get_failed_synced_items();
     $failed_keys = array();
     if (!empty($failed_rows)) {
@@ -520,7 +566,7 @@ if (!empty($new_items)) {
     if (empty($summary_parts)) {
         if ($content_error !== '' || $delete_error !== '' || $edited_error !== '') {
             $errors = array_filter(array($content_error, $delete_error, $edited_error));
-            wp_send_json_error(array(
+            return array('success' => false, 'data' => array(
                 'message'         => implode(' | ', $errors),
                 'new_count'       => 0,
                 'deleted_count'   => 0,
@@ -540,7 +586,7 @@ if (!empty($new_items)) {
         }
     }
 
-    wp_send_json_success(array(
+    return array('success' => true, 'data' => array(
         'message'             => $message,
         'new_count'           => $new_sent_count,
         'new_truly_new_count' => $truly_new_count,
@@ -551,6 +597,40 @@ if (!empty($new_items)) {
         'last_sync_time'      => $sync_time,
         'sync_type'           => 'incremental',
     ));
+}
+
+
+/*
+================================================================
+هندلر AJAX دکمه‌ی «به‌روزرسانی محتوا»
+
+فقط بررسی‌های مربوط به خودِ درخواست (دسترسی و nonce) این‌جاست؛
+کار اصلی در ai_agent_run_incremental_sync انجام می‌شود.
+================================================================
+*/
+function ai_agent_sync_data_handler() {
+
+    // ۱. بررسی دسترسی
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => 'شما دسترسی کافی برای انجام این عملیات را ندارید.'
+        ));
+    }
+
+    // ۲. بررسی nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_agent_sync_nonce_action')) {
+        wp_send_json_error(array(
+            'message' => 'خطای امنیتی! اعتبارسنجی درخواست ناموفق بود.'
+        ));
+    }
+
+    $result = ai_agent_run_incremental_sync();
+
+    if (!empty($result['success'])) {
+        wp_send_json_success($result['data']);
+    }
+
+    wp_send_json_error($result['data']);
 }
 
 
@@ -610,7 +690,7 @@ function ai_agent_sync_all_data_handler() {
         ));
     }
 
-    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by allowed_statuses['image'] = allow-image|deny-image)
+    // خواندن پرچم سینک تصاویر از تنظیمات (controlled by the local sync_images setting)
     $sync_images_enabled = !empty($settings['sync_images']);
 
     /*
@@ -693,7 +773,7 @@ function ai_agent_sync_all_data_handler() {
     ============================================
     اگر تیک «سینک تصاویر» نخورده باشد، عکس‌ها را از آیتم‌ها حذف می‌کنیم
     تا فقط محتوای متنی به سرور ارسال شود. این رفتار با مقدار
-    allow-image / deny-image در allowed_statuses مطابقت دارد.
+    تنظیم محلی sync_images این رفتار را کنترل می‌کند.
     ============================================
     */
     if (!$sync_images_enabled) {
@@ -1100,6 +1180,50 @@ function ai_agent_build_product_attributes_text($post_id) {
         }
     }
 
+    /*
+    ============================================
+    ۳. قیمت محصول — قیمتِ فعلیِ فروش و در صورت تخفیف، قیمت اصلی و
+       قیمت با تخفیف.
+
+       تا نسخه‌ی قبل فقط قیمتِ تنوع‌های محصولات متغیر (Variations)
+       ارسال می‌شد و قیمتِ خودِ محصول در داده‌هایی که به سرور می‌رفت
+       وجود نداشت؛ یعنی مدل هوش مصنوعی از قیمت محصول بی‌خبر بود.
+       حالا قیمت به‌صورت متنِ ساختاریافته به انتهای content اضافه
+       می‌شود تا هنگام امبد شدن، مدل قیمت را هم بداند. واحد پول
+       فروشگاه هم کنارش می‌آید تا عدد بدون واحد، گمراه‌کننده نباشد.
+    ============================================
+    */
+    $price_lines = array();
+
+    $currency_code = function_exists('get_woocommerce_currency') ? (string) get_woocommerce_currency() : '';
+
+    $current_price = $product->get_price();
+    $regular_price = $product->get_regular_price();
+    $sale_price    = $product->get_sale_price();
+
+    if ($product->is_on_sale()
+        && is_string($regular_price) && $regular_price !== ''
+        && is_string($sale_price) && $sale_price !== '') {
+        // محصول در حراج است: هر دو قیمت اصلی و با تخفیف ارسال می‌شود
+        $price_lines[] = 'قیمت اصلی: ' . $regular_price;
+        $price_lines[] = 'قیمت با تخفیف: ' . $sale_price;
+    } elseif ($current_price !== '' && $current_price !== null) {
+        // برای محصولات متغیر، get_price کمترین قیمتِ فعال را برمی‌گرداند
+        $price_lines[] = ($product->is_type('variable') ? 'قیمت از: ' : 'قیمت: ') . (string) $current_price;
+    }
+
+    if (!empty($price_lines)) {
+        $price_block = 'قیمت محصول';
+        if ($currency_code !== '') {
+            $price_block .= ' (واحد پول: ' . $currency_code . ')';
+        }
+        $price_block .= ":\n" . implode("\n", array_map(function ($l) {
+            return '- ' . $l;
+        }, $price_lines));
+
+        $blocks[] = $price_block;
+    }
+
     if (empty($blocks)) {
         return '';
     }
@@ -1121,8 +1245,7 @@ function ai_agent_build_product_attributes_text($post_id) {
             'title'        => 'عنوان محتوا',
             'content'      => 'متن کامل محتوا',
             'url'          => 'https://example.com/...',
-            'status'       => 'publish',         // وضعیت انتشار
-            'images'       => array('base64...', 'base64...'),  // حداکثر ۴ عکس base64
+            'images'       => array('base64...', 'base64...'),  // حداکثر ۱۰ عکس base64
         ),
         ...
     )
@@ -1227,7 +1350,6 @@ function ai_agent_collect_sync_items($sync_types) {
                     'title'        => $title,
                     'content'      => $content,
                     'url'          => $permalink !== '' ? $permalink : home_url('/'),
-                    'status'       => (string) $post->post_status,
                     'images'       => $images,
                     // published_at: تاریخ آخرین ویرایش پست (post_modified).
                     // این مقدار در جدول synced_items ذخیره می‌شود و در سینک‌های
@@ -1282,7 +1404,6 @@ function ai_agent_collect_sync_items($sync_types) {
                     'title'        => $term_name,
                     'content'      => $desc_trim !== '' ? $desc_trim : 'بدون محتوا',
                     'url'          => $term_link_str !== '' ? $term_link_str : home_url('/'),
-                    'status'       => 'publish',
                     'images'       => $images,
                     // published_at: هش محتوای ترم (نام + توضیح + عکس شاخص).
                     // چون ترم‌ها تاریخ ویرایش ندارند، از هش به‌عنوان شناسه‌ی

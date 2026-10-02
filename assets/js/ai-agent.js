@@ -7,7 +7,64 @@ jQuery(function ($) {
     const input = $("#ai-agent-input");
     const messages = $("#ai-agent-messages");
     const widget = $("#ai-agent");
-    const themeToggle = $(".ai-theme-toggle");
+    const drawer = $("#ai-agent-drawer");
+    const drawerList = $("#ai-agent-drawer-list");
+
+    const CONFIG = window.ai_agent || {};
+
+    /*
+    ============================================
+    توکن بازدیدکننده (visitor_id)
+
+    یک رشته‌ی هگز تصادفی که فقط همین مرورگر می‌شناسد و در
+    localStorage ذخیره می‌شود. سرور دانیچَت آن را شناسه‌ی گفت‌وگوهای
+    این مرورگر می‌داند و فهرست «گفت‌وگوهای پیشین» را با آن برمی‌گرداند.
+    نه کوکی است (پاک‌شدن کوکی‌ها گفت‌وگوها را نمی‌پاکد) و نه چیزی که
+    بخواهد کاربر را شناسایی کند — فقط همان مرورگر.
+    ============================================
+    */
+    const VISITOR_STORAGE_KEY = 'ai_agent_visitor_id';
+    let visitorId = null;
+
+    function randomHex(chars) {
+        const bytes = new Uint8Array(chars / 2);
+        if (window.crypto && window.crypto.getRandomValues) {
+            window.crypto.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = Math.floor(Math.random() * 256);
+            }
+        }
+        return Array.prototype.map.call(bytes, function (b) {
+            return ('0' + b.toString(16)).slice(-2);
+        }).join('');
+    }
+
+    function getVisitorId() {
+        if (visitorId) return visitorId;
+        try {
+            visitorId = localStorage.getItem(VISITOR_STORAGE_KEY);
+        } catch (e) {
+            visitorId = null;
+        }
+        if (!visitorId || !/^[0-9a-f]{16,64}$/.test(visitorId)) {
+            visitorId = randomHex(32);
+            try {
+                localStorage.setItem(VISITOR_STORAGE_KEY, visitorId);
+            } catch (e) {
+                // حالت مرور خصوصی: توکن فقط تا پایان همین بازدید زنده است،
+                // یعنی تاریخچه در بازدید بعدی خالی خواهد بود. این بهتر از
+                // خطا دادن است.
+            }
+        }
+        return visitorId;
+    }
+
+    /** ارقام لاتین به فارسی — عددهای داخل ویجت فارسی نوشته می‌شوند. */
+    function toFaDigits(value) {
+        const fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        return String(value).replace(/[0-9]/g, function (d) { return fa[+d]; });
+    }
 
     /*
     ============================================
@@ -39,45 +96,94 @@ jQuery(function ($) {
 
     /*
     ============================================
-    مدیریت دستی تم دارک/لایت
+    تم
 
-    مقدار اولیه از تنظیمات سیستم کاربر خوانده می‌شود؛ اما بعد از آن
-    کاربر می‌تواند با کلیک روی آیکون ماه/خورشید، مستقل از تنظیمات
-    سیستم، بین دو حالت جابجا شود. انتخاب کاربر در localStorage
-    ذخیره می‌شود تا در بازدیدهای بعدی هم حفظ شود.
+    دیگر انتخابِ بازدیدکننده نیست. آیکون ماه/خورشید داخل هدر حذف شد و
+    مقدارِ theme_mode از تنظیمات افزونه می‌آید:
+
+      auto  → از سایت میزبان پیروی کن
+      light → همیشه روشن
+      dark  → همیشه تاریک
+
+    در حالت auto اول به خود سایت نگاه می‌کنیم، نه به تنظیم سیستم‌عامل:
+    یک فروشگاهِ همیشه‌روشن روی گوشی‌ای که دارک‌مود دارد، نباید وسطش یک
+    ویجت مشکی داشته باشد. نشانه‌های زیر تقریباً همه‌ی قالب‌ها را پوشش
+    می‌دهند؛ اگر هیچ‌کدام نبود، به prefers-color-scheme برمی‌گردیم.
     ============================================
     */
-    const THEME_STORAGE_KEY = 'ai_agent_theme';
+    function detectSiteTheme() {
+        const root = document.documentElement;
+        const body = document.body;
+
+        // ۱) اعلام صریح خود سایت
+        const declared = (root.getAttribute('data-theme') ||
+                          root.getAttribute('data-color-scheme') ||
+                          body.getAttribute('data-theme') || '').toLowerCase();
+        if (declared.indexOf('dark') !== -1) return 'dark';
+        if (declared.indexOf('light') !== -1) return 'light';
+
+        // ۲) کلاس‌های مرسوم
+        const classes = (root.className + ' ' + body.className).toLowerCase();
+        if (/(^|\s|-)dark(-mode|-theme)?(\s|$)/.test(classes)) return 'dark';
+        if (/(^|\s|-)light(-mode|-theme)?(\s|$)/.test(classes)) return 'light';
+
+        // ۳) رنگ واقعی پس‌زمینه‌ی صفحه. قابل‌اعتمادترین نشانه است، چون
+        //    نتیجه‌ی هر کاری است که قالب واقعاً کرده، نه نامی که گذاشته.
+        try {
+            const bg = getComputedStyle(body).backgroundColor || '';
+            const m = bg.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+            if (m) {
+                const alpha = bg.match(/rgba\([^)]+,\s*([\d.]+)\s*\)/);
+                // پس‌زمینه‌ی کاملاً شفاف چیزی درباره‌ی تم نمی‌گوید
+                if (!alpha || parseFloat(alpha[1]) > 0.1) {
+                    const luminance = (0.2126 * (+m[1]) + 0.7152 * (+m[2]) + 0.0722 * (+m[3])) / 255;
+                    return luminance < 0.4 ? 'dark' : 'light';
+                }
+            }
+        } catch (e) {
+            // getComputedStyle در بعضی محیط‌ها خطا می‌دهد؛ می‌افتیم روی گام بعد
+        }
+
+        // ۴) تنظیم سیستم‌عامل
+        return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+    }
 
     function applyTheme(theme) {
-        widget.attr('data-theme', theme);
+        widget.attr('data-theme', theme === 'dark' ? 'dark' : 'light');
     }
 
     function initTheme() {
-        let saved = null;
-        try {
-            saved = localStorage.getItem(THEME_STORAGE_KEY);
-        } catch (e) {
-            saved = null;
-        }
-        if (saved === 'dark' || saved === 'light') {
-            applyTheme(saved);
+        const mode = CONFIG.theme_mode || 'auto';
+        if (mode === 'light' || mode === 'dark') {
+            applyTheme(mode);
             return;
         }
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        applyTheme(prefersDark ? 'dark' : 'light');
-    }
+        applyTheme(detectSiteTheme());
 
-    themeToggle.on('click', function () {
-        const current = widget.attr('data-theme') === 'dark' ? 'dark' : 'light';
-        const next = current === 'dark' ? 'light' : 'dark';
-        applyTheme(next);
-        try {
-            localStorage.setItem(THEME_STORAGE_KEY, next);
-        } catch (e) {
-            // اگر localStorage در دسترس نبود، فقط برای همین بازدید تم عوض می‌شود
+        // اگر سایت تمش را عوض کرد (کلید شب/روزِ خود قالب)، ویجت هم دنبالش
+        // می‌رود. بدون این، کاربر تم سایت را عوض می‌کرد و چت روی حالت قبلی
+        // جا می‌ماند.
+        if (window.MutationObserver) {
+            const themeWatcher = new MutationObserver(function () {
+                applyTheme(detectSiteTheme());
+            });
+            themeWatcher.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme', 'data-color-scheme'],
+            });
+            themeWatcher.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme'],
+            });
         }
-    });
+        if (window.matchMedia) {
+            const query = window.matchMedia('(prefers-color-scheme: dark)');
+            const onChange = function () { applyTheme(detectSiteTheme()); };
+            if (query.addEventListener) query.addEventListener('change', onChange);
+            else if (query.addListener) query.addListener(onChange);
+        }
+    }
 
     initTheme();
 
@@ -177,12 +283,14 @@ jQuery(function ($) {
             attachmentsBox.removeClass('has-items');
             attachBtn.removeClass('has-attachments');
             attachBtn.find('.ai-attach-badge').text('0');
+            updateSendButtonState(); // تعداد عکس‌ها تغییر کرد
             return;
         }
 
         attachmentsBox.addClass('has-items');
         attachBtn.addClass('has-attachments');
         attachBtn.find('.ai-attach-badge').text(String(pendingImages.length));
+        updateSendButtonState(); // حداقل یک عکس هست → دکمه‌ی ارسال فعال می‌شود
 
         pendingImages.forEach(function (img) {
             const $thumb = $('<div class="ai-attach-thumb"></div>').attr('data-id', img.id);
@@ -253,37 +361,208 @@ jQuery(function ($) {
 
     /*
     ============================================
-    مدیریت Session ID
+    مدیریت Session ID — کوکیِ JSON با فهرستِ همه‌ی گفت‌وگوها
 
-    session_id از پاسخ API (اندپوینت chat/messages) دریافت و در کوکی مرورگر ذخیره می‌شود.
-    اگر کوکی موجود نباشد (اولین بار بازدید)، پیام بدون session_id ارسال می‌شود
-    و API یک session جدید ساخته و session_id را در پاسخ برمی‌گرداند.
+    کوکی ai_agent_session_id دیگر یک UUID تکی نیست؛ مقدارش یک JSON است:
+
+        {
+            "sessions": ["uuid-1", "uuid-2", ...],   // به ترتیبِ ساخت
+            "current":  "uuid-2",                    // گفت‌وگوی فعال
+            "ts":       1698230000000                // آخرین فعالیت (epoch ms)
+        }
+
+    هر گفت‌وگوی جدید (وقتی API یک session_id تازه برمی‌گرداند) به انتهای
+    sessions اضافه می‌شود و current می‌شود. کلیک روی یک گفت‌وگوی قدیمی
+    در کشو، current را عوض می‌کند بدون آنکه ترتیب ساخت به‌هم بریزد.
+
+    عمر کوکی ۷ روز است و با هر تعامل کاربر (اسکرول، کلیک، تایپ، ارسال
+    پیام) تمدید می‌شود؛ یعنی تا وقتی کاربر با سایت در ارتباط است کوکی
+    زنده می‌ماند و فقط بعد از یک هفته بی‌تعاملی پاک می‌شود.
+
+    سازگاری با نسخه‌ی قدیمی: اگر کوکی هنوز یک UUID تکی باشد (نصب‌های
+    قدیمی)، به‌عنوان یک sessions=[uuid] با current=uuid تفسیر می‌شود.
     ============================================
     */
     function isValidUUID(uuid) {
         return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
     }
 
-    function getSessionId() {
-        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
-        const nameEq = cookieName + '=';
+    const SESSION_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // ۷ روز
+    const SESSION_COOKIE_NAME = (window.ai_agent && ai_agent.session_cookie)
+        ? ai_agent.session_cookie : 'ai_agent_session_id';
+
+    function getCookieRaw(name) {
+        const nameEq = name + '=';
         const ca = document.cookie.split(';');
         for (let i = 0; i < ca.length; i++) {
             let c = ca[i].trim();
             if (c.indexOf(nameEq) === 0) {
-                const val = c.substring(nameEq.length, c.length);
-                if (isValidUUID(val)) return val;
+                return c.substring(nameEq.length, c.length);
             }
         }
-        return null; // کوکی موجود نیست → پاسخ API ساخت session می‌کند
+        return '';
     }
 
+    /*
+    خواندن کوکیِ session به‌صورت یک شیء ساختاریافته. اگر کوکی یک UUID
+    تکی بود (نصب قدیمی یا setcookie قدیمیِ سرور)، آن را به‌صورت یک
+    sessions تک‌آیتمی تفسیر می‌کند تا چیزی از دست نرود.
+    */
+    function readSessionCookie() {
+        const raw = getCookieRaw(SESSION_COOKIE_NAME);
+        if (!raw) return null;
+
+        // حالت JSON: decode شده‌ی URI
+        let decoded = '';
+        try {
+            decoded = decodeURIComponent(raw);
+        } catch (e) {
+            decoded = raw;
+        }
+
+        // حالت JSON جدید
+        if (decoded.charAt(0) === '{') {
+            try {
+                const parsed = JSON.parse(decoded);
+                if (parsed && Array.isArray(parsed.sessions)) {
+                    // فقط UUID‌های معتبر نگه داشته می‌شوند
+                    parsed.sessions = parsed.sessions.filter(function (s) {
+                        return typeof s === 'string' && isValidUUID(s);
+                    });
+                    if (parsed.current && !isValidUUID(parsed.current)) {
+                        parsed.current = parsed.sessions.length ? parsed.sessions[parsed.sessions.length - 1] : '';
+                    }
+                    return parsed;
+                }
+            } catch (e) {
+                // JSON خراب؛ می‌افتیم روی تفسیر UUID تکی
+            }
+        }
+
+        // حالت UUID تکی قدیمی
+        if (isValidUUID(decoded)) {
+            return {
+                sessions: [decoded],
+                current: decoded,
+                ts: Date.now(),
+            };
+        }
+
+        return null;
+    }
+
+    /*
+    نوشتن کوکیِ session به‌صورت JSON. URL-encode می‌شود تا کاراکترهای
+    `{` `}` `"` `,` در کوکی مشکلی نسازند. عمر هر بار به ۷ روزِ تازه
+    تمدید می‌شود (rolling expiry).
+    */
+    function writeSessionCookie(data) {
+        if (!data || typeof data !== 'object') return;
+        if (!Array.isArray(data.sessions)) data.sessions = [];
+        if (!data.current) {
+            data.current = data.sessions.length ? data.sessions[data.sessions.length - 1] : '';
+        }
+        if (typeof data.ts !== 'number') data.ts = Date.now();
+
+        let encoded;
+        try {
+            encoded = encodeURIComponent(JSON.stringify(data));
+        } catch (e) {
+            return;
+        }
+
+        const expires = new Date(Date.now() + SESSION_COOKIE_MAX_AGE_MS).toUTCString();
+        document.cookie = SESSION_COOKIE_NAME + '=' + encoded
+            + '; expires=' + expires + '; path=/; SameSite=Lax';
+    }
+
+    function getSessionId() {
+        const data = readSessionCookie();
+        if (!data) return null;
+        if (data.current && isValidUUID(data.current)) return data.current;
+        if (data.sessions.length && isValidUUID(data.sessions[data.sessions.length - 1])) {
+            return data.sessions[data.sessions.length - 1];
+        }
+        return null;
+    }
+
+    /*
+    افزودن یک session_id جدید به کوکی. اگر قبلاً موجود بود، فقط current
+    می‌شود (جابجایی جای‌به‌جای ترتیب ساخت انجام نمی‌شود). ts هم به‌روز
+    می‌شود تا عمر کوکی تمدید شود.
+    */
     function setSessionId(id) {
         if (!id || !isValidUUID(id)) return;
+        const data = readSessionCookie() || { sessions: [], current: '', ts: Date.now() };
+        if (data.sessions.indexOf(id) === -1) {
+            data.sessions.push(id);
+        }
+        data.current = id;
+        data.ts = Date.now();
         sessionId = id;
-        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
-        document.cookie = cookieName + '=' + id + '; expires=' + expires + '; path=/; SameSite=Lax';
+        writeSessionCookie(data);
+    }
+
+    /*
+    باز کردن یک گفت‌وگوی قدیمی: فقط current عوض می‌شود. اگر id هنوز در
+    کوکی نباشد (مثلاً سرور گفت‌وگویی شناخته که کوکی هنوز نمی‌شناسد)،
+    آن را به sessions اضافه می‌کند تا فهرست کوکی همیشه کامل بماند.
+    اگر id معتبر نباشد، هیچ کاری نمی‌کند.
+    */
+    function setActiveSession(id) {
+        if (!id || !isValidUUID(id)) return false;
+        const data = readSessionCookie() || { sessions: [], current: '', ts: Date.now() };
+        if (data.sessions.indexOf(id) === -1) {
+            data.sessions.push(id);
+        }
+        data.current = id;
+        data.ts = Date.now();
+        sessionId = id;
+        writeSessionCookie(data);
+        return true;
+    }
+
+    /*
+    فهرست همه‌ی session_id‌های ذخیره‌شده در کوکی (به ترتیب ساخت).
+    */
+    function getAllSessionIds() {
+        const data = readSessionCookie();
+        if (!data || !Array.isArray(data.sessions)) return [];
+        return data.sessions.slice();
+    }
+
+    /*
+    شروع چت جدید: current پاک می‌شود (تا API یک session_id تازه بسازد)
+    ولی sessions دست‌نخورده باقی می‌ماند تا فهرستِ گفت‌وگوهای پیشین
+    نگه داشته شود. وقتی API session_id جدید برگرداند، setSessionId()
+    آن را به sessions اضافه و current می‌کند.
+    */
+    function clearSessionId() {
+        const data = readSessionCookie();
+        if (data) {
+            data.current = '';
+            data.ts = Date.now();
+            writeSessionCookie(data);
+        } else {
+            // کوکی اصلاً نیست؛ چیزی برای پاک کردن نیست
+            document.cookie = SESSION_COOKIE_NAME + '='
+                + encodeURIComponent(JSON.stringify({ sessions: [], current: '', ts: Date.now() }))
+                + '; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+        }
+        sessionId = null;
+        // پاک کردن کوکی تعداد پیام‌های دیده‌شده
+        clearMsgCount();
+    }
+
+    /*
+    حذف کامل کوکیِ session (مثلاً برای دیباگ یا خروج). در عمل استفاده
+    نمی‌شود چون می‌خواهیم گفت‌وگوها حتی بعد از بستن مرورگر باقی بمانند.
+    */
+    function destroySessionCookie() {
+        sessionId = null;
+        document.cookie = SESSION_COOKIE_NAME
+            + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+        clearMsgCount();
     }
 
     /*
@@ -327,18 +606,50 @@ jQuery(function ($) {
         setMsgCount(getMsgCount() + by);
     }
 
-    // پاک کردن کوکی session_id (برای شروع چت جدید)
-    // نکته: کوکی ai_agent_escalated_session حذف شد — از همان ai_agent_session_id
-    // استفاده می‌شود چون مقدار هر دو یکسان است.
-    function clearSessionId() {
-        sessionId = null;
-        const cookieName = (window.ai_agent && ai_agent.session_cookie) ? ai_agent.session_cookie : 'ai_agent_session_id';
-        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
-        // پاک کردن کوکی تعداد پیام‌های دیده‌شده
-        clearMsgCount();
+    // متغیر نگه‌دارنده‌ی session_id فعلی در حافظه‌ی JS.
+    // getSessionId() از کوکیِ JSON می‌خواند و setActiveSession()/setSessionId()
+    // هم کوکی و هم این متغیر را همگام نگه می‌دارند.
+    let sessionId = getSessionId();
+
+    /*
+    ============================================
+    تمدید خودکارِ عمر کوکی با هر تعامل کاربر (rolling expiry)
+
+    کوکی ۷ روزه است؛ بدون تمدید، بعد از ۷ روزِ اولین ساخت پاک می‌شد و
+    گفت‌وگوها از دست می‌رفت حتی اگر کاربر هر روز با سایت بوده. حالا با هر
+    تعامل معنادار (کلیک، تایپ، اسکرول، فوکوس) کوکی با همان محتوا و
+    یک پنجره‌ی ۷ روزه‌ی تازه بازنویسی می‌شود؛ یعنی تا وقتی کاربر با سایت
+    در ارتباط است، گفت‌وگوها زنده‌اند و فقط بعد از یک هفته بی‌تعاملی
+    پاک می‌شوند.
+
+    نوشتن کوکی سبک است (document.cookie یک string است) ولی بی‌دلیل
+    آن را روی هر mousemove اجرا نمی‌کنیم؛ throttle می‌کنیم تا نهایتاً
+    هر ۵ دقیقه یک بار تجدید شود — کافی است چون پنجره ۷ روزه است.
+    ============================================
+    */
+    let cookieRefreshedAt = 0;
+    const COOKIE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // حداکثر هر ۵ دقیقه
+
+    function touchSessionCookie() {
+        const now = Date.now();
+        if (now - cookieRefreshedAt < COOKIE_REFRESH_INTERVAL_MS) return;
+        cookieRefreshedAt = now;
+
+        const data = readSessionCookie();
+        if (!data) return; // کوکی نیست؛ چیزی برای تمدید نیست
+        data.ts = now;
+        writeSessionCookie(data);
     }
 
-    let sessionId = getSessionId();
+    // Eventهای رایجِ تعامل با سایت — روی document گوش می‌دهیم تا
+    // قبل از باز شدن چت هم کار کند.
+    ['click', 'keydown', 'scroll', 'touchstart'].forEach(function (evtName) {
+        document.addEventListener(evtName, touchSessionCookie, { passive: true });
+    });
+    // visibilitychange: وقتی کاربر برگشت به تب، کوکی تمدید شود
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') touchSessionCookie();
+    });
 
 
 
@@ -539,6 +850,176 @@ jQuery(function ($) {
 
         input.focus();
     });
+
+    /*
+    ============================================
+    کشوی گفت‌وگوهای پیشین
+
+    فهرست گفت‌وگوهای همین مرورگر، از اندپوینت ai_agent_visitor_sessions.
+    کلیک روی هر گفت‌وگو همان session_id را جای فعلی می‌گذارد و تاریخچه
+    از همان مسیری خوانده می‌شود که هنگام بازکردن دوباره‌ی ویجت
+    استفاده می‌شود — تا فقط یک راه برای بازسازی یک گفت‌وگو وجود داشته باشد.
+    ============================================
+    */
+    const historyBtn = $("#ai-agent-history");
+
+    function closeDrawer() {
+        drawer.prop('hidden', true);
+    }
+
+    function openDrawer() {
+        drawer.prop('hidden', false);
+        loadVisitorSessions();
+    }
+
+    historyBtn.on('click', function () {
+        if (drawer.prop('hidden')) openDrawer();
+        else closeDrawer();
+    });
+
+    $("#ai-agent-drawer-close").on('click', closeDrawer);
+
+    function loadVisitorSessions() {
+        drawerList.html('<div class="ai-agent-drawer-empty">در حال بارگذاری...</div>');
+
+        $.ajax({
+            url: CONFIG.ajax_url,
+            method: 'GET',
+            data: {
+                action: 'ai_agent_visitor_sessions',
+                visitor_id: getVisitorId(),
+            },
+        }).done(function (res) {
+            const items = (res && res.success && res.data && Array.isArray(res.data.items))
+                ? res.data.items : [];
+            // همگام‌سازیِ کوکی با سرور: هر گفت‌وگویی که سرور می‌شناسد ولی
+            // هنوز در کوکی نیست (مثلاً از قبلِ نصبِ این نسخه) به کوکی
+            // اضافه می‌شود تا فهرستِ کوکی همیشه supersetِ سرور باشد.
+            syncCookieFromServerItems(items);
+            // فیکس «هنوز گفت‌وگویی نداشته‌اید»: حتی وقتی سرور فهرستِ خالی
+            // برمی‌گرداند (مثلاً پیوند visitor_id یک گفت‌وگوی قدیمی قطع
+            // شده باشد)، سشن‌های ذخیره‌شده در کوکی همین مرورگر هم به
+            // فهرست اضافه می‌شوند تا کاربر بتواند گفت‌وگوی پیشینش را
+            // انتخاب و ادامه بدهد.
+            renderDrawer(mergeWithLocalSessions(items));
+        }).fail(function () {
+            // سرور در دسترس نیست؛ فهرست محلیِ کوکی را به‌عنوان fallback نشان بده
+            const localItems = getAllSessionIds().map(function (sid) {
+                return { id: sid, title: 'گفت‌وگو', message_count: 0 };
+            });
+            if (localItems.length > 0) {
+                renderDrawer(localItems);
+            } else {
+                drawerList.html(
+                    '<div class="ai-agent-drawer-empty">فهرست گفت‌وگوها در دسترس نیست.</div>'
+                );
+            }
+        });
+    }
+
+    /*
+    فیکس باگِ «هنوز گفت‌وگویی نداشته‌اید»:
+
+    قبلاً کشو فقط و فقط پاسخ سرور را نشان می‌داد؛ اگر سرور لیستِ خالی
+    برمی‌گرداند (مثلاً گفت‌وگو پیش از ورود متادیتای visitor_id ساخته
+    شده بود، یا visitor_id مرورگر با ثبت‌شده روی سرور یکی نبود)، حتی
+    با وجود سشن‌های معتبر داخل کوکی، پیامِ «هنوز گفت‌وگویی نداشته‌اید»
+    نمایش داده می‌شد و کاربر نمی‌توانست گفت‌وگوهایش را ببیند یا انتخاب
+    کند.
+
+    این تابع فهرستِ سرور را با سشن‌های کوکیِ همین مرورگر بدونِ تکرار
+    یکی می‌کند: ابتدا آیتم‌های سرور (که عنوان و تعداد پیام دارند)،
+    سپس سشن‌های فقط-کوکی (جدیدترین اول). تاریخچه‌ی هر گفت‌وگو از همان
+    مسیرِ همیشگی (session_id) خوانده می‌شود، پس انتخاب هر آیتم —
+    چه از سرور چه از کوکی — گفت‌وگوی همان لحظه را برمی‌گرداند.
+    */
+    function mergeWithLocalSessions(serverItems) {
+        const seen = {};
+        const merged = [];
+
+        (Array.isArray(serverItems) ? serverItems : []).forEach(function (item) {
+            if (item && item.id && isValidUUID(item.id) && !seen[item.id]) {
+                seen[item.id] = true;
+                merged.push(item);
+            }
+        });
+
+        // سشن‌های کوکی که در پاسخ سرور نبودند — از جدید به قدیم
+        getAllSessionIds().slice().reverse().forEach(function (sid) {
+            if (!seen[sid]) {
+                seen[sid] = true;
+                merged.push({ id: sid, title: 'گفت‌وگو', message_count: 0 });
+            }
+        });
+
+        return merged;
+    }
+
+    /*
+    همگام‌سازیِ کوکی با فهرستِ سرور: هر session_id که سرور می‌شناسد ولی
+    در کوکی نیست، به sessions اضافه می‌شود (بدون تغییرِ current).
+    */
+    function syncCookieFromServerItems(items) {
+        if (!Array.isArray(items) || items.length === 0) return;
+        const data = readSessionCookie();
+        if (!data) return; // کوکی نیست؛ وقتی جلسه ساخته شود، خودکار می‌سازد
+        let changed = false;
+        items.forEach(function (item) {
+            if (item && item.id && isValidUUID(item.id) && data.sessions.indexOf(item.id) === -1) {
+                data.sessions.push(item.id);
+                changed = true;
+            }
+        });
+        if (changed) {
+            data.ts = Date.now();
+            writeSessionCookie(data);
+        }
+    }
+
+    function renderDrawer(items) {
+        drawerList.empty();
+
+        if (!items.length) {
+            drawerList.html(
+                '<div class="ai-agent-drawer-empty">هنوز گفت‌وگویی نداشته‌اید.<br>' +
+                'هر گفت‌وگویی که شروع کنید این‌جا ذخیره می‌شود.</div>'
+            );
+            return;
+        }
+
+        const current = getSessionId();
+
+        items.forEach(function (item) {
+            const $row = $('<button type="button" class="ai-agent-drawer-item"></button>');
+            if (item.id === current) $row.addClass('is-current');
+
+            $row.append($('<span class="ai-agent-drawer-title"></span>').text(item.title || 'گفت‌وگو'));
+            $row.append(
+                $('<span class="ai-agent-drawer-meta"></span>')
+                    .text(toFaDigits(item.message_count || 0) + ' پیام')
+            );
+
+            $row.on('click', function () {
+                openSession(item.id);
+            });
+            drawerList.append($row);
+        });
+    }
+
+    /*
+    باز کردن یک گفت‌وگوی قدیمی: شناسه‌اش را جای شناسه‌ی فعلی می‌گذاریم و
+    تاریخچه را از همان مسیری می‌خوانیم که هنگام بازکردن دوباره‌ی ویجت
+    استفاده می‌شود، تا فقط یک راه برای بازسازی یک گفت‌وگو وجود داشته باشد.
+    setActiveSession هم کوکی را current می‌کند و هم متغیر sessionId را
+    به‌روز می‌کند؛ اگر session از قبل در کوکی نباشد، اضافه‌اش می‌کند.
+    */
+    function openSession(oldSessionId) {
+        if (!oldSessionId) return;
+        if (!setActiveSession(oldSessionId)) return;
+        closeDrawer();
+        messages.empty();
+        loadChatHistory();
+    }
 
     /*
     ============================================
@@ -1385,11 +1866,13 @@ function buildReferencesListBox(references) {
         let imagesToSend = pendingImages.map(function (img) { return img.dataUrl; });
 
         /*
-        ارسال فقط با وجود متن انجام می‌شود. عکسِ به‌تنهایی «خالی» محسوب
-        می‌شود و برای ارسال پیام حتماً باید متنی توسط کاربر نوشته شده
-        باشد (مطابق سیاست غیرفعال‌سازی دکمه‌ی ارسال).
+        ارسال با وجود متن یا حداقل یک عکس انجام می‌شود. عکسِ به‌تنهایی
+        دیگر «خالی» محسوب نمی‌شود — کاربر می‌تواند فقط عکس هم بفرستد
+        (مثلاً عکس یک محصول را بفرستد و بپرسد این چند است — یا اصلاً
+        نپرسد). سمت سرور هم همین منطق است: پیامی که نه متن دارد و نه
+        عکس، رد می‌شود.
         */
-        if (!text) return;
+        if (!text && imagesToSend.length === 0) return;
 
         // -------------------------------------------------------------
         // ۱) بررسی زنده‌ی وضعیت جلسه قبل از ارسال
@@ -1456,6 +1939,9 @@ function buildReferencesListBox(references) {
             body.append('action', 'ai_agent_chat');
             body.append('message', text);
             body.append('session_id', sessionId || '');
+            // فقط هنگام ساخت گفت‌وگوی تازه به کار می‌آید، ولی همیشه فرستاده
+            // می‌شود: کلاینت نمی‌داند سرور جلسه‌ی فعلی را هنوز دارد یا نه.
+            body.append('visitor_id', getVisitorId());
 
             if (imagesToSend.length > 0) {
                 imagesToSend.forEach(function (dataUrl, i) {
@@ -1490,6 +1976,12 @@ function buildReferencesListBox(references) {
         body.append('action', 'ai_agent_chat');
         body.append('message', text);
         body.append('session_id', sessionId || '');
+        // فقط هنگام ساخت گفت‌وگوی تازه به کار می‌آید، ولی همیشه فرستاده
+        // می‌شود: کلاینت نمی‌داند سرور جلسه‌ی فعلی را هنوز دارد یا نه.
+        // بدون این، گفت‌وگو به visitor_id مرورگر وصل نمی‌شود و در فهرست
+        // «گفت‌وگوهای پیشین» ظاهر نمی‌شود (و چون هیچ‌وقت پیدا نمی‌شود،
+        // انگار عنوانی هم برایش ساخته نشده).
+        body.append('visitor_id', getVisitorId());
 
         // افزودن عکس‌ها به‌صورت آرایه (images[])؛ هر آیتم یک data URL (base64) است
         // که در سمت سرور (ajax.php) به آرایه‌ی images در بدنه‌ی JSON به اندپوینت
@@ -1686,13 +2178,14 @@ function buildReferencesListBox(references) {
     ============================================
     مدیریت وضعیت فعال/غیرفعال دکمه‌ی ارسال
 
-    دکمه‌ی ارسال فقط زمانی فعال است که کاربر متنی (حتی یک کاراکتر)
-    نوشته باشد. عکسِ به‌تنهایی «خالی» محسوب می‌شود و باعث فعال شدن
-    دکمه نمی‌شود. اگر فوتر قفل باشد (گفتگو بسته شده)، دکمه در هر
-    حالتی غیرفعال می‌ماند.
+    دکمه‌ی ارسال وقتی فعال است که کاربر متنی (حتی یک کاراکتر) نوشته
+    باشه یا حداقل یک عکس پیوست کرده باشه — عکسِ به‌تنهایی هم پیام است
+    و باید قابل ارسال باشه. اگر فوتر قفل باشه (گفتگو بسته شده)، دکمه
+    در هر حالتی غیرفعال می‌مونه.
 
-    این تابع باید پس از هر تغییری که در متن ورودی رخ می‌دهد فراخوانی
-    شود (تایپ، ارسال، چت جدید، پایان ضبط صدا و ...).
+    این تابع باید پس از هر تغییری که در متن ورودی یا عکس‌های پیوست
+    رخ می‌دهد فراخوانی شود (تایپ، ارسال، افزودن/حذف عکس، چت جدید،
+    پایان ضبط صدا و ...).
     ============================================
     */
     function updateSendButtonState() {
@@ -1701,10 +2194,12 @@ function buildReferencesListBox(references) {
             send.prop('disabled', true).addClass('is-empty');
             return;
         }
-        // وجود متن شرط فعال بودن دکمه است (عکس به‌تنهایی کافی نیست)
+        // وجود متن یا حداقل یک عکسِ پیوست، شرط فعال بودن دکمه است
         const hasText = $.trim(input.val() || '').length > 0;
-        send.prop('disabled', !hasText);
-        send.toggleClass('is-empty', !hasText);
+        const hasImages = pendingImages.length > 0;
+        const canSend = hasText || hasImages;
+        send.prop('disabled', !canSend);
+        send.toggleClass('is-empty', !canSend);
     }
 
     send.on("click", function () {

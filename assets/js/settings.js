@@ -18,6 +18,65 @@
     jQuery(function($){
 
         /*
+        ارقام فارسی و تبدیل ریال به تومان.
+
+        در سطح بالای فایل تعریف شده‌اند چون هم بخش مدل‌ها و هم فهرست
+        گفت‌وگوها به آن‌ها نیاز دارند، و دو پیاده‌سازی جدا یعنی دو جای
+        متفاوت برای گروه‌بندی متفاوتِ همان عدد.
+        */
+        function aiAgentFaDigits(value) {
+            return String(value).replace(/[0-9]/g, function (d) {
+                return '۰۱۲۳۴۵۶۷۸۹'[d];
+            });
+        }
+
+        function aiAgentToman(amountIrr) {
+            var value = Math.round(Number(amountIrr) / 10);
+            if (!isFinite(value)) return '';
+            return aiAgentFaDigits(String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '٬'));
+        }
+
+        /*
+        ============================================
+        تبدیل رشته‌ی تاریخِ سرور به شیء Date — نسخه‌ی سازگار با همه‌ی مرورگرها
+
+        قبلاً مستقیماً new Date(created_at) صدا زده می‌شد. دو مشکل داشت:
+            ۱) در سافاری، رشته‌ی با جداکننده‌ی فاصله مثل
+               «2026-10-02 07:15:30» غلطِ Invalid می‌دهد و تاریخِ خام
+               سرور نمایش داده می‌شد.
+            ۲) میکروثانیه‌ی شش‌رقمی (خروجی مرسوم سرور) در بعضی مرورگرها
+               parse نمی‌شد.
+
+        این تابع رشته را نرمال‌سازی می‌کند (فاصله → T، میکروثانیه →
+        میلی‌ثانیه) و اگر تاریخ معتبر نبود null برمی‌گرداند تا فراخوانی
+        بتواند به نمایش خام برگردد. رشته‌های دارای منطقه‌ی زمانی (Z یا
+        ‎±hh:mm) توسط خود مرورگر به وقتِ محلی تبدیل می‌شوند و رشته‌های
+        بدون منطقه‌ی زمانی مثل قبل به وقتِ محلیِ مرورگر تفسیر می‌شوند.
+        ============================================
+        */
+        function aiAgentParseServerDate(value) {
+            if (!value) return null;
+            var s = String(value).trim();
+            if (!s) return null;
+
+            var m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/);
+            if (!m) {
+                var fallback = new Date(s);
+                return isNaN(fallback.getTime()) ? null : fallback;
+            }
+
+            // «2026-10-02 07:15:30.123456+00:00» → «2026-10-02T07:15:30.123+00:00»
+            var iso = m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':' + (m[6] || '00');
+            if (m[7]) {
+                iso += '.' + ('000' + m[7]).slice(0, 3); // سه رقم اول (میلی‌ثانیه)
+            }
+            iso += m[8] || '';
+
+            var dt = new Date(iso);
+            return isNaN(dt.getTime()) ? null : dt;
+        }
+
+        /*
         ============================================
         Escape HTML و تبدیل ساده و امن مارک‌داون به HTML
         (نسخه‌ی مشابه ai-agent.js، برای استفاده در پیش‌نمایش
@@ -58,8 +117,364 @@
             return html;
         }
 
-        $('.ai-agent-color-field').wpColorPicker();
+        /*
+        ============================================
+        کنترل‌های ساخته‌شده در PHP: سگمنت‌ها، کاشی‌ها، سوییچ‌های رنگ
 
+        همه‌ی این‌ها یک input رادیویی یا چک‌باکسِ پنهان دارند و ظاهرشان
+        از کلاس is-active می‌آید. مرورگر خودش وضعیت input را عوض می‌کند؛
+        این‌جا فقط کلاس با آن هم‌گام می‌شود تا فرم و ظاهر یکی بمانند.
+        ============================================
+        */
+        function aiAgentSyncRadioGroup($input) {
+            var name = $input.attr('name');
+            if (!name) return;
+            $('input[name="' + name + '"]').each(function () {
+                $(this).closest('.ai-agent-segment').toggleClass('is-active', this.checked);
+            });
+        }
+
+        $('.ai-agent-segment input[type="radio"]').on('change', function () {
+            aiAgentSyncRadioGroup($(this));
+        });
+
+        $('.ai-agent-tile input[type="checkbox"]').on('change', function () {
+            $(this).closest('.ai-agent-tile').toggleClass('is-active', this.checked);
+        });
+
+        /*
+        ============================================
+        سوییچ‌های رنگ پس‌زمینه‌ی چت
+
+        مقدار در یک input مخفی می‌نشیند و همان است که ذخیره می‌شود؛
+        دایره‌ها فقط راهِ انتخابش هستند. change روی input مخفی دستی
+        شلیک می‌شود، وگرنه ذخیره‌ی خودکار متوجه تغییر نمی‌شود.
+        ============================================
+        */
+        $('.ai-agent-swatches[data-swatch-group]').each(function () {
+            var $group = $(this);
+            var name   = $group.attr('data-swatch-group');
+            /*
+            پالت رنگ اصلی روی همان فیلد کد رنگ می‌نویسد (که خودش هم
+            دستی قابل تایپ است)؛ بقیه‌ی پالت‌ها input مخفی خودشان را
+            دارند. هر دو با همین یک شناسه پیدا می‌شوند.
+            */
+            var $value = $('#ai_agent_' + name);
+            if (!$value.length) return;
+
+            $group.on('click', '.ai-agent-swatch', function (e) {
+                e.preventDefault();
+                var hex = $(this).attr('data-hex');
+                if (!hex) return;
+                $group.find('.ai-agent-swatch').removeClass('is-active');
+                $(this).addClass('is-active');
+                $value.val(hex.toUpperCase()).trigger('change');
+            });
+        });
+
+        /*
+        ============================================
+        فیلد توکن سایت — چشمِ نمایش/مخفی + دکمه‌ی حذف توکن
+
+        - چشم داخلِ خود اینپوت، سمت راست، با همان زبان بصری آیکون‌های
+          خطی افزونه (SVG با stroke=currentColor) است. کلیک روی آن
+          نوع فیلد را بین password و text عوض می‌کند تا توکن
+          نمایش/مخفی شود؛ آیکون هم بین چشم و چشم‌خط‌خورده جابه‌جا
+          می‌شود.
+        - متن توکن خودش چپ‌چین و LTR است (کلاس dc-ltr + lang="en"
+          روی اینپوت در سمت PHP).
+        - دکمه‌ی «حذف توکن» با تأیید کاربر، فیلد را خالی و پرچمِ
+          مخفیِ api_key_delete را ۱ می‌کند؛ بعد از کلیک روی «ذخیره
+          تنظیمات»، کلید ذخیره‌شده در دیتابیس هم به‌طور کامل پاک
+          می‌شود (سمت PHP). اگر کاربر قبل از ذخیره توکن جدیدی تایپ
+          کند، پرچم دوباره صفر می‌شود — یعنی توکن جدید جایگزین می‌شود
+          نه اینکه حذف شود.
+        ============================================
+        */
+        (function aiAgentTokenField() {
+            var $input = $('#ai_agent_api_key');
+            if (!$input.length) return;
+
+            var $eye    = $('#ai-agent-token-eye');
+            var $eyeOn  = $eye.find('.ai-agent-token-eye-on');   // چشم (وقتی توکن مخفی است)
+            var $eyeOff = $eye.find('.ai-agent-token-eye-off');  // چشم‌خط‌خورده (وقتی توکن نمایان است)
+            var $delete = $('#ai-agent-token-delete');
+            var $deleteFlag = $('#ai_agent_api_key_delete');
+
+            function setEyeVisible(visible) {
+                $input.attr('type', visible ? 'text' : 'password');
+                $eyeOn.css('display', visible ? 'none' : 'block');
+                $eyeOff.css('display', visible ? 'block' : 'none');
+                var label = visible ? 'مخفی کردن توکن' : 'نمایش توکن';
+                $eye.attr('title', label).attr('aria-label', label);
+            }
+
+            $eye.on('click', function () {
+                var willShow = ($input.attr('type') === 'password');
+                setEyeVisible(willShow);
+                $input.trigger('focus');
+            });
+
+            // اگر توکن جدیدی تایپ شد، درخواستِ «حذف» لغو می‌شود
+            $input.on('input change', function () {
+                if (String($(this).val() || '') !== '' && $deleteFlag.length) {
+                    $deleteFlag.val('0');
+                }
+            });
+
+            if ($delete.length && $deleteFlag.length) {
+                $delete.on('click', function () {
+                    var confirmed = window.confirm(
+                        'آیا مطمئن هستید که می‌خواهید توکن را حذف کنید؟\n\n' +
+                        'فیلد توکن خالی می‌شود و بعد از کلیک روی «ذخیره تنظیمات»، ' +
+                        'توکن ذخیره‌شده به‌طور کامل از دیتابیس پاک می‌شود.'
+                    );
+                    if (!confirmed) return;
+
+                    $input.val('');
+                    $deleteFlag.val('1');
+                    setEyeVisible(false); // برگشت به حالت password
+                });
+            }
+        })();
+
+        /*
+        ============================================
+        دو نمای صفحه — تنظیمات و گفت‌وگوها
+
+        قبلاً دو آدرس جدا بودند و هر رفت‌وبرگشت یعنی بارگذاری کامل صفحه
+        و یک کال دوباره به سرور همگام‌سازی. حالا فقط کلاس عوض می‌شود.
+        نمای گفت‌وگوها اولین بار که باز شود، فهرستش را می‌گیرد — نه
+        هنگام لود صفحه، چون بیشتر بازدیدها اصلاً سراغش نمی‌روند.
+        ============================================
+        */
+        (function aiAgentViews() {
+            var $tabs = $('.ai-agent-tab[data-view]');
+            if (!$tabs.length) return;
+            var historyLoaded = false;
+
+            $tabs.on('click', function () {
+                var view = $(this).attr('data-view');
+                if (!view) return;
+
+                $tabs.removeClass('is-active').attr('aria-selected', 'false');
+                $(this).addClass('is-active').attr('aria-selected', 'true');
+
+                $('.ai-agent-view').removeClass('is-active');
+                $('.ai-agent-view[data-view-panel="' + view + '"]').addClass('is-active');
+
+                if (view === 'history' && !historyLoaded) {
+                    historyLoaded = true;
+                    if (typeof aiAgentSessions === 'object' && aiAgentSessions && typeof aiAgentSessions.load === 'function') {
+                        aiAgentSessions.load();
+                    }
+                }
+            });
+        })();
+
+        /*
+        ============================================
+        رنگ پرایمری چت‌بات: دکمه‌های رنگ‌های سایت + پالت آماده + کد
+        دستی + پالتِ ساخت رنگ (کلیک روی دایره‌ی رنگ) و پیش‌نمایش زنده‌ی
+        رنگ حالت تاریک (که فقط نمایش داده می‌شود، خودِ کاربر آن را
+        دستی عوض نمی‌کند — همان الگوریتمی که سرور برای ذخیره‌سازی
+        استفاده می‌کند، این‌جا هم برای پیش‌نمایش فوری تکرار شده است).
+
+        نسخه‌ی جدید: رنگ حالت تاریک هم یک picker کامل دارد (پالت آماده،
+        دایره‌ی رنگ و کد هگز). یک فیلد مخفی color_dark_custom نشان
+        می‌دهد آیا کاربر رنگ تاریک را دستی عوض کرده (1) یا هنوز روی
+        پیشنهاد خودکار است (0). در حالتِ auto، با هر تغییرِ رنگِ روشن،
+        رنگِ تاریک هم به‌صورت خودکار به پیشنهادِ جدید به‌روز می‌شود.
+        در حالتِ custom، رنگِ تاریکِ کاربر دست‌نخورده باقی می‌ماند.
+        کاربر می‌تواند با کلیک روی «استفاده از این پیشنهاد» به حالتِ auto
+        برگردد.
+        ============================================
+        */
+        (function aiAgentAssistantColor() {
+            var $light = $('#ai_agent_color_light');
+            if (!$light.length) return;
+
+            // عناصرِ سمتِ روشن
+            var $lightDot = $('#ai-agent-color-light-dot');
+            var $picker   = $('#ai-agent-color-picker');
+
+            // عناصرِ سمتِ تاریک
+            var $dark           = $('#ai_agent_color_dark');
+            var $darkDot        = $('#ai-agent-color-dark-dot-btn');
+            var $darkPicker     = $('#ai-agent-color-dark-picker');
+            var $darkCustom     = $('#ai_agent_color_dark_custom');
+            var $suggestionDot  = $('#ai-agent-dark-suggestion-dot');
+            var $suggestionValue = $('#ai-agent-dark-suggestion-value');
+            var $useSuggestionBtn = $('#ai-agent-dark-use-suggestion');
+
+            /*
+            همان فرمول سرور (ai_agent_lighten_hex با AI_AGENT_DARK_LIFT)
+            تا پیش‌نمایشِ این‌جا با چیزی که بعد از ذخیره روی سایت می‌نشیند
+            یکی باشد.
+            */
+            function autoDark(hex) {
+                var m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+                if (!m) return null;
+                var n = parseInt(m[1], 16);
+                var amount = (typeof aiAgentAdmin === 'object' && aiAgentAdmin && aiAgentAdmin.darkLift)
+                    ? parseFloat(aiAgentAdmin.darkLift) : 0.28;
+                var lift = function(c) { return Math.round(c + (255 - c) * amount); };
+                var r = lift((n >> 16) & 255), g = lift((n >> 8) & 255), b = lift(n & 255);
+                return '#' + [r, g, b].map(function(v) { return v.toString(16).padStart(2, '0'); }).join('').toUpperCase();
+            }
+
+            function isHex(s) {
+                return typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s);
+            }
+
+            // به‌روزرسانیِ پیش‌نمایشِ پیشنهادِ خودکار
+            function refreshSuggestion() {
+                var suggested = autoDark($light.val());
+                if (!suggested) return;
+                $suggestionDot.css('background', suggested);
+                $suggestionValue.text(suggested);
+            }
+
+            // به‌روزرسانیِ پیش‌نمایشِ رنگِ روشن (دایره + پالت‌ها + picker)
+            function refreshLightPreview() {
+                var hex = String($light.val() || '').toUpperCase();
+                if (!isHex(hex)) return;
+                $lightDot.css('background', hex);
+                $('.ai-agent-site-color-btn').each(function () {
+                    $(this).toggleClass('is-active', String($(this).attr('data-hex')).toUpperCase() === hex);
+                });
+                $('.ai-agent-swatches[data-swatch-group="color_light"] .ai-agent-swatch').each(function () {
+                    $(this).toggleClass('is-active', String($(this).attr('data-hex')).toUpperCase() === hex);
+                });
+                if ($picker.length) $picker.val(hex);
+            }
+
+            // به‌روزرسانیِ پیش‌نمایشِ رنگِ تاریک (دایره + پالت‌ها + picker)
+            function refreshDarkPreview() {
+                var hex = String($dark.val() || '').toUpperCase();
+                if (isHex(hex)) {
+                    $darkDot.css('background', hex);
+                    if ($darkPicker.length) $darkPicker.val(hex);
+                } else {
+                    // اگر کاربر فیلد را خالی کرد، روی پیشنهاد خودکار نشان بده
+                    var suggested = autoDark($light.val());
+                    if (suggested) $darkDot.css('background', suggested);
+                }
+                $('.ai-agent-swatches[data-swatch-group="color_dark"] .ai-agent-swatch').each(function () {
+                    var swatchHex = String($(this).attr('data-hex')).toUpperCase();
+                    $(this).toggleClass('is-active', isHex(hex) && swatchHex === hex);
+                });
+            }
+
+            /*
+            به‌روزرسانیِ کاملِ صفحه: ابتدا پیشنهاد خودکار از رنگِ روشن
+            ساخته می‌شود، بعد اگر کاربر هنوز روی حالتِ auto است، فیلدِ
+            تاریک به‌صورت خودکار با پیشنهادِ جدید پر می‌شود. در غیر
+            این‌صورت، رنگِ تاریکِ کاربر دست‌نخورده باقی می‌ماند.
+            */
+            function refreshAll() {
+                refreshLightPreview();
+                refreshSuggestion();
+
+                if ($dark.length && $darkCustom.length && $darkCustom.val() === '0') {
+                    var suggested = autoDark($light.val());
+                    if (suggested) {
+                        $dark.val(suggested);
+                        refreshDarkPreview();
+                    }
+                }
+            }
+
+            // رنگِ روشن: هر تغییر باید پیشنهادِ تاریک را هم بسازد
+            $light.on('input change', refreshAll);
+
+            // رنگِ تاریک: هر تغییرِ کاربر یعنی حالتِ custom
+            $dark.on('input change', function () {
+                var val = $dark.val();
+                if (isHex(val)) {
+                    $darkCustom.val('1');
+                } else {
+                    // فیلد خالی/نامعتبر → حالتِ auto
+                    $darkCustom.val('0');
+                }
+                refreshDarkPreview();
+            });
+
+            refreshAll();
+
+            // کارت رنگ سایت: با یک کلیک همان رنگ، رنگ پرایمری می‌شود.
+            $('.ai-agent-site-color-btn').on('click', function() {
+                var hex = $(this).attr('data-hex');
+                if (!hex) return;
+                $light.val(hex).trigger('change');
+                $('.ai-agent-site-color-btn').removeClass('is-active');
+                $(this).addClass('is-active');
+            });
+
+            /*
+            پالتِ ساخت رنگِ روشن: کلیک روی دایره‌ی رنگ، پالت رنگ مرورگر
+            را باز می‌کند؛ رنگی که کاربر همان‌جا می‌سازد بلافاصله در فیلد
+            کد و پیش‌نمایش‌ها می‌نشیند. انتخاب رنگ اجباری نیست — هر چه
+            باشد، تایپ دستی کد هگز هم همچنان کار می‌کند.
+            */
+            if ($picker.length && $lightDot.length) {
+                $lightDot.on('click', function () {
+                    $picker.trigger('click');
+                });
+                $picker.on('input change', function () {
+                    var hex = String($(this).val() || '').toUpperCase();
+                    if (isHex(hex)) {
+                        $light.val(hex).trigger('change');
+                    }
+                });
+            }
+
+            /*
+            پالتِ آماده برای حالت تاریک: کلیک روی هر swatch آن رنگ را
+            در فیلدِ تاریک می‌نویسد و حالتِ custom را فعال می‌کند.
+            */
+            $('.ai-agent-swatches[data-swatch-group="color_dark"]').on('click', '.ai-agent-swatch', function (e) {
+                e.preventDefault();
+                var hex = $(this).attr('data-hex');
+                if (!hex || !isHex(hex)) return;
+                $('.ai-agent-swatches[data-swatch-group="color_dark"] .ai-agent-swatch').removeClass('is-active');
+                $(this).addClass('is-active');
+                $dark.val(hex).trigger('change');
+            });
+
+            /*
+            پالتِ ساخت رنگِ تاریک: کلیک روی دایره‌ی تاریک، پالت رنگ
+            مرورگر را باز می‌کند؛ رنگِ ساخته‌شده در فیلدِ تاریک و دایره
+            می‌نشیند.
+            */
+            if ($darkPicker.length && $darkDot.length) {
+                $darkDot.on('click', function () {
+                    $darkPicker.trigger('click');
+                });
+                $darkPicker.on('input change', function () {
+                    var hex = String($(this).val() || '').toUpperCase();
+                    if (isHex(hex)) {
+                        $dark.val(hex).trigger('change');
+                    }
+                });
+            }
+
+            /*
+            دکمه‌ی «استفاده از این پیشنهاد»: رنگِ تاریک را به پیشنهادِ
+            خودکارِ فعلی (بر اساس رنگِ روشن) برمی‌گرداند و حالتِ auto
+            را فعال می‌کند. این‌طوری کاربر هر وقت پشیمان شد از سفارشی‌سازی
+            می‌تواند به‌راحتی برگردد.
+            */
+            if ($useSuggestionBtn.length) {
+                $useSuggestionBtn.on('click', function () {
+                    var suggested = autoDark($light.val());
+                    if (!suggested) return;
+                    $darkCustom.val('0');
+                    $dark.val(suggested);
+                    refreshDarkPreview();
+                });
+            }
+        })();
         /*
         ============================================
         تب‌های دستگاه (موبایل / تبلت / دسکتاپ) — بخش «موقعیت آیکون افزونه»
@@ -89,40 +504,21 @@
             });
         }
 
-        // ----- دکمه نمایش/مخفی کردن API Key -----
-        $('#ai-agent-toggle-api-key').on('click', function(){
-            var $input = $('#ai_agent_api_key');
-            if ($input.attr('type') === 'password') {
-                $input.attr('type', 'text');
-                $(this).text('مخفی');
-            } else {
-                $input.attr('type', 'password');
-                $(this).text('نمایش');
-            }
-        });
+        /*
+        ============================================
+        ردیف‌های شماره‌ی پشتیبانی: افزودن/حذف، حداکثر ۵ ردیف
+        ============================================
 
-        // ----- جستجو و انتخاب مدل هوش مصنوعی از سرور اختصاصی -----
-        var aiAgentModelsLimit = 10;
-        var aiAgentModelsQuery = '';
-        var aiAgentModelsTimer = null;
-        var aiAgentModelsXhr = null;
-        var aiAgentModelsReqId = 0;
+        /*
+        ============================================
+        ذخیره‌ی تنظیمات — فقط با دکمه‌ی «ذخیره تنظیمات»
 
-        function aiAgentGetModelLabel(model) {
-            if (typeof model === 'string') return model;
-            if (model && typeof model === 'object') {
-                return model.name || model.id || model.title || JSON.stringify(model);
-            }
-            return String(model);
-        }
-
-        function aiAgentGetModelValue(model) {
-            if (typeof model === 'string') return model;
-            if (model && typeof model === 'object') {
-                return model.id || model.name || model.title || '';
-            }
-            return String(model);
-        }
+        برخلاف طراحیِ جدید که هر فیلد را لحظه‌ای ذخیره می‌کرد، این‌جا
+        منطق نسخه‌ی فعلی افزونه حفظ شده است: هیچ ذخیره‌ی خودکاری در
+        کار نیست و کل فرم با ارسال استاندارد وردپرس (options.php) فقط
+        با کلیک کاربر روی «ذخیره تنظیمات» ثبت می‌شود.
+        ============================================
+        */
 
         // فرمت‌بندی مبلغ ریالی با جداکننده‌ی هزارگان (مثال: 150000 → 150,000 ریال)
         function aiAgentFormatIrr(amount) {
@@ -131,167 +527,11 @@
             return n.toLocaleString('en-US') + ' ریال';
         }
 
-        function aiAgentRenderModels(models) {
-            var $list = $('#ai-agent-models-list');
-            $list.empty();
 
-            if (!models || !models.length) {
-                $list.append('<div class="ai-agent-combobox-empty">موردی یافت نشد</div>');
-                aiAgentComboboxOpen();
-                return;
-            }
-
-            $.each(models, function(i, model) {
-                var value    = aiAgentGetModelValue(model);
-                var label    = aiAgentGetModelLabel(model);
-                var provider = (model && typeof model === 'object' && model.provider) ? model.provider : '';
-
-                // استایل‌ها به‌طور کامل از SettingsStyles.css استفاده می‌کنند؛ این‌جا فقط
-                // ساختار DOM ساخته می‌شود تا هم نمایش یکدست باشد و هم hover از طریق CSS.
-                var $item = $('<div class="ai-agent-model-item"></div>').attr('data-value', value);
-                $item.append($('<div></div>').text(label));
-                $item.append($('<div></div>').text(value + (provider ? ' · ' + provider : '')));
-
-                // نمایش قیمت ورودی و خروجی مدل (به ازای هر ۱ میلیون توکن) تا کاربر بهتر انتخاب کند
-                if (model && typeof model === 'object') {
-                    var hasInPrice  = typeof model.system_input_price_irr_per_1000_tokens !== 'undefined' && model.system_input_price_irr_per_1000_tokens !== null;
-                    var hasOutPrice = typeof model.system_output_price_irr_per_5000_tokens !== 'undefined' && model.system_output_price_irr_per_5000_tokens !== null;
-
-                    if (hasInPrice || hasOutPrice) {
-                        var priceParts = [];
-                        if (hasInPrice)  priceParts.push('ورودی: ' + aiAgentFormatIrr(model.system_input_price_irr_per_1000_tokens));
-                        if (hasOutPrice) priceParts.push('خروجی: ' + aiAgentFormatIrr(model.system_output_price_irr_per_5000_tokens));
-
-                        $item.append($('<div></div>').text(priceParts.join(' · ') + ' (به ازای هر 1000 توکن)'));
-                    }
-                }
-
-                $list.append($item);
-            });
-
-            // «بارگذاری بیشتر» به‌صورت یک ردیف داخل خودِ لیست کشویی (کومبوباکس) نمایش داده می‌شود؛
-            // نه به‌عنوان یک دکمه‌ی جدا بیرون از لیست. اگر تعداد نتایج به سقف limit فعلی رسیده باشد،
-            // یعنی احتمالاً نتایج بیشتری هم وجود دارد.
-            if (models.length >= aiAgentModelsLimit) {
-                var $loadMore = $('<div class="ai-agent-model-item ai-agent-model-loadmore"></div>').text('بارگذاری بیشتر...');
-                $list.append($loadMore);
-            }
-
-            aiAgentComboboxOpen();
-        }
-
-        // ----- کنترل باز/بسته شدن کومبوباکس -----
-        // این توابع کلاس‌های is-open را روی کنترلر و لیست اضافه/حذف می‌کنند تا
-        // هم فلش دکمه‌ی کشویی بچرخد و هم لیست نمایش داده شود.
-        function aiAgentComboboxOpen() {
-            $('#ai-agent-combobox').addClass('is-open');
-            $('#ai-agent-models-list').addClass('is-open');
-        }
-        function aiAgentComboboxClose() {
-            $('#ai-agent-combobox').removeClass('is-open');
-            $('#ai-agent-models-list').removeClass('is-open');
-        }
-
-        function aiAgentLoadModels() {
-            // درخواست قبلی که هنوز در حال اجراست را لغو کن تا پاسخ‌های دیرهنگام، لیست جدید را خراب نکنند
-            if (aiAgentModelsXhr && aiAgentModelsXhr.readyState !== 4) {
-                aiAgentModelsXhr.abort();
-            }
-            var reqId = ++aiAgentModelsReqId;
-
-            aiAgentModelsXhr = $.ajax({
-                url: ajaxurl,
-                method: 'GET',
-                data: {
-                    action: 'ai_agent_search_models',
-                    nonce: $('#ai_agent_models_nonce_field').val(),
-                    q: aiAgentModelsQuery,
-                    limit: aiAgentModelsLimit
-                },
-                success: function(response) {
-                    if (reqId !== aiAgentModelsReqId) return; // یک پاسخ قدیمی‌تر است، نادیده بگیر
-                    if (response.success) {
-                        var models = response.data.models || [];
-                        aiAgentRenderModels(models);
-                    } else {
-                        $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">' + (response.data && response.data.message ? response.data.message : 'خطا در دریافت لیست مدل‌ها') + '</div>');
-                        aiAgentComboboxOpen();
-                    }
-                },
-                error: function(jqXHR, textStatus) {
-                    if (textStatus === 'abort') return; // درخواست عمداً لغو شده، خطا نیست
-                    if (reqId !== aiAgentModelsReqId) return;
-                    $('#ai-agent-models-list').empty().append('<div class="ai-agent-combobox-error">خطا در برقراری ارتباط با سرور</div>');
-                    aiAgentComboboxOpen();
-                }
-            });
-        }
-
-        // فقط هنگام تایپ واقعی، جستجوی جدید را با تاخیر (debounce) اجرا کن
-        $('#ai_agent_model_search').on('input', function() {
-            aiAgentModelsQuery = $(this).val();
-            aiAgentModelsLimit = 10;
-            clearTimeout(aiAgentModelsTimer);
-            aiAgentModelsTimer = setTimeout(aiAgentLoadModels, 300);
-        });
-
-        // دکمه‌ی کشویی (فلش): باز/بسته کردن لیست به‌صورت toggle.
-        // این کار حس یک کومبوباکس واقعی را به کاربر می‌دهد: می‌تواند روی دکمه کلیک
-        // کند تا منوی کشویی باز شود یا مستقیماً داخل فیلد تایپ کند تا جستجو اجرا شود.
-        $('#ai-agent-combobox-toggle').on('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if ($('#ai-agent-models-list').hasClass('is-open')) {
-                aiAgentComboboxClose();
-            } else {
-                if ($('#ai-agent-models-list').children().length > 0) {
-                    aiAgentComboboxOpen();
-                } else {
-                    aiAgentModelsQuery = $('#ai_agent_model_search').val();
-                    aiAgentModelsLimit = 10;
-                    aiAgentLoadModels();
-                }
-                $('#ai_agent_model_search').focus();
-            }
-        });
-
-        // با فوکوس روی باکس: اگر لیست از قبل بارگذاری شده، همان را نشان بده (بدون کوئری مجدد)
-        // و فقط اگر خالی است، یک‌بار بارگذاری کن. این از ریست شدن لیست هنگام اسکرول/فوکوس مجدد جلوگیری می‌کند
-        $('#ai_agent_model_search').on('focus', function() {
-            if ($('#ai-agent-models-list').children().length > 0) {
-                aiAgentComboboxOpen();
-            } else {
-                aiAgentModelsQuery = $(this).val();
-                aiAgentModelsLimit = 10;
-                aiAgentLoadModels();
-            }
-        });
-
-        // ردیف «بارگذاری بیشتر» حالا داخل خودِ لیست کشویی است؛ کلیک روی آن نباید
-        // به‌عنوان انتخاب مدل تلقی شود و نباید باعث بسته شدن لیست شود (چون خودش هم
-        // درون #ai-agent-models-list است).
-        $(document).on('click', '.ai-agent-model-loadmore', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            aiAgentModelsLimit += 10;
-            aiAgentLoadModels();
-        });
-
-        $(document).on('click', '.ai-agent-model-item:not(.ai-agent-model-loadmore)', function() {
-            var value = $(this).attr('data-value');
-            $('#ai_agent_model').val(value);
-            $('#ai_agent_model_search').val(value);
-            $('#ai-agent-model-current').text(value);
-            aiAgentComboboxClose();
-        });
-
-        // بستن لیست با کلیک بیرون از کومبوباکس (شامل ردیف «بارگذاری بیشتر» که حالا داخل خودِ لیست است)
-        $(document).on('click', function(e) {
-            if (!$(e.target).closest('#ai-agent-combobox').length) {
-                aiAgentComboboxClose();
-            }
-        });
-
+        // ----- موجودی کیف پول -----
+        // پاسخ اندپوینتِ نسخه‌ی فعلی افزونه فقط balance_irr می‌دهد؛ پس همان
+        // فرمت‌کننده‌ی قبلی استفاده می‌شود. بارگذاری خودکار هنگام باز شدن صفحه
+        // و بعد هر ۲۰ ثانیه یک‌بار (بدون چشمک‌زدنِ متنِ «در حال دریافت»).
         // ----- موجودی کیف پول -----
         // دکمه‌ی بروزرسانی موجودی اکنون یک ایکون دایره‌ای سینک است (نه دکمه‌ی متنی).
         // به جای تغییر متن دکمه، کلاس is-loading روی آن toggle می‌شود که باعث می‌شود
@@ -338,11 +578,146 @@
             aiAgentLoadWalletBalance(true);
         });
 
-        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات (اگر این بخش در صفحه موجود باشد)
+        // اجرای خودکار هنگام باز شدن صفحه‌ی تنظیمات، و بعد از آن هر ۲۰ ثانیه یک‌بار
         if ($('#ai-agent-wallet-balance-value').length) {
             aiAgentLoadWalletBalance(false);
+            window.setInterval(function() { aiAgentLoadWalletBalance(false); }, 20000);
         }
 
+        // نوار اعلان‌ها حذف شد — یک کارت که فقط یک آیکون بلندگو داشت و
+        // معلوم نبود چیست؛ اعلان‌های واقعی جای بهتری برای رسیدن به کاربر دارند.
+
+        // ----- انتخاب موقعیت آیکون با کشیدن -----
+        // هر دستگاه یک ماکت است و آیکون داخلش کشیدنی. کشیدن، هم سمت و هم فاصله
+        // را تعیین می‌کند؛ فیلدهای عددی همان مقادیر را نگه می‌دارند تا فرم بدون
+        // تغییرِ ساختار ارسال شود و اگر جاوااسکریپت اجرا نشد، بخش «تنظیم دقیق»
+        // همچنان کار کند.
+        (function aiAgentPositionPicker() {
+            var $stages = $('.ai-agent-stage');
+            if (!$stages.length) return;
+
+            // The offset is stored in real page pixels, but the mock is much
+            // smaller than a phone, so it is scaled for display. Without this a
+            // 200px offset would push the handle clean out of the mock.
+            var STAGE_RANGE = { mobile: 400, tablet: 500, desktop: 600 };
+
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
+            function apply($stage, side, offset, writeInputs) {
+                var device = $stage.data('stage');
+                var range  = STAGE_RANGE[device] || 400;
+                offset = clamp(Math.round(offset), -range, range);
+
+                $stage.attr('data-side', side).attr('data-offset', offset);
+
+                var $handle = $stage.find('.ai-agent-stage-handle');
+                var height  = $stage.height() || 1;
+                // Bottom-anchored, matching how the widget itself is placed.
+                var bottomPx = clamp((height * 0.08) + (offset / range) * (height * 0.7), 6, height - 46);
+
+                $handle.css({
+                    bottom: bottomPx + 'px',
+                    left:   side === 'left' ? '10px' : 'auto',
+                    right:  side === 'right' ? '10px' : 'auto'
+                });
+
+                $stage.closest('.ai-agent-device-panel')
+                      .find('[data-stage-readout]')
+                      .text(
+                          (side === 'left' ? 'سمت چپ' : 'سمت راست') +
+                          ' — جابه‌جایی عمودی ' + aiAgentFaDigits(offset) + ' پیکسل'
+                      );
+
+                if (writeInputs) {
+                    var $panel = $stage.closest('.ai-agent-device-panel');
+                    // فیلدهای مخفیِ این دستگاه با مقدار تازه به‌روز می‌شوند
+                    // تا هنگام ذخیره‌ی فرم، سمت و آفست درست ارسال شود.
+                    $panel.find('input[data-position-side="' + device + '"]').val(side);
+                    $panel.find('input[data-position-offset="' + device + '"]').val(offset);
+                }
+            }
+
+            $stages.each(function() {
+                var $stage = $(this);
+                apply($stage, $stage.attr('data-side'), parseInt($stage.attr('data-offset'), 10) || 0, false);
+            });
+
+            // Dragging. Pointer events cover mouse, touch and pen in one path,
+            // and setPointerCapture keeps the drag alive when the cursor leaves
+            // the small mock -- which it constantly does.
+            $stages.each(function() {
+                var stage = this;
+                var $stage = $(stage);
+                var handle = $stage.find('.ai-agent-stage-handle')[0];
+                if (!handle) return;
+
+                var dragging = false;
+
+                handle.addEventListener('pointerdown', function(e) {
+                    dragging = true;
+                    if (handle.setPointerCapture) handle.setPointerCapture(e.pointerId);
+                    $stage.addClass('is-dragging');
+                    e.preventDefault();
+                });
+
+                handle.addEventListener('pointermove', function(e) {
+                    if (!dragging) return;
+                    var rect   = stage.getBoundingClientRect();
+                    var device = $stage.data('stage');
+                    var range  = STAGE_RANGE[device] || 400;
+
+                    var side = (e.clientX - rect.left) < rect.width / 2 ? 'left' : 'right';
+                    var bottomPx = rect.bottom - e.clientY;
+                    var offset = ((bottomPx - rect.height * 0.08) / (rect.height * 0.7)) * range;
+
+                    apply($stage, side, offset, true);
+                });
+
+                function end(e) {
+                    if (!dragging) return;
+                    dragging = false;
+                    $stage.removeClass('is-dragging');
+                    if (e && e.pointerId != null && handle.hasPointerCapture && handle.hasPointerCapture(e.pointerId)) {
+                        handle.releasePointerCapture(e.pointerId);
+                    }
+                }
+                handle.addEventListener('pointerup', end);
+                handle.addEventListener('pointercancel', end);
+
+                // Keyboard: the handle is a real button, so arrows have to work
+                // for anyone who cannot drag.
+                handle.addEventListener('keydown', function(e) {
+                    var device = $stage.data('stage');
+                    var step   = e.shiftKey ? 50 : 10;
+                    var side   = $stage.attr('data-side');
+                    var offset = parseInt($stage.attr('data-offset'), 10) || 0;
+
+                    if (e.key === 'ArrowUp')         { apply($stage, side, offset + step, true); }
+                    else if (e.key === 'ArrowDown')  { apply($stage, side, offset - step, true); }
+                    else if (e.key === 'ArrowLeft')  { apply($stage, 'left', offset, true); }
+                    else if (e.key === 'ArrowRight') { apply($stage, 'right', offset, true); }
+                    else { return; }
+                    e.preventDefault();
+                });
+            });
+
+            // The numeric fields stay authoritative: editing one moves the mock.
+            $('[data-position-offset]').on('input change', function() {
+                var device = $(this).data('position-offset');
+                var $stage = $('.ai-agent-stage[data-stage="' + device + '"]');
+                apply($stage, $stage.attr('data-side'), parseInt($(this).val(), 10) || 0, false);
+            });
+            $('[data-position-side]').on('change', function() {
+                var device = $(this).data('position-side');
+                var $stage = $('.ai-agent-stage[data-stage="' + device + '"]');
+                apply($stage, $(this).val(), parseInt($stage.attr('data-offset'), 10) || 0, false);
+            });
+        })();
+        // ----- دکمه «بارگذاری اطلاعات از سرور» (بازخوانی تنظیمات، نه سینک داده‌های امبدینگ) -----
+        // منطق نسخه‌ی فعلی افزونه حفظ شده است: دکمه‌ی «بارگذاری از سرور» سرِ جایش است
+        // و همان اندپوینت قبلی را صدا می‌زند؛ فقط ظاهرش با دیزاین‌سیستم جدید هماهنگ است.
         // ----- دکمه «بارگذاری اطلاعات از سرور» (بازخوانی تنظیمات، نه سینک داده‌های امبدینگ) -----
         // دکمه‌ها اکنون SVG + متن دارند؛ برای حفظ SVG، به جای .text() از کلاس is-loading
         // استفاده می‌کنیم و فقط در صورت نیاز متن label داخل دکمه را با jQuery .find().last()
@@ -380,6 +755,8 @@
                 }
             });
         });
+
+        // صفحه انجام می‌شود (رجوع کنید به ai_agent_settings_page در settings.php).
 
         $('#ai-agent-sync-btn').on('click', function(e) {
             e.preventDefault();
@@ -707,9 +1084,20 @@
                     self.loadSessions();
                 });
 
-                // بارگذاری اولیه
-                self.loadSessions();
-                self.loadStatusCounts();
+                /*
+                فهرست این‌جا گرفته نمی‌شود. نمای گفت‌وگوها همیشه در DOM
+                هست ولی پیش‌فرض بسته است، و بیشتر کسانی که این صفحه را
+                باز می‌کنند سراغش نمی‌روند؛ گرفتن فهرست هنگام لود یعنی
+                یک کال به سرور برای چیزی که دیده نمی‌شود. تب که باز شد،
+                load() صدا زده می‌شود.
+                */
+            },
+
+            /** اولین باز شدن نمای گفت‌وگوها. */
+            load: function() {
+                if (!$('#ai-agent-sessions-list').length) return;
+                this.loadSessions();
+                this.loadStatusCounts();
             },
 
             /*
@@ -743,7 +1131,16 @@
                                 var st = $(this).attr('data-count-status');
                                 if (typeof st === 'undefined') return;
                                 var c = (typeof counts[st] !== 'undefined') ? counts[st] : 0;
-                                $(this).text(c);
+
+                                // یک badge قرمز روی هر فیلتر که عدد صفر را
+                                // نشان می‌داد، پنج نشانه‌ی هشدار می‌ساخت برای
+                                // چیزی که خبری در آن نبود. badge فقط وقتی
+                                // معنا دارد که واقعاً چیزی منتظر است.
+                                if (c > 0) {
+                                    $(this).text(aiAgentFaDigits(c)).removeAttr('hidden');
+                                } else {
+                                    $(this).text('').attr('hidden', 'hidden');
+                                }
                             });
                         }
                     },
@@ -758,11 +1155,12 @@
                 // اطلاعات صفحه
                 $('#ai-agent-sessions-page-info').text(
                     this.total > 0
-                        ? 'صفحه ' + this.currentPage + ' از ' + Math.ceil(this.total / this.pageSize)
+                        ? 'صفحه ' + aiAgentFaDigits(this.currentPage) +
+                          ' از ' + aiAgentFaDigits(Math.ceil(this.total / this.pageSize))
                         : ''
                 );
                 $('#ai-agent-sessions-total-info').text(
-                    this.total > 0 ? 'مجموع: ' + this.total + ' جلسه' : ''
+                    this.total > 0 ? 'مجموع: ' + aiAgentFaDigits(this.total) + ' جلسه' : ''
                 );
 
                 // دکمه‌های بالا
@@ -829,28 +1227,36 @@
                 var $list = $('#ai-agent-sessions-list');
 
                 if (!items || items.length === 0) {
-                    $list.html('<div class="ai-agent-sessions-empty">هیچ جلسه‌ای یافت نشد.</div>');
+                    $list.html('<div class="ai-agent-empty">هیچ جلسه‌ای یافت نشد.</div>');
                     return;
                 }
 
                 for (var i = 0; i < items.length; i++) {
                     (function(item) {
                         var created = item.created_at || '';
-                        // تبدیل تاریخ به فرمت قابل نمایش
+                        // تبدیل تاریخ به فرمت قابل نمایش (شمسی + ساعت)
                         if (created) {
-                            var dt = new Date(created);
-                            if (!isNaN(dt.getTime())) {
+                            var dt = aiAgentParseServerDate(created);
+                            if (dt) {
                                 var jalali = self.toJalali(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
-                                created = jalali + ' ' +
+                                created = aiAgentFaDigits(jalali + ' ' +
                                     String(dt.getHours()).padStart(2, '0') + ':' +
-                                    String(dt.getMinutes()).padStart(2, '0');
+                                    String(dt.getMinutes()).padStart(2, '0'));
                             }
                         }
 
                         var statusLabel = self.getStatusLabel(item.status);
 
                         var $item = $('<div class="ai-agent-session-item"></div>');
-                        var $header = $('<div class="ai-agent-session-header"></div>');
+                        var $header = $('<div class="ai-agent-session-head"></div>');
+                        /*
+                        آیکون همیشه یک کاراکتر ثابت (► رو به راست) است و فقط
+                        با CSS می‌چرخد (۹۰ درجه ساعتگرد ⇒ رو به پایین).
+                        قبلاً هم کاراکتر عوض می‌شد (► → ▼) و هم CSS ۱۸۰
+                        درجه می‌چرخاند؛ یعنی ▼ چرخیده = ▲ رو به بالا، و
+                        کاربر انگار آیکون ۲۷۰ درجه برمی‌گشت. حالا فقط یکی
+                        از این دو مکانیزم استفاده می‌شود: چرخش ۹۰ درجه.
+                        */
                         var $arrow = $('<span class="ai-agent-session-arrow">&#9654;</span>');
                         var $idSpan = $('<code class="ai-agent-session-id"></code>').text(item.id);
                         var $dateSpan = $('<span class="ai-agent-session-date"></span>').text(created);
@@ -861,25 +1267,44 @@
 
                         $header.append($arrow).append(' ').append($idSpan).append(' ').append($dateSpan).append(' ').append($statusBadge);
 
+                        /*
+                        هزینه‌ی همین گفت‌وگو، کنار خودش.
+
+                        صاحب سایت به‌ازای توکن پول می‌دهد؛ تا وقتی فقط یک عدد
+                        کلی کیف‌پول می‌دید، معلوم نبود کدام گفت‌وگو گران درآمده.
+                        گفت‌وگویی که هنوز چیزی خرج نکرده بج نمی‌گیرد تا ردیف
+                        شلوغ نشود.
+                        */
+                        var costIrr = Number(item.total_cost_irr || 0);
+                        if (costIrr > 0) {
+                            var tokensIn  = Number(item.total_tokens_input || 0);
+                            var tokensOut = Number(item.total_tokens_output || 0);
+                            $header.append(' ').append(
+                                $('<span class="ai-agent-session-cost"></span>')
+                                    .attr('title', 'توکن ورودی: ' + aiAgentFaDigits(tokensIn) +
+                                                   ' — توکن خروجی: ' + aiAgentFaDigits(tokensOut))
+                                    .text(aiAgentToman(costIrr) + ' تومان')
+                            );
+                        }
+
                         var $body = $('<div class="ai-agent-session-body" style="display:none;"></div>');
 
                         $header.on('click', function() {
                             if ($body.is(':visible')) {
-                                // بستن آکاردئون
+                                // بستن آکاردئون — آیکون با حذف is-open به حالت
+                                // رو به راست برمی‌گردد (چرخش با CSS)
                                 $body.slideUp(250);
-                                $arrow.html('&#9654;');
-                                $item.removeClass('ai-agent-session-open');
+                                $item.removeClass('is-open');
                                 self.openSessionId = null;
                             } else {
                                 // بستن تمام آکاردئون‌های باز
                                 $list.find('.ai-agent-session-body:visible').slideUp(250);
-                                $list.find('.ai-agent-session-arrow').html('&#9654;');
-                                $list.find('.ai-agent-session-item').removeClass('ai-agent-session-open');
+                                $list.find('.ai-agent-session-item').removeClass('is-open');
 
-                                // باز کردن این مورد
+                                // باز کردن این مورد — آیکون با is-open می‌چرخد
+                                // و رو به پایین می‌ایستد (transform: rotate(90deg))
                                 $body.slideDown(250);
-                                $arrow.html('&#9660;');
-                                $item.addClass('ai-agent-session-open');
+                                $item.addClass('is-open');
                                 self.openSessionId = item.id;
                                 self.loadMessages(item.id, $body, item.status);
                             }
@@ -922,9 +1347,13 @@
                             var d = response.data;
                             var allMessages = d.items || [];
                             // مرتب‌سازی پیام‌ها از قدیم به جدید بر اساس created_at
+                            // (با همان پارسر سازگار با سافاری، تا رشته‌های با
+                            // جداکننده‌ی فاصله هم درست مرتب شوند)
                             allMessages.sort(function(a, b) {
-                                var ta = a && a.created_at ? new Date(a.created_at).getTime() : 0;
-                                var tb = b && b.created_at ? new Date(b.created_at).getTime() : 0;
+                                var da = a && a.created_at ? aiAgentParseServerDate(a.created_at) : null;
+                                var db = b && b.created_at ? aiAgentParseServerDate(b.created_at) : null;
+                                var ta = da ? da.getTime() : 0;
+                                var tb = db ? db.getTime() : 0;
                                 return ta - tb;
                             });
                             self.renderMessages($container, allMessages, sessionId, sessionStatus);
@@ -945,7 +1374,7 @@
                 $container.empty();
 
                 if (!messages || messages.length === 0) {
-                    $container.html('<div class="ai-agent-sessions-empty">پیامی یافت نشد.</div>');
+                    $container.html('<div class="ai-agent-empty">پیامی یافت نشد.</div>');
                     if (sessionStatus === 'pending_human' || sessionStatus === 'human') {
                         $container.append(self.buildReplyBox(sessionId));
                     }
@@ -1001,11 +1430,13 @@
                 // فرمت‌بندی تاریخ پیام
                 var timeStr = '';
                 if (created) {
-                    var dt = new Date(created);
-                    if (!isNaN(dt.getTime())) {
-                        timeStr = String(dt.getHours()).padStart(2, '0') + ':' +
-                                  String(dt.getMinutes()).padStart(2, '0') + ':' +
-                                  String(dt.getSeconds()).padStart(2, '0');
+                    var dt = aiAgentParseServerDate(created);
+                    if (dt) {
+                        timeStr = aiAgentFaDigits(
+                            String(dt.getHours()).padStart(2, '0') + ':' +
+                            String(dt.getMinutes()).padStart(2, '0') + ':' +
+                            String(dt.getSeconds()).padStart(2, '0')
+                        );
                     }
                 }
 
@@ -1237,9 +1668,9 @@
                 var $wrap = $('<div class="ai-agent-session-reply-box"></div>');
                 var $textarea = $('<textarea class="ai-agent-session-reply-input" placeholder="پاسخ خود را برای کاربر بنویسید..."></textarea>');
                 var $actionsRow = $('<div class="ai-agent-session-reply-actions"></div>');
-                var $sendBtn = $('<button type="button" class="button button-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
-                var $returnBotBtn = $('<button type="button" class="button button-secondary ai-agent-session-return-bot-btn">بازگردانی چت به ربات</button>');
-                var $closeBtn = $('<button type="button" class="button button-secondary ai-agent-session-close-btn">پایان چت</button>');
+                var $sendBtn = $('<button type="button" class="ai-agent-btn ai-agent-btn-primary ai-agent-session-send-btn">ارسال پاسخ</button>');
+                var $returnBotBtn = $('<button type="button" class="ai-agent-btn ai-agent-session-return-bot-btn">بازگردانی چت به ربات</button>');
+                var $closeBtn = $('<button type="button" class="ai-agent-btn ai-agent-session-close-btn">پایان چت</button>');
                 var $statusSpan = $('<span class="ai-agent-session-reply-status"></span>');
 
                 $actionsRow.append($sendBtn).append($returnBotBtn).append($closeBtn).append($statusSpan);
@@ -1365,7 +1796,7 @@
                 اندپوینت بالادستی:
                     POST /api/v1/chat/sessions/{session_id}/return-to-bot
                     هدرها: X-API-Key, session-id
-                    بدنه: {"additionalProp1": {}}
+                    بدنه: ندارد (طبق API جدید)
 
                 پس از موفقیت:
                     - بج وضعیت جلسه در هدر آکاردئون به «ربات» به‌روز می‌شود
@@ -1470,11 +1901,23 @@
                 }
             },
 
-            // تبدیل میلادی به شمسی ساده (بدون نیاز به کتابخانه‌ی خارجی)
+            // تبدیل میلادی به شمسی (الگوریتم استاندارد، دقیقاً هماهنگ با
+            // نسخه‌ی PHP در includes/format.php)
+            /*
+            فیکس باگ تاریخ‌های تب «گفت‌وگوها و پشتیبانی»:
+            نسخه‌ی قبلی به‌جای جدول تجمعیِ روزهای ماه‌های میلادی (g_d_m)
+            از فرمول نادرست «(gm-2)*30 + (gm>6 ? 6 : 0)» استفاده می‌کرد
+            که برای ماه‌های ۳ به بعد حدوداً ۲۹ روز کم محاسبه می‌کرد؛
+            نتیجه این بود که هر گفت‌وگویی حدوداً یک ماه قدیمی‌تر از
+            تاریخ واقعی‌اش نمایش داده می‌شد (مثلاً ۱۴۰۵/۰۷/۱۰ به‌جای
+            نمایش درست، ۱۴۰۵/۰۶/۱۴ می‌شد). الگوریتم زیر همان نسخه‌ی
+            استاندارد و تست‌شده‌ای است که در format.php هم استفاده شده.
+            */
             toJalali: function(gy, gm, gd) {
-                var g_d_m, jy, jm, jd, gy2, days;
+                var g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+                var jy, jm, jd, gy2, days;
                 gy2 = (gm > 2) ? (gy + 1) : gy;
-                days = 355666 + (365 * gy) + (Math.floor((gy2 + 3) / 4)) - (Math.floor((gy2 + 99) / 100)) + (Math.floor((gy2 + 399) / 400)) + gd + ((gm < 3) ? (gm - 1) * 31 : ((gm - 2) * 30 + ((gm > 6) ? 6 : 0)));
+                days = 355666 + (365 * gy) + (Math.floor((gy2 + 3) / 4)) - (Math.floor((gy2 + 99) / 100)) + (Math.floor((gy2 + 399) / 400)) + gd + g_d_m[gm - 1];
                 jy = -1595 + (33 * Math.floor(days / 12053));
                 days %= 12053;
                 jy += 4 * Math.floor(days / 1461);
@@ -1493,6 +1936,7 @@
                 return jy + '/' + String(jm).padStart(2, '0') + '/' + String(jd).padStart(2, '0');
             }
         };
+
 
         // راه‌اندازی ماژول جلسات
         aiAgentSessions.init();
